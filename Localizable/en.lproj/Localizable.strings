@@ -8,3 +8,4 @@
 "label.speed" = "Max speed";
 "label.size" = "Character size";
 "label.sleep" = "Time until sleep";
+"label.launch" = "Launch at login";

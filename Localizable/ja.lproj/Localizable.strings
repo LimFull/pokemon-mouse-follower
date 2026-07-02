@@ -8,6 +8,7 @@
 "label.speed" = "最高速度";
 "label.size" = "キャラクターの大きさ";
 "label.sleep" = "眠るまでの時間";
+"label.launch" = "ログイン時に起動";
 
 "pokemon.001" = "フシギダネ";
 "pokemon.002" = "フシギソウ";

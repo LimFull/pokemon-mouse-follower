@@ -2,9 +2,31 @@ import Cocoa
 import QuartzCore
 import ImageIO
 import UniformTypeIdentifiers
+import ServiceManagement
 
 // Localized string lookup (en/ko/ja via *.lproj/Localizable.strings).
 func L(_ key: String) -> String { NSLocalizedString(key, comment: "") }
+
+// Launch-at-login backed by SMAppService (macOS 13+). The system owns the
+// state, so it defaults to off (not registered) until the user opts in.
+enum LoginItem {
+    static var isEnabled: Bool { SMAppService.mainApp.status == .enabled }
+
+    @discardableResult
+    static func setEnabled(_ on: Bool) -> Bool {
+        do {
+            if on {
+                if SMAppService.mainApp.status != .enabled { try SMAppService.mainApp.register() }
+            } else {
+                if SMAppService.mainApp.status == .enabled { try SMAppService.mainApp.unregister() }
+            }
+            return true
+        } catch {
+            NSLog("PokemonMouseFollower: login item toggle failed: \(error)")
+            return false
+        }
+    }
+}
 
 // MARK: - Character catalog (National Dex 001–009)
 struct CharacterInfo { let folder: String; let name: String }
@@ -315,7 +337,7 @@ final class SettingsWindowController: NSObject {
 
     init(characterView: CharacterView) {
         self.characterView = characterView
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 300),
+        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 340),
                           styleMask: [.titled, .closable], backing: .buffered, defer: false)
         window.title = L("settings.window.title")
         window.isReleasedWhenClosed = false
@@ -344,6 +366,7 @@ final class SettingsWindowController: NSObject {
         grid.addRow(with: [makeLabel(L("label.sleep")),
                            makeSlider(tag: 3, range: AppSettings.sleepRange, value: Double(s.sleepDelay)),
                            makeValueLabel(3, text: fmt(3, s.sleepDelay))])
+        grid.addRow(with: [makeLabel(L("label.launch")), makeLaunchCheckbox(), NSGridCell.emptyContentView])
 
         grid.column(at: 0).xPlacement = .trailing
         grid.column(at: 1).width = 180
@@ -354,6 +377,19 @@ final class SettingsWindowController: NSObject {
             grid.centerXAnchor.constraint(equalTo: content.centerXAnchor),
             grid.centerYAnchor.constraint(equalTo: content.centerYAnchor),
         ])
+    }
+
+    private func makeLaunchCheckbox() -> NSButton {
+        let cb = NSButton(checkboxWithTitle: "", target: self, action: #selector(launchToggled(_:)))
+        cb.state = LoginItem.isEnabled ? .on : .off
+        return cb
+    }
+
+    @objc private func launchToggled(_ sender: NSButton) {
+        let wantOn = sender.state == .on
+        if !LoginItem.setEnabled(wantOn) {
+            sender.state = wantOn ? .off : .on   // revert on failure
+        }
     }
 
     private func makePopup() -> NSPopUpButton {
