@@ -7,3 +7,6 @@ MouseFollower.app/
 
 # Editor / tooling
 .claude/
+
+# Icon build intermediate
+icon/AppIcon.iconset/

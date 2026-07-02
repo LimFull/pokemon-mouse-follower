@@ -40,6 +40,9 @@ cp -R animations/* "$BUNDLE/Contents/Resources/characters/"
 echo "==> Bundling localizations..."
 cp -R Localizable/*.lproj "$BUNDLE/Contents/Resources/"
 
+echo "==> Bundling app icon..."
+cp icon/AppIcon.icns "$BUNDLE/Contents/Resources/AppIcon.icns"
+
 echo "==> Ad-hoc code signing..."
 codesign --force --deep --sign - "$BUNDLE"
 

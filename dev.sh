@@ -19,6 +19,7 @@ rm -rf "$BUNDLE/Contents/Resources/characters"
 mkdir -p "$BUNDLE/Contents/Resources/characters"
 cp -R animations/* "$BUNDLE/Contents/Resources/characters/"
 cp -R Localizable/*.lproj "$BUNDLE/Contents/Resources/"
+cp icon/AppIcon.icns "$BUNDLE/Contents/Resources/AppIcon.icns"
 
 echo "==> Compiling (arm64, debug)..."
 swiftc -Onone -g Sources/main.swift -o "$BUNDLE/Contents/MacOS/${APP_NAME}"

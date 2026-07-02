@@ -8,6 +8,8 @@
     <string>Pokémon Mouse Follower</string>
     <key>CFBundleExecutable</key>
     <string>PokemonMouseFollower</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>CFBundleIdentifier</key>
     <string>com.local.pokemonmousefollower</string>
     <key>CFBundleDevelopmentRegion</key>
