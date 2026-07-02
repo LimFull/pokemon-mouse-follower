@@ -15,8 +15,9 @@ pkill -x "$APP_NAME" 2>/dev/null || true
 # Make sure the bundle scaffolding (Info.plist + sprite Resources) exists.
 mkdir -p "$BUNDLE/Contents/MacOS" "$BUNDLE/Contents/Resources"
 cp Info.plist "$BUNDLE/Contents/Info.plist"
-cp animations/007/Idle-Anim.png "$BUNDLE/Contents/Resources/"
-cp animations/007/Walk-Anim.png "$BUNDLE/Contents/Resources/"
+rm -rf "$BUNDLE/Contents/Resources/characters"
+mkdir -p "$BUNDLE/Contents/Resources/characters"
+cp -R animations/* "$BUNDLE/Contents/Resources/characters/"
 
 echo "==> Compiling (arm64, debug)..."
 swiftc -Onone -g Sources/main.swift -o "$BUNDLE/Contents/MacOS/${APP_NAME}"

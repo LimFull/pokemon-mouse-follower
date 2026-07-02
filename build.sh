@@ -33,8 +33,9 @@ rm -f "/tmp/${APP_NAME}_arm64" "/tmp/${APP_NAME}_x86_64"
 cp Info.plist "$BUNDLE/Contents/Info.plist"
 
 echo "==> Bundling sprite assets..."
-cp animations/007/Idle-Anim.png "$BUNDLE/Contents/Resources/"
-cp animations/007/Walk-Anim.png "$BUNDLE/Contents/Resources/"
+rm -rf "$BUNDLE/Contents/Resources/characters"
+mkdir -p "$BUNDLE/Contents/Resources/characters"
+cp -R animations/* "$BUNDLE/Contents/Resources/characters/"
 
 echo "==> Ad-hoc code signing..."
 codesign --force --deep --sign - "$BUNDLE"

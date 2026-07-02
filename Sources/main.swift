@@ -3,12 +3,31 @@ import QuartzCore
 import ImageIO
 import UniformTypeIdentifiers
 
+// MARK: - Character catalog (National Dex 001–009)
+struct CharacterInfo { let folder: String; let name: String }
+
+enum Characters {
+    static let all: [CharacterInfo] = [
+        .init(folder: "001", name: "001 · Bulbasaur"),
+        .init(folder: "002", name: "002 · Ivysaur"),
+        .init(folder: "003", name: "003 · Venusaur"),
+        .init(folder: "004", name: "004 · Charmander"),
+        .init(folder: "005", name: "005 · Charmeleon"),
+        .init(folder: "006", name: "006 · Charizard"),
+        .init(folder: "007", name: "007 · Squirtle"),
+        .init(folder: "008", name: "008 · Wartortle"),
+        .init(folder: "009", name: "009 · Blastoise"),
+    ]
+    static func index(of folder: String) -> Int {
+        all.firstIndex { $0.folder == folder } ?? 0
+    }
+}
+
 // MARK: - Settings (persisted in UserDefaults)
 final class AppSettings {
     static let shared = AppSettings()
     private let d = UserDefaults.standard
 
-    // Bounds used by both the sliders and clamping.
     static let gapRange: ClosedRange<Double> = 0...200
     static let speedRange: ClosedRange<Double> = 2...25
     static let scaleRange: ClosedRange<Double> = 1...5
@@ -29,30 +48,56 @@ final class AppSettings {
         get { get("scale", 2) }
         set { d.set(Double(newValue), forKey: "scale") }
     }
+    var selectedCharacter: String {
+        get { d.string(forKey: "character") ?? "007" }
+        set { d.set(newValue, forKey: "character") }
+    }
 }
 
-// MARK: - Sprite loading
+// MARK: - Sprite loading / slicing
 enum Sprite {
-    static func loadCG(_ name: String) -> CGImage? {
-        guard let url = Bundle.main.url(forResource: name, withExtension: "png"),
+    static func loadCG(_ name: String, subdir: String) -> CGImage? {
+        guard let url = Bundle.main.url(forResource: name, withExtension: "png", subdirectory: subdir),
               let data = try? Data(contentsOf: url),
               let src = CGImageSourceCreateWithData(data as CFData, nil),
               let img = CGImageSourceCreateImageAtIndex(src, 0, nil) else { return nil }
         return img
     }
 
-    // Slice a sprite sheet into [row][col] frames of `cell`×`cell` px (top-left origin).
-    static func slice(_ image: CGImage, cols: Int, rows: Int, cell: Int) -> [[CGImage]] {
+    static func loadText(_ name: String, ext: String, subdir: String) -> String? {
+        guard let url = Bundle.main.url(forResource: name, withExtension: ext, subdirectory: subdir) else { return nil }
+        return try? String(contentsOf: url, encoding: .utf8)
+    }
+
+    // Slice into [row][col] frames (top-left origin). Cells may be non-square.
+    static func slice(_ image: CGImage, cols: Int, rows: Int, cellW: Int, cellH: Int) -> [[CGImage]] {
         var out: [[CGImage]] = []
         for r in 0..<rows {
             var rowArr: [CGImage] = []
             for c in 0..<cols {
-                let rect = CGRect(x: c * cell, y: r * cell, width: cell, height: cell)
+                let rect = CGRect(x: c * cellW, y: r * cellH, width: cellW, height: cellH)
                 if let cg = image.cropping(to: rect) { rowArr.append(cg) }
             }
             out.append(rowArr)
         }
         return out
+    }
+
+    // Read <FrameWidth>/<FrameHeight> for a named <Anim> from AnimData.xml text.
+    static func frameSize(_ anim: String, in xml: String) -> (Int, Int)? {
+        for block in xml.components(separatedBy: "</Anim>") where block.contains("<Name>\(anim)</Name>") {
+            if let w = intBetween(block, "<FrameWidth>", "</FrameWidth>"),
+               let h = intBetween(block, "<FrameHeight>", "</FrameHeight>") {
+                return (w, h)
+            }
+        }
+        return nil
+    }
+
+    private static func intBetween(_ s: String, _ a: String, _ b: String) -> Int? {
+        guard let r1 = s.range(of: a),
+              let r2 = s.range(of: b, range: r1.upperBound..<s.endIndex) else { return nil }
+        return Int(s[r1.upperBound..<r2.lowerBound].trimmingCharacters(in: .whitespacesAndNewlines))
     }
 }
 
@@ -63,6 +108,7 @@ final class CharacterView: NSView {
     private var idle: [[CGImage]] = []
     private var walk: [[CGImage]] = []
     private var loaded = false
+    private var lastFrame: CGImage?
 
     private var pos = CGPoint.zero
     private var vel = CGVector.zero
@@ -71,48 +117,59 @@ final class CharacterView: NSView {
     private var tickCounter = 0
     private var lastRow = 0
 
-    private let cell = 32
-    private let slowRadius: CGFloat = 130       // start decelerating within this range
-    private let accel: CGFloat = 0.55           // max velocity change per frame (ease-in/out)
+    private let slowRadius: CGFloat = 130
+    private let accel: CGFloat = 0.55
     private let moveThreshold: CGFloat = 0.35
-
     private let walkStepTicks = 6
     private let idleStepTicks = 10
 
-    // octant (0=E,1=NE,2=N,3=NW,4=W,5=SW,6=S,7=SE) -> sprite row (L/R mirrored).
+    // octant (0=E,1=NE,2=N,3=NW,4=W,5=SW,6=S,7=SE) -> sprite row (PMD direction order).
     private let octantToRow = [2, 3, 4, 5, 6, 7, 0, 1]
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
-        loadSprites()
         spriteLayer.magnificationFilter = .nearest
-        spriteLayer.contentsGravity = .resizeAspect
+        spriteLayer.contentsGravity = .resize
         layer?.addSublayer(spriteLayer)
-        applyScale()
+        setCharacter(AppSettings.shared.selectedCharacter)
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
 
-    private func loadSprites() {
-        guard let idleSheet = Sprite.loadCG("Idle-Anim"),
-              let walkSheet = Sprite.loadCG("Walk-Anim") else {
-            NSLog("MouseFollower: failed to load sprite sheets from bundle")
-            return
-        }
-        idle = Sprite.slice(idleSheet, cols: 8, rows: 8, cell: cell)
-        walk = Sprite.slice(walkSheet, cols: 4, rows: 8, cell: cell)
-        loaded = true
+    // Load a character's Idle/Walk sheets, sizing frames from its AnimData.xml.
+    func setCharacter(_ folder: String) {
+        let subdir = "characters/\(folder)"
+        let xml = Sprite.loadText("AnimData", ext: "xml", subdir: subdir)
+        idle = framesFor("Idle-Anim", anim: "Idle", subdir: subdir, xml: xml)
+        walk = framesFor("Walk-Anim", anim: "Walk", subdir: subdir, xml: xml)
+        loaded = !idle.isEmpty && !walk.isEmpty
+        tickCounter = 0
+        if !loaded { NSLog("MouseFollower: failed to load character \(folder)") }
     }
 
-    // Resize the sprite to the current scale setting (called on init and when changed).
+    private func framesFor(_ png: String, anim: String, subdir: String, xml: String?) -> [[CGImage]] {
+        guard let img = Sprite.loadCG(png, subdir: subdir) else { return [] }
+        // Prefer AnimData; fall back to square cells assuming 8 direction rows.
+        var cw = img.height / 8, ch = img.height / 8
+        if let xml, let (w, h) = Sprite.frameSize(anim, in: xml) { cw = w; ch = h }
+        guard cw > 0, ch > 0 else { return [] }
+        let rows = max(1, img.height / ch)
+        let cols = max(1, img.width / cw)
+        return Sprite.slice(img, cols: cols, rows: rows, cellW: cw, cellH: ch)
+    }
+
+    // Resize the layer to the last shown frame × scale (called when scale changes).
     func applyScale() {
-        let size = CGFloat(cell) * AppSettings.shared.scale
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        spriteLayer.bounds = CGRect(x: 0, y: 0, width: size, height: size)
+        if let f = lastFrame { setBounds(for: f) }
+    }
+
+    private func setBounds(for frame: CGImage) {
+        let s = AppSettings.shared.scale
+        spriteLayer.bounds = CGRect(x: 0, y: 0,
+                                    width: CGFloat(frame.width) * s,
+                                    height: CGFloat(frame.height) * s)
         spriteLayer.position = pos
-        CATransaction.commit()
     }
 
     func tick(mouseGlobal: CGPoint) {
@@ -138,53 +195,50 @@ final class CharacterView: NSView {
         var desired = CGVector.zero
         if remaining > 0.001 && dist > 0.001 {
             let dir = CGVector(dx: dx / dist, dy: dy / dist)
-            let speedWanted = remaining < slowRadius
-                ? maxSpeed * (remaining / slowRadius)
-                : maxSpeed
+            let speedWanted = remaining < slowRadius ? maxSpeed * (remaining / slowRadius) : maxSpeed
             desired = CGVector(dx: dir.dx * speedWanted, dy: dir.dy * speedWanted)
         }
 
         var sdx = desired.dx - vel.dx
         var sdy = desired.dy - vel.dy
         let steerMag = (sdx * sdx + sdy * sdy).squareRoot()
-        if steerMag > accel {
-            sdx = sdx / steerMag * accel
-            sdy = sdy / steerMag * accel
-        }
+        if steerMag > accel { sdx = sdx / steerMag * accel; sdy = sdy / steerMag * accel }
         vel.dx += sdx
         vel.dy += sdy
 
         let speed = (vel.dx * vel.dx + vel.dy * vel.dy).squareRoot()
-        if speed > maxSpeed {
-            vel.dx = vel.dx / speed * maxSpeed
-            vel.dy = vel.dy / speed * maxSpeed
-        }
+        if speed > maxSpeed { vel.dx = vel.dx / speed * maxSpeed; vel.dy = vel.dy / speed * maxSpeed }
 
         pos.x += vel.dx
         pos.y += vel.dy
 
         let moving = speed > moveThreshold
-        let frames: [CGImage]
         if moving {
             var deg = atan2(vel.dy, vel.dx) * 180 / .pi
             if deg < 0 { deg += 360 }
             let octant = Int((deg / 45).rounded()) % 8
             lastRow = octantToRow[octant]
-            frames = walk[lastRow]
-        } else {
-            frames = idle[lastRow]
         }
 
+        let sheet = moving ? walk : idle
+        guard !sheet.isEmpty else { return }
+        let row = min(lastRow, sheet.count - 1)
+        let frames = sheet[row]
         guard !frames.isEmpty else { return }
+
         tickCounter += 1
         let step = moving ? walkStepTicks : idleStepTicks
-        let idx = (tickCounter / step) % frames.count
+        let frame = frames[(tickCounter / step) % frames.count]
 
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        spriteLayer.contents = frames[idx]
+        spriteLayer.contents = frame
+        if lastFrame == nil || frame.width != lastFrame!.width || frame.height != lastFrame!.height {
+            setBounds(for: frame)
+        }
         spriteLayer.position = pos
         CATransaction.commit()
+        lastFrame = frame
     }
 }
 
@@ -196,7 +250,7 @@ final class SettingsWindowController: NSObject {
 
     init(characterView: CharacterView) {
         self.characterView = characterView
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 360, height: 210),
+        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 380, height: 250),
                           styleMask: [.titled, .closable], backing: .buffered, defer: false)
         window.title = "Mouse Follower 설정"
         window.isReleasedWhenClosed = false
@@ -212,6 +266,7 @@ final class SettingsWindowController: NSObject {
         grid.rowSpacing = 16
         grid.columnSpacing = 12
 
+        grid.addRow(with: [makeLabel("캐릭터"), makePopup(), NSGridCell.emptyContentView])
         grid.addRow(with: [makeLabel("커서와의 거리"),
                            makeSlider(tag: 0, range: AppSettings.gapRange, value: Double(s.followGap)),
                            makeValueLabel(0, text: fmt(0, s.followGap))])
@@ -223,7 +278,7 @@ final class SettingsWindowController: NSObject {
                            makeValueLabel(2, text: fmt(2, s.scale))])
 
         grid.column(at: 0).xPlacement = .trailing
-        grid.column(at: 1).width = 170
+        grid.column(at: 1).width = 180
 
         let content = window.contentView!
         content.addSubview(grid)
@@ -231,6 +286,15 @@ final class SettingsWindowController: NSObject {
             grid.centerXAnchor.constraint(equalTo: content.centerXAnchor),
             grid.centerYAnchor.constraint(equalTo: content.centerYAnchor),
         ])
+    }
+
+    private func makePopup() -> NSPopUpButton {
+        let popup = NSPopUpButton(frame: .zero, pullsDown: false)
+        popup.addItems(withTitles: Characters.all.map { $0.name })
+        popup.selectItem(at: Characters.index(of: AppSettings.shared.selectedCharacter))
+        popup.target = self
+        popup.action = #selector(characterChanged(_:))
+        return popup
     }
 
     private func makeLabel(_ text: String) -> NSTextField {
@@ -258,6 +322,12 @@ final class SettingsWindowController: NSObject {
 
     private func fmt(_ tag: Int, _ v: CGFloat) -> String {
         tag == 2 ? String(format: "%.1f×", v) : String(format: "%.0f", v)
+    }
+
+    @objc private func characterChanged(_ sender: NSPopUpButton) {
+        let folder = Characters.all[sender.indexOfSelectedItem].folder
+        AppSettings.shared.selectedCharacter = folder
+        characterView?.setCharacter(folder)
     }
 
     @objc private func sliderChanged(_ sender: NSSlider) {
@@ -296,7 +366,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             name: NSApplication.didChangeScreenParametersNotification, object: nil)
     }
 
-    // Re-launching the app (double-click while running) opens the settings window.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         showSettings()
         return true
@@ -389,5 +458,5 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 let app = NSApplication.shared
 let delegate = AppDelegate()
 app.delegate = delegate
-app.setActivationPolicy(.accessory)   // no Dock icon, menu-bar only
+app.setActivationPolicy(.accessory)
 app.run()
