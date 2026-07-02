@@ -298,9 +298,6 @@ final class CharacterController {
     private let shadowTemplate: [CGSize] = [CGSize(width: 8, height: 4),
                                             CGSize(width: 14, height: 6),
                                             CGSize(width: 22, height: 8)]
-    // Max downward nudge (image px) to seat the shadow under a walk/step foot that
-    // dips below the marker. Capped so floating/serpentine sprites aren't dragged.
-    private let shadowGroundCap: CGFloat = 5
     private(set) var loaded = false
 
     private var pos = CGPoint.zero        // global screen coordinates (y-up)
@@ -372,20 +369,11 @@ final class CharacterController {
         let cells = slicedSheet(png, anim: anim, subdir: subdir, xml: xml)
         guard !cells.isEmpty else { return shadowAnchors(fallback) }
         let templateSize = shadowTemplate[max(0, min(shadowTemplate.count - 1, shadowSize))]
-        // Ground line = lowest opaque foot across the whole animation. Step frames
-        // dip a few px below the marker; seat the shadow there (capped).
-        var feetBottom: CGFloat = 0
-        for row in fallback {
-            for img in row {
-                if let b = Sprite.opaqueBBox(img) { feetBottom = max(feetBottom, b.maxY) }
-            }
-        }
         return cells.map { row in
             row.map { cell -> ShadowAnchor in
                 let w = CGFloat(cell.width), h = CGFloat(cell.height)
                 if let m = Sprite.shadowMarker(cell, shadowSize: shadowSize) {
-                    let nudge = min(max(0, feetBottom - m.center.y), shadowGroundCap)
-                    return ShadowAnchor(offset: CGPoint(x: m.center.x - w / 2, y: h / 2 - (m.center.y + nudge)),
+                    return ShadowAnchor(offset: CGPoint(x: m.center.x - w / 2, y: h / 2 - m.center.y),
                                         size: m.size)
                 }
                 return ShadowAnchor(offset: CGPoint(x: 0, y: h / 2 - h * 0.72), size: templateSize)
