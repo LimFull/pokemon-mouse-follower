@@ -7,17 +7,53 @@ import UniformTypeIdentifiers
 struct CharacterInfo { let folder: String; let name: String }
 
 enum Characters {
-    static let all: [CharacterInfo] = [
-        .init(folder: "001", name: "001 · Bulbasaur"),
-        .init(folder: "002", name: "002 · Ivysaur"),
-        .init(folder: "003", name: "003 · Venusaur"),
-        .init(folder: "004", name: "004 · Charmander"),
-        .init(folder: "005", name: "005 · Charmeleon"),
-        .init(folder: "006", name: "006 · Charizard"),
-        .init(folder: "007", name: "007 · Squirtle"),
-        .init(folder: "008", name: "008 · Wartortle"),
-        .init(folder: "009", name: "009 · Blastoise"),
+    // National Dex 001–151 display names.
+    private static let names: [String] = [
+        "Bulbasaur", "Ivysaur", "Venusaur", "Charmander", "Charmeleon", "Charizard",
+        "Squirtle", "Wartortle", "Blastoise", "Caterpie", "Metapod", "Butterfree",
+        "Weedle", "Kakuna", "Beedrill", "Pidgey", "Pidgeotto", "Pidgeot", "Rattata",
+        "Raticate", "Spearow", "Fearow", "Ekans", "Arbok", "Pikachu", "Raichu",
+        "Sandshrew", "Sandslash", "Nidoran♀", "Nidorina", "Nidoqueen", "Nidoran♂",
+        "Nidorino", "Nidoking", "Clefairy", "Clefable", "Vulpix", "Ninetales",
+        "Jigglypuff", "Wigglytuff", "Zubat", "Golbat", "Oddish", "Gloom", "Vileplume",
+        "Paras", "Parasect", "Venonat", "Venomoth", "Diglett", "Dugtrio", "Meowth",
+        "Persian", "Psyduck", "Golduck", "Mankey", "Primeape", "Growlithe", "Arcanine",
+        "Poliwag", "Poliwhirl", "Poliwrath", "Abra", "Kadabra", "Alakazam", "Machop",
+        "Machoke", "Machamp", "Bellsprout", "Weepinbell", "Victreebel", "Tentacool",
+        "Tentacruel", "Geodude", "Graveler", "Golem", "Ponyta", "Rapidash", "Slowpoke",
+        "Slowbro", "Magnemite", "Magneton", "Farfetch'd", "Doduo", "Dodrio", "Seel",
+        "Dewgong", "Grimer", "Muk", "Shellder", "Cloyster", "Gastly", "Haunter",
+        "Gengar", "Onix", "Drowzee", "Hypno", "Krabby", "Kingler", "Voltorb",
+        "Electrode", "Exeggcute", "Exeggutor", "Cubone", "Marowak", "Hitmonlee",
+        "Hitmonchan", "Lickitung", "Koffing", "Weezing", "Rhyhorn", "Rhydon", "Chansey",
+        "Tangela", "Kangaskhan", "Horsea", "Seadra", "Goldeen", "Seaking", "Staryu",
+        "Starmie", "Mr. Mime", "Scyther", "Jynx", "Electabuzz", "Magmar", "Pinsir",
+        "Tauros", "Magikarp", "Gyarados", "Lapras", "Ditto", "Eevee", "Vaporeon",
+        "Jolteon", "Flareon", "Porygon", "Omanyte", "Omastar", "Kabuto", "Kabutops",
+        "Aerodactyl", "Snorlax", "Articuno", "Zapdos", "Moltres", "Dratini",
+        "Dragonair", "Dragonite", "Mewtwo", "Mew",
     ]
+
+    // Discover characters actually bundled (must have Walk-Anim.png). Robust to
+    // missing dex numbers so partial downloads just don't appear in the list.
+    static let all: [CharacterInfo] = discover()
+
+    private static func discover() -> [CharacterInfo] {
+        guard let root = Bundle.main.resourceURL?.appendingPathComponent("characters") else { return [] }
+        let fm = FileManager.default
+        let subs = (try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: nil,
+                                                options: [.skipsHiddenFiles])) ?? []
+        var infos: [CharacterInfo] = []
+        for url in subs {
+            let folder = url.lastPathComponent
+            guard fm.fileExists(atPath: url.appendingPathComponent("Walk-Anim.png").path) else { continue }
+            let dex = Int(folder) ?? 0
+            let disp = (dex >= 1 && dex <= names.count) ? names[dex - 1] : folder
+            infos.append(.init(folder: folder, name: "\(folder) · \(disp)"))
+        }
+        return infos.sorted { $0.folder < $1.folder }
+    }
+
     static func index(of folder: String) -> Int {
         all.firstIndex { $0.folder == folder } ?? 0
     }
@@ -141,9 +177,10 @@ final class CharacterView: NSView {
     func setCharacter(_ folder: String) {
         let subdir = "characters/\(folder)"
         let xml = Sprite.loadText("AnimData", ext: "xml", subdir: subdir)
-        idle = framesFor("Idle-Anim", anim: "Idle", subdir: subdir, xml: xml)
         walk = framesFor("Walk-Anim", anim: "Walk", subdir: subdir, xml: xml)
-        loaded = !idle.isEmpty && !walk.isEmpty
+        idle = framesFor("Idle-Anim", anim: "Idle", subdir: subdir, xml: xml)
+        if idle.isEmpty { idle = walk }   // some characters ship Walk only
+        loaded = !walk.isEmpty
         tickCounter = 0
         if !loaded { NSLog("MouseFollower: failed to load character \(folder)") }
     }
