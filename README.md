@@ -19,10 +19,20 @@ Dock에는 표시되지 않고 상단 메뉴바에만 아이콘(🐾)이 뜨는 
 ## 요구 사항
 
 - macOS 13 (Ventura) 이상
-- Xcode Command Line Tools (`swiftc`) — `xcode-select --install`
 - Apple Silicon / Intel 모두 지원 (universal 빌드)
+- Xcode Command Line Tools (`swiftc`) — **소스에서 직접 빌드할 때만** 필요 (`xcode-select --install`)
 
-## 설치
+## 설치 (개발자 도구 없이)
+
+[Releases](https://github.com/LimFull/pokemon-mouse-follower/releases/latest)에서 `.dmg`를 받아 설치합니다. Xcode / Swift 없이 바로 실행됩니다.
+
+1. `PokemonMouseFollower-<version>.dmg` 다운로드 후 열기
+2. **Pokémon Mouse Follower** 아이콘을 **Applications** 폴더로 드래그
+3. Launchpad/응용 프로그램에서 실행
+
+> ad-hoc 서명이라 처음 열 때 "확인되지 않은 개발자" 경고가 뜨면 우클릭 → **열기** 한 번이면 됩니다.
+
+## 설치 (소스에서 빌드)
 
 ```bash
 ./build.sh install

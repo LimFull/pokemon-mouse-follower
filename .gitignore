@@ -1,6 +1,7 @@
 # Build output
 PokemonMouseFollower.app/
 MouseFollower.app/
+*.dmg
 
 # macOS
 .DS_Store
