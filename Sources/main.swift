@@ -172,6 +172,61 @@ enum Sprite {
         return out
     }
 
+    // Shadow marker center from a PMD "-Shadow" sheet cell, in image (top-left
+    // origin) pixel coords. The sheet marks the shadow center with a single white
+    // pixel (inside nested blue/red/green size regions); prefer that, else fall
+    // back to the centroid of all opaque pixels. Returns nil if the cell is empty.
+    static func shadowCenter(_ img: CGImage) -> CGPoint? {
+        let w = img.width, h = img.height
+        guard w > 0, h > 0 else { return nil }
+        var buf = [UInt8](repeating: 0, count: w * h * 4)
+        guard let ctx = CGContext(data: &buf, width: w, height: h,
+                                  bitsPerComponent: 8, bytesPerRow: w * 4,
+                                  space: CGColorSpaceCreateDeviceRGB(),
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        ctx.draw(img, in: CGRect(x: 0, y: 0, width: w, height: h))
+        var wx = 0.0, wy = 0.0, wn = 0     // white center pixel(s)
+        var ax = 0.0, ay = 0.0, an = 0     // any opaque pixel
+        for y in 0..<h {                   // buffer row 0 is the top of the image
+            let base = y * w * 4
+            for x in 0..<w {
+                if buf[base + x * 4 + 3] <= 10 { continue }
+                ax += Double(x); ay += Double(y); an += 1
+                let r = buf[base + x * 4], g = buf[base + x * 4 + 1], b = buf[base + x * 4 + 2]
+                if r > 200, g > 200, b > 200 { wx += Double(x); wy += Double(y); wn += 1 }
+            }
+        }
+        if wn > 0 { return CGPoint(x: wx / Double(wn), y: wy / Double(wn)) }
+        if an > 0 { return CGPoint(x: ax / Double(an), y: ay / Double(an)) }
+        return nil
+    }
+
+    // Bounding box of non-transparent pixels, in image (top-left origin) pixel
+    // coords. Returns nil if the frame is fully transparent.
+    static func opaqueBBox(_ img: CGImage, alphaThreshold: UInt8 = 12) -> CGRect? {
+        let w = img.width, h = img.height
+        guard w > 0, h > 0 else { return nil }
+        var alpha = [UInt8](repeating: 0, count: w * h)
+        guard let ctx = CGContext(data: &alpha, width: w, height: h,
+                                  bitsPerComponent: 8, bytesPerRow: w,
+                                  space: CGColorSpaceCreateDeviceGray(),
+                                  bitmapInfo: CGImageAlphaInfo.alphaOnly.rawValue) else { return nil }
+        ctx.draw(img, in: CGRect(x: 0, y: 0, width: w, height: h))
+        // Buffer row 0 is the top of the image (top-left origin).
+        var minX = w, minY = h, maxX = -1, maxY = -1
+        for y in 0..<h {
+            let base = y * w
+            for x in 0..<w where alpha[base + x] >= alphaThreshold {
+                if x < minX { minX = x }
+                if x > maxX { maxX = x }
+                if y < minY { minY = y }
+                if y > maxY { maxY = y }
+            }
+        }
+        guard maxX >= 0 else { return nil }
+        return CGRect(x: minX, y: minY, width: maxX - minX + 1, height: maxY - minY + 1)
+    }
+
     // Read <FrameWidth>/<FrameHeight> for a named <Anim> from AnimData.xml text.
     static func frameSize(_ anim: String, in xml: String) -> (Int, Int)? {
         for block in xml.components(separatedBy: "</Anim>") where block.contains("<Name>\(anim)</Name>") {
@@ -203,6 +258,11 @@ final class CharacterController {
     private var idle: [[CGImage]] = []
     private var walk: [[CGImage]] = []
     private var sleep: [[CGImage]] = []
+    // Shadow anchor per frame, parallel to the sheets above. Offset in image
+    // pixels from the tile center to the ground contact point (feet), y-up.
+    private var idleShadow: [[CGPoint]] = []
+    private var walkShadow: [[CGPoint]] = []
+    private var sleepShadow: [[CGPoint]] = []
     private(set) var loaded = false
 
     private var pos = CGPoint.zero        // global screen coordinates (y-up)
@@ -227,6 +287,7 @@ final class CharacterController {
     // Latest frame + its global position, consumed by the per-screen views.
     private(set) var currentFrame: CGImage?
     private(set) var shadowSize = 1       // 0=small, 1=medium, 2=large (from AnimData.xml)
+    private(set) var currentShadowOffset = CGPoint.zero  // image-px offset from tile center, y-up
     var position: CGPoint { pos }
 
     init() { setCharacter(AppSettings.shared.selectedCharacter) }
@@ -236,26 +297,78 @@ final class CharacterController {
         let subdir = "characters/\(folder)"
         let xml = Sprite.loadText("AnimData", ext: "xml", subdir: subdir)
         shadowSize = xml.map { Sprite.shadowSize(in: $0) } ?? 1
-        walk = framesFor("Walk-Anim", anim: "Walk", subdir: subdir, xml: xml)
-        idle = framesFor("Idle-Anim", anim: "Idle", subdir: subdir, xml: xml)
-        sleep = framesFor("Sleep-Anim", anim: "Sleep", subdir: subdir, xml: xml)
-        if idle.isEmpty { idle = walk }    // some characters ship Walk only
-        if sleep.isEmpty { sleep = idle }  // fall back when no sleep animation
+        walk = slicedSheet("Walk-Anim", anim: "Walk", subdir: subdir, xml: xml)
+        idle = slicedSheet("Idle-Anim", anim: "Idle", subdir: subdir, xml: xml)
+        sleep = slicedSheet("Sleep-Anim", anim: "Sleep", subdir: subdir, xml: xml)
+        // Shadow anchors from the matching -Shadow marker sheet (alpha fallback
+        // if a marker sheet is missing). Computed before the sheet fallbacks so
+        // each maps to its own frames.
+        walkShadow = markerShadow("Walk-Shadow", anim: "Walk", subdir: subdir, xml: xml, fallback: walk)
+        idleShadow = idle.isEmpty ? [] : markerShadow("Idle-Shadow", anim: "Idle", subdir: subdir, xml: xml, fallback: idle)
+        sleepShadow = sleep.isEmpty ? [] : markerShadow("Sleep-Shadow", anim: "Sleep", subdir: subdir, xml: xml, fallback: sleep)
+        if idle.isEmpty { idle = walk; idleShadow = walkShadow }     // some characters ship Walk only
+        if sleep.isEmpty { sleep = idle; sleepShadow = idleShadow }  // fall back when no sleep animation
         loaded = !walk.isEmpty
         tickCounter = 0
         idleTicks = 0
         if !loaded { NSLog("PokemonMouseFollower: failed to load character \(folder)") }
     }
 
-    private func framesFor(_ png: String, anim: String, subdir: String, xml: String?) -> [[CGImage]] {
+    // Load a sheet PNG and slice it into [row][col] cells using AnimData frame
+    // sizes (falling back to square cells across 8 direction rows).
+    private func slicedSheet(_ png: String, anim: String, subdir: String, xml: String?) -> [[CGImage]] {
         guard let img = Sprite.loadCG(png, subdir: subdir) else { return [] }
-        // Prefer AnimData; fall back to square cells assuming 8 direction rows.
         var cw = img.height / 8, ch = img.height / 8
         if let xml, let (w, h) = Sprite.frameSize(anim, in: xml) { cw = w; ch = h }
         guard cw > 0, ch > 0 else { return [] }
         let rows = max(1, img.height / ch)
         let cols = max(1, img.width / cw)
         return Sprite.slice(img, cols: cols, rows: rows, cellW: cw, cellH: ch)
+    }
+
+    // Per-frame shadow anchor from the "-Shadow" marker sheet: offset (image
+    // pixels, y-up) from the tile center to the marked shadow center. Falls back
+    // to alpha-based feet detection if the marker sheet is absent/unreadable.
+    private func markerShadow(_ png: String, anim: String, subdir: String,
+                              xml: String?, fallback: [[CGImage]]) -> [[CGPoint]] {
+        let cells = slicedSheet(png, anim: anim, subdir: subdir, xml: xml)
+        guard !cells.isEmpty else { return shadowAnchors(fallback) }
+        return cells.map { row in
+            row.map { cell -> CGPoint in
+                let w = CGFloat(cell.width), h = CGFloat(cell.height)
+                let c = Sprite.shadowCenter(cell) ?? CGPoint(x: w / 2, y: h * 0.72)
+                return CGPoint(x: c.x - w / 2, y: h / 2 - c.y)   // y-up offset from center
+            }
+        }
+    }
+
+    // Per-frame shadow anchor: offset (in image pixels, y-up) from the tile
+    // center to the ground contact. Horizontal = center of the frame's opaque
+    // pixels; vertical = bottom of the opaque pixels across the WHOLE sheet, so
+    // the shadow stays grounded while the sprite bobs during an animation.
+    private func shadowAnchors(_ sheet: [[CGImage]]) -> [[CGPoint]] {
+        var sheetBottomIY = -1        // lowest opaque row over all frames (image y-down)
+        var frameW = 0, frameH = 0
+        var boxes: [[CGRect?]] = []
+        for row in sheet {
+            var rowBoxes: [CGRect?] = []
+            for img in row {
+                frameW = img.width; frameH = img.height
+                let box = Sprite.opaqueBBox(img)
+                if let box { sheetBottomIY = max(sheetBottomIY, Int(box.maxY)) }
+                rowBoxes.append(box)
+            }
+            boxes.append(rowBoxes)
+        }
+        // Fully transparent sheet: fall back to just below tile center.
+        let groundIY = sheetBottomIY >= 0 ? CGFloat(sheetBottomIY) : CGFloat(frameH) * 0.72
+        let cx = CGFloat(frameW) / 2, cy = CGFloat(frameH) / 2
+        return boxes.map { rowBoxes in
+            rowBoxes.map { box -> CGPoint in
+                let centerX = box.map { $0.midX } ?? cx
+                return CGPoint(x: centerX - cx, y: cy - groundIY)   // y-up offset
+            }
+        }
     }
 
     // Advance one frame. `mouseGlobal` is already in global screen coordinates.
@@ -312,10 +425,11 @@ final class CharacterController {
         let sleeping = !moving && CGFloat(idleTicks) / fps >= AppSettings.shared.sleepDelay
 
         let sheet: [[CGImage]]
+        let shadow: [[CGPoint]]
         let step: Int
-        if moving { sheet = walk; step = walkStepTicks }
-        else if sleeping { sheet = sleep; step = sleepStepTicks }
-        else { sheet = idle; step = idleStepTicks }
+        if moving { sheet = walk; shadow = walkShadow; step = walkStepTicks }
+        else if sleeping { sheet = sleep; shadow = sleepShadow; step = sleepStepTicks }
+        else { sheet = idle; shadow = idleShadow; step = idleStepTicks }
 
         guard !sheet.isEmpty else { currentFrame = nil; return }
         let row = min(lastRow, sheet.count - 1)
@@ -323,7 +437,11 @@ final class CharacterController {
         guard !frames.isEmpty else { currentFrame = nil; return }
 
         tickCounter += 1
-        currentFrame = frames[(tickCounter / step) % frames.count]
+        let col = (tickCounter / step) % frames.count
+        currentFrame = frames[col]
+        if row < shadow.count, col < shadow[row].count {
+            currentShadowOffset = shadow[row][col]
+        }
     }
 }
 
@@ -358,7 +476,7 @@ final class SpriteView: NSView {
 
     required init?(coder: NSCoder) { fatalError("not used") }
 
-    func render(_ frame: CGImage?, globalPos: CGPoint, shadowSize: Int) {
+    func render(_ frame: CGImage?, globalPos: CGPoint, shadowSize: Int, shadowOffset: CGPoint) {
         guard let frame else { spriteLayer.isHidden = true; shadowLayer.isHidden = true; return }
         let s = AppSettings.shared.scale
         let x = globalPos.x - screenOrigin.x
@@ -366,18 +484,18 @@ final class SpriteView: NSView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
 
-        // Shadow: an ellipse on the ground, centered under the sprite. Every frame
-        // is centered on globalPos, so one rule works for all characters; only the
-        // width (from ShadowSize) varies. Constant opacity, size-only variation —
-        // matching how the source format actually renders shadows.
+        // Shadow: an ellipse at the sprite's ground contact. The anchor is the
+        // bottom-center of the character's opaque pixels (shadowOffset, in image
+        // px from tile center, y-up), so it tracks the actual feet per pokemon and
+        // animation instead of a fixed fraction of the tile. Width from ShadowSize.
         if AppSettings.shared.showShadow {
             let sz = max(0, min(shadowWidthFactor.count - 1, shadowSize))
             let w = CGFloat(frame.width) * shadowWidthFactor[sz] * s
             let h = w * 0.35
             shadowLayer.isHidden = false
             shadowLayer.bounds = CGRect(x: 0, y: 0, width: w, height: h)
-            // Nudge toward the sprite's feet (slightly below center).
-            shadowLayer.position = CGPoint(x: x, y: y - CGFloat(frame.height) * s * 0.18)
+            shadowLayer.position = CGPoint(x: x + shadowOffset.x * s,
+                                           y: y + shadowOffset.y * s)
         } else {
             shadowLayer.isHidden = true
         }
@@ -618,7 +736,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             for (_, view) in self.overlays {
                 view.render(self.controller.currentFrame,
                             globalPos: self.controller.position,
-                            shadowSize: self.controller.shadowSize)
+                            shadowSize: self.controller.shadowSize,
+                            shadowOffset: self.controller.currentShadowOffset)
             }
         }
         RunLoop.main.add(t, forMode: .common)
