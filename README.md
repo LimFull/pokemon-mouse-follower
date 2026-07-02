@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="icon/icon-1024.png" width="160" alt="Pokémon Mouse Follower app icon">
+</p>
+
 # Pokémon Mouse Follower
 
 macOS 메뉴바 앱으로, 화면 위를 돌아다니는 포켓몬 캐릭터가 마우스 커서를 따라다닙니다.
@@ -85,7 +89,7 @@ animations/<번호>/        캐릭터별 스프라이트 시트 + AnimData.xml
 
 ## 크레딧
 
-- 스프라이트: [PMD Sprite Collab](https://sprites.pmdcollab.org/) — [spriteserver.pmdcollab.org](https://spriteserver.pmdcollab.org)에서 내려받은 커뮤니티 제작 도트 애니메이션.
+- 스프라이트: [PMD Sprite Collab](https://sprites.pmdcollab.org/#/) — 커뮤니티가 제작한 도트 애니메이션 (에셋은 `spriteserver.pmdcollab.org`에서 내려받음).
 - Pokémon © Nintendo / Creatures Inc. / GAME FREAK inc.
 
 이 프로젝트는 **비상업적 개인 팬 프로젝트**입니다. 포켓몬 및 관련 이름·이미지의 권리는 각 권리자에게 있습니다.
