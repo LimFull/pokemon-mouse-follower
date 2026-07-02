@@ -70,6 +70,7 @@ final class AppSettings {
     static let gapRange: ClosedRange<Double> = 0...200
     static let speedRange: ClosedRange<Double> = 2...25
     static let scaleRange: ClosedRange<Double> = 1...5
+    static let sleepRange: ClosedRange<Double> = 5...120
 
     private func get(_ key: String, _ def: Double) -> CGFloat {
         d.object(forKey: key) == nil ? CGFloat(def) : CGFloat(d.double(forKey: key))
@@ -86,6 +87,10 @@ final class AppSettings {
     var scale: CGFloat {
         get { get("scale", 2) }
         set { d.set(Double(newValue), forKey: "scale") }
+    }
+    var sleepDelay: CGFloat {
+        get { get("sleepDelay", 30) }
+        set { d.set(Double(newValue), forKey: "sleepDelay") }
     }
     var selectedCharacter: String {
         get { d.string(forKey: "character") ?? "007" }
@@ -146,6 +151,7 @@ final class CharacterView: NSView {
 
     private var idle: [[CGImage]] = []
     private var walk: [[CGImage]] = []
+    private var sleep: [[CGImage]] = []
     private var loaded = false
     private var lastFrame: CGImage?
 
@@ -154,6 +160,7 @@ final class CharacterView: NSView {
     private var started = false
 
     private var tickCounter = 0
+    private var idleTicks = 0        // frames spent not moving (drives sleep)
     private var lastRow = 0
 
     private let slowRadius: CGFloat = 130
@@ -161,6 +168,8 @@ final class CharacterView: NSView {
     private let moveThreshold: CGFloat = 0.35
     private let walkStepTicks = 6
     private let idleStepTicks = 10
+    private let sleepStepTicks = 14
+    private let fps: CGFloat = 60
 
     // octant (0=E,1=NE,2=N,3=NW,4=W,5=SW,6=S,7=SE) -> sprite row (PMD direction order).
     private let octantToRow = [2, 3, 4, 5, 6, 7, 0, 1]
@@ -182,9 +191,12 @@ final class CharacterView: NSView {
         let xml = Sprite.loadText("AnimData", ext: "xml", subdir: subdir)
         walk = framesFor("Walk-Anim", anim: "Walk", subdir: subdir, xml: xml)
         idle = framesFor("Idle-Anim", anim: "Idle", subdir: subdir, xml: xml)
-        if idle.isEmpty { idle = walk }   // some characters ship Walk only
+        sleep = framesFor("Sleep-Anim", anim: "Sleep", subdir: subdir, xml: xml)
+        if idle.isEmpty { idle = walk }    // some characters ship Walk only
+        if sleep.isEmpty { sleep = idle }  // fall back when no sleep animation
         loaded = !walk.isEmpty
         tickCounter = 0
+        idleTicks = 0
         if !loaded { NSLog("PokemonMouseFollower: failed to load character \(folder)") }
     }
 
@@ -254,20 +266,30 @@ final class CharacterView: NSView {
 
         let moving = speed > moveThreshold
         if moving {
+            idleTicks = 0
             var deg = atan2(vel.dy, vel.dx) * 180 / .pi
             if deg < 0 { deg += 360 }
             let octant = Int((deg / 45).rounded()) % 8
             lastRow = octantToRow[octant]
+        } else {
+            idleTicks += 1
         }
 
-        let sheet = moving ? walk : idle
+        // Idle long enough -> sleep.
+        let sleeping = !moving && CGFloat(idleTicks) / fps >= AppSettings.shared.sleepDelay
+
+        let sheet: [[CGImage]]
+        let step: Int
+        if moving { sheet = walk; step = walkStepTicks }
+        else if sleeping { sheet = sleep; step = sleepStepTicks }
+        else { sheet = idle; step = idleStepTicks }
+
         guard !sheet.isEmpty else { return }
         let row = min(lastRow, sheet.count - 1)
         let frames = sheet[row]
         guard !frames.isEmpty else { return }
 
         tickCounter += 1
-        let step = moving ? walkStepTicks : idleStepTicks
         let frame = frames[(tickCounter / step) % frames.count]
 
         CATransaction.begin()
@@ -290,7 +312,7 @@ final class SettingsWindowController: NSObject {
 
     init(characterView: CharacterView) {
         self.characterView = characterView
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 380, height: 250),
+        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 300),
                           styleMask: [.titled, .closable], backing: .buffered, defer: false)
         window.title = L("settings.window.title")
         window.isReleasedWhenClosed = false
@@ -316,6 +338,9 @@ final class SettingsWindowController: NSObject {
         grid.addRow(with: [makeLabel(L("label.size")),
                            makeSlider(tag: 2, range: AppSettings.scaleRange, value: Double(s.scale)),
                            makeValueLabel(2, text: fmt(2, s.scale))])
+        grid.addRow(with: [makeLabel(L("label.sleep")),
+                           makeSlider(tag: 3, range: AppSettings.sleepRange, value: Double(s.sleepDelay)),
+                           makeValueLabel(3, text: fmt(3, s.sleepDelay))])
 
         grid.column(at: 0).xPlacement = .trailing
         grid.column(at: 1).width = 180
@@ -361,7 +386,11 @@ final class SettingsWindowController: NSObject {
     }
 
     private func fmt(_ tag: Int, _ v: CGFloat) -> String {
-        tag == 2 ? String(format: "%.1f×", v) : String(format: "%.0f", v)
+        switch tag {
+        case 2: return String(format: "%.1f×", v)
+        case 3: return String(format: "%.0fs", v)
+        default: return String(format: "%.0f", v)
+        }
     }
 
     @objc private func characterChanged(_ sender: NSPopUpButton) {
@@ -377,6 +406,7 @@ final class SettingsWindowController: NSObject {
         case 0: s.followGap = v
         case 1: s.maxSpeed = v
         case 2: s.scale = v; characterView?.applyScale()
+        case 3: s.sleepDelay = v
         default: break
         }
         valueLabels[sender.tag]?.stringValue = fmt(sender.tag, v)

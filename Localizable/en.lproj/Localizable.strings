@@ -7,3 +7,4 @@
 "label.distance" = "Distance from cursor";
 "label.speed" = "Max speed";
 "label.size" = "Character size";
+"label.sleep" = "Time until sleep";

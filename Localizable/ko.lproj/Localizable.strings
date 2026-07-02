@@ -7,3 +7,4 @@
 "label.distance" = "커서와의 거리";
 "label.speed" = "최대 속도";
 "label.size" = "캐릭터 크기";
+"label.sleep" = "잠들기까지 시간";

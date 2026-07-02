@@ -7,3 +7,4 @@
 "label.distance" = "カーソルとの距離";
 "label.speed" = "最高速度";
 "label.size" = "キャラクターの大きさ";
+"label.sleep" = "眠るまでの時間";
