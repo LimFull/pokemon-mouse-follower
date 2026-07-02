@@ -9,7 +9,6 @@
 "label.size" = "キャラクターの大きさ";
 "label.sleep" = "眠るまでの時間";
 "label.shadow" = "影";
-"label.shadowmarker" = "影マーカー(デバッグ)";
 "label.launch" = "ログイン時に起動";
 
 "pokemon.001" = "フシギダネ";
