@@ -7,7 +7,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-APP_NAME="MouseFollower"
+APP_NAME="PokemonMouseFollower"
 BUNDLE="${APP_NAME}.app"
 EXEC="Sources/main.swift"
 
@@ -47,7 +47,7 @@ if [ "${1:-}" = "install" ]; then
   rm -rf "/Applications/$BUNDLE"
   cp -R "$BUNDLE" "/Applications/"
   open "/Applications/$BUNDLE"
-  echo "==> Installed and launched. Look for the 🐇 icon in the menu bar."
+  echo "==> Installed and launched. Look for the 🐾 icon in the menu bar."
 else
   echo "Run it with:  open ./$BUNDLE"
   echo "Or install:   ./build.sh install"

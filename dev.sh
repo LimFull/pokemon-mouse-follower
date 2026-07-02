@@ -6,7 +6,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-APP_NAME="MouseFollower"
+APP_NAME="PokemonMouseFollower"
 BUNDLE="${APP_NAME}.app"
 
 # Stop any running instance so we don't stack characters.

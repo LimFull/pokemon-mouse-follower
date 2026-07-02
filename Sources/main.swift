@@ -182,7 +182,7 @@ final class CharacterView: NSView {
         if idle.isEmpty { idle = walk }   // some characters ship Walk only
         loaded = !walk.isEmpty
         tickCounter = 0
-        if !loaded { NSLog("MouseFollower: failed to load character \(folder)") }
+        if !loaded { NSLog("PokemonMouseFollower: failed to load character \(folder)") }
     }
 
     private func framesFor(_ png: String, anim: String, subdir: String, xml: String?) -> [[CGImage]] {
@@ -289,7 +289,7 @@ final class SettingsWindowController: NSObject {
         self.characterView = characterView
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 380, height: 250),
                           styleMask: [.titled, .closable], backing: .buffered, defer: false)
-        window.title = "Mouse Follower 설정"
+        window.title = "Pokémon Mouse Follower 설정"
         window.isReleasedWhenClosed = false
         super.init()
         buildUI()
@@ -441,7 +441,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
-            if let img = NSImage(systemSymbolName: "pawprint.fill", accessibilityDescription: "Mouse Follower") {
+            if let img = NSImage(systemSymbolName: "pawprint.fill", accessibilityDescription: "Pokémon Mouse Follower") {
                 img.isTemplate = true
                 button.image = img
             } else {
@@ -449,7 +449,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         let menu = NSMenu()
-        menu.addItem(NSMenuItem(title: "Mouse Follower", action: nil, keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "Pokémon Mouse Follower", action: nil, keyEquivalent: ""))
         menu.addItem(.separator())
         let settings = NSMenuItem(title: "Settings…", action: #selector(showSettings), keyEquivalent: ",")
         settings.target = self
