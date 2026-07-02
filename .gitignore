@@ -1,0 +1,8 @@
+# Build output
+MouseFollower.app/
+
+# macOS
+.DS_Store
+
+# Editor / tooling
+.claude/
