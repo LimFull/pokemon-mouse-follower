@@ -37,6 +37,9 @@ rm -rf "$BUNDLE/Contents/Resources/characters"
 mkdir -p "$BUNDLE/Contents/Resources/characters"
 cp -R animations/* "$BUNDLE/Contents/Resources/characters/"
 
+echo "==> Bundling localizations..."
+cp -R Localizable/*.lproj "$BUNDLE/Contents/Resources/"
+
 echo "==> Ad-hoc code signing..."
 codesign --force --deep --sign - "$BUNDLE"
 

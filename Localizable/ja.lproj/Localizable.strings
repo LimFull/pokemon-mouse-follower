@@ -1,0 +1,9 @@
+"menu.settings" = "設定…";
+"menu.pause" = "一時停止";
+"menu.resume" = "再開";
+"menu.quit" = "終了";
+"settings.window.title" = "Pokémon Mouse Follower 設定";
+"label.character" = "キャラクター";
+"label.distance" = "カーソルとの距離";
+"label.speed" = "最高速度";
+"label.size" = "キャラクターの大きさ";

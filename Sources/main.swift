@@ -3,6 +3,9 @@ import QuartzCore
 import ImageIO
 import UniformTypeIdentifiers
 
+// Localized string lookup (en/ko/ja via *.lproj/Localizable.strings).
+func L(_ key: String) -> String { NSLocalizedString(key, comment: "") }
+
 // MARK: - Character catalog (National Dex 001–009)
 struct CharacterInfo { let folder: String; let name: String }
 
@@ -289,7 +292,7 @@ final class SettingsWindowController: NSObject {
         self.characterView = characterView
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 380, height: 250),
                           styleMask: [.titled, .closable], backing: .buffered, defer: false)
-        window.title = "Pokémon Mouse Follower 설정"
+        window.title = L("settings.window.title")
         window.isReleasedWhenClosed = false
         super.init()
         buildUI()
@@ -303,14 +306,14 @@ final class SettingsWindowController: NSObject {
         grid.rowSpacing = 16
         grid.columnSpacing = 12
 
-        grid.addRow(with: [makeLabel("캐릭터"), makePopup(), NSGridCell.emptyContentView])
-        grid.addRow(with: [makeLabel("커서와의 거리"),
+        grid.addRow(with: [makeLabel(L("label.character")), makePopup(), NSGridCell.emptyContentView])
+        grid.addRow(with: [makeLabel(L("label.distance")),
                            makeSlider(tag: 0, range: AppSettings.gapRange, value: Double(s.followGap)),
                            makeValueLabel(0, text: fmt(0, s.followGap))])
-        grid.addRow(with: [makeLabel("최대 속도"),
+        grid.addRow(with: [makeLabel(L("label.speed")),
                            makeSlider(tag: 1, range: AppSettings.speedRange, value: Double(s.maxSpeed)),
                            makeValueLabel(1, text: fmt(1, s.maxSpeed))])
-        grid.addRow(with: [makeLabel("캐릭터 크기"),
+        grid.addRow(with: [makeLabel(L("label.size")),
                            makeSlider(tag: 2, range: AppSettings.scaleRange, value: Double(s.scale)),
                            makeValueLabel(2, text: fmt(2, s.scale))])
 
@@ -401,6 +404,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NotificationCenter.default.addObserver(
             self, selector: #selector(screensChanged),
             name: NSApplication.didChangeScreenParametersNotification, object: nil)
+        if CommandLine.arguments.contains("--show-settings") { showSettings() }
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -451,14 +455,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let menu = NSMenu()
         menu.addItem(NSMenuItem(title: "Pokémon Mouse Follower", action: nil, keyEquivalent: ""))
         menu.addItem(.separator())
-        let settings = NSMenuItem(title: "Settings…", action: #selector(showSettings), keyEquivalent: ",")
+        let settings = NSMenuItem(title: L("menu.settings"), action: #selector(showSettings), keyEquivalent: ",")
         settings.target = self
         menu.addItem(settings)
-        let toggle = NSMenuItem(title: "Pause", action: #selector(toggleRunning), keyEquivalent: "p")
+        let toggle = NSMenuItem(title: L("menu.pause"), action: #selector(toggleRunning), keyEquivalent: "p")
         toggle.target = self
         menu.addItem(toggle)
         menu.addItem(.separator())
-        let quit = NSMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: "q")
+        let quit = NSMenuItem(title: L("menu.quit"), action: #selector(quit), keyEquivalent: "q")
         quit.target = self
         menu.addItem(quit)
         statusItem.menu = menu
@@ -482,7 +486,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func toggleRunning(_ sender: NSMenuItem) {
         running.toggle()
-        sender.title = running ? "Pause" : "Resume"
+        sender.title = running ? L("menu.pause") : L("menu.resume")
         characterView.isHidden = !running
     }
 

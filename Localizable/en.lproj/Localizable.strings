@@ -1,0 +1,9 @@
+"menu.settings" = "Settings…";
+"menu.pause" = "Pause";
+"menu.resume" = "Resume";
+"menu.quit" = "Quit";
+"settings.window.title" = "Pokémon Mouse Follower Settings";
+"label.character" = "Character";
+"label.distance" = "Distance from cursor";
+"label.speed" = "Max speed";
+"label.size" = "Character size";

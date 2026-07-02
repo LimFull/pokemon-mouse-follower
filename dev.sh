@@ -18,6 +18,7 @@ cp Info.plist "$BUNDLE/Contents/Info.plist"
 rm -rf "$BUNDLE/Contents/Resources/characters"
 mkdir -p "$BUNDLE/Contents/Resources/characters"
 cp -R animations/* "$BUNDLE/Contents/Resources/characters/"
+cp -R Localizable/*.lproj "$BUNDLE/Contents/Resources/"
 
 echo "==> Compiling (arm64, debug)..."
 swiftc -Onone -g Sources/main.swift -o "$BUNDLE/Contents/MacOS/${APP_NAME}"
