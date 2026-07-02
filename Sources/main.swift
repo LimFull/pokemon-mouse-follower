@@ -152,6 +152,7 @@ final class CharacterView: NSView {
     private var idle: [[CGImage]] = []
     private var walk: [[CGImage]] = []
     private var sleep: [[CGImage]] = []
+    private var wake: [[CGImage]] = []
     private var loaded = false
     private var lastFrame: CGImage?
 
@@ -162,6 +163,9 @@ final class CharacterView: NSView {
     private var tickCounter = 0
     private var idleTicks = 0        // frames spent not moving (drives sleep)
     private var lastRow = 0
+    private var wasSleeping = false  // was asleep on the previous tick
+    private var waking = false       // playing the one-shot wake animation
+    private var wakeTick = 0
 
     private let slowRadius: CGFloat = 130
     private let accel: CGFloat = 0.55
@@ -169,6 +173,7 @@ final class CharacterView: NSView {
     private let walkStepTicks = 6
     private let idleStepTicks = 10
     private let sleepStepTicks = 14
+    private let wakeStepTicks = 5
     private let fps: CGFloat = 60
 
     // octant (0=E,1=NE,2=N,3=NW,4=W,5=SW,6=S,7=SE) -> sprite row (PMD direction order).
@@ -192,11 +197,14 @@ final class CharacterView: NSView {
         walk = framesFor("Walk-Anim", anim: "Walk", subdir: subdir, xml: xml)
         idle = framesFor("Idle-Anim", anim: "Idle", subdir: subdir, xml: xml)
         sleep = framesFor("Sleep-Anim", anim: "Sleep", subdir: subdir, xml: xml)
+        wake = framesFor("Wake-Anim", anim: "Wake", subdir: subdir, xml: xml)  // empty if none
         if idle.isEmpty { idle = walk }    // some characters ship Walk only
         if sleep.isEmpty { sleep = idle }  // fall back when no sleep animation
         loaded = !walk.isEmpty
         tickCounter = 0
         idleTicks = 0
+        wasSleeping = false
+        waking = false
         if !loaded { NSLog("PokemonMouseFollower: failed to load character \(folder)") }
     }
 
@@ -244,6 +252,31 @@ final class CharacterView: NSView {
         let dist = (dx * dx + dy * dy).squareRoot()
         let remaining = dist - gap
 
+        // Waking up: if we were asleep and the cursor moved away, play the
+        // one-shot Wake animation in place before resuming movement.
+        if !waking && wasSleeping && remaining > 2 && !wake.isEmpty {
+            waking = true; wakeTick = 0; idleTicks = 0
+        }
+        if waking {
+            let wframes = wake[min(lastRow, wake.count - 1)]
+            let widx = wakeTick / wakeStepTicks
+            if widx < wframes.count {
+                let f = wframes[widx]
+                CATransaction.begin()
+                CATransaction.setDisableActions(true)
+                spriteLayer.contents = f
+                if lastFrame == nil || f.width != lastFrame!.width || f.height != lastFrame!.height {
+                    setBounds(for: f)
+                }
+                spriteLayer.position = pos
+                CATransaction.commit()
+                lastFrame = f
+                wakeTick += 1
+                return
+            }
+            waking = false   // finished; fall through to normal movement this tick
+        }
+
         var desired = CGVector.zero
         if remaining > 0.001 && dist > 0.001 {
             let dir = CGVector(dx: dx / dist, dy: dy / dist)
@@ -277,6 +310,7 @@ final class CharacterView: NSView {
 
         // Idle long enough -> sleep.
         let sleeping = !moving && CGFloat(idleTicks) / fps >= AppSettings.shared.sleepDelay
+        wasSleeping = sleeping
 
         let sheet: [[CGImage]]
         let step: Int
