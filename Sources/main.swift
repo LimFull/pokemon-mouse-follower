@@ -141,6 +141,11 @@ final class AppSettings {
         get { d.bool(forKey: "showShadow") }   // defaults to false when unset
         set { d.set(newValue, forKey: "showShadow") }
     }
+    // Debug: overlay the raw -Shadow marker sheet behind the sprite as-is.
+    var showShadowMarker: Bool {
+        get { d.bool(forKey: "showShadowMarker") }
+        set { d.set(newValue, forKey: "showShadowMarker") }
+    }
 }
 
 // MARK: - Sprite loading / slicing
@@ -294,6 +299,10 @@ final class CharacterController {
     private var idleShadow: [[ShadowAnchor]] = []
     private var walkShadow: [[ShadowAnchor]] = []
     private var sleepShadow: [[ShadowAnchor]] = []
+    // Raw -Shadow marker frames, parallel to the sheets (for the debug overlay).
+    private var idleMarker: [[CGImage]] = []
+    private var walkMarker: [[CGImage]] = []
+    private var sleepMarker: [[CGImage]] = []
     // Fixed PMD footprint template (small/medium/large), used as a fallback size.
     private let shadowTemplate: [CGSize] = [CGSize(width: 8, height: 4),
                                             CGSize(width: 14, height: 6),
@@ -323,6 +332,7 @@ final class CharacterController {
     private(set) var currentFrame: CGImage?
     private(set) var shadowSize = 1       // 0=small, 1=medium, 2=large (from AnimData.xml)
     private(set) var currentShadow = ShadowAnchor(offset: .zero, size: CGSize(width: 14, height: 6))
+    private(set) var currentShadowMarker: CGImage?   // raw marker frame, for debug overlay
     var position: CGPoint { pos }
 
     init() { setCharacter(AppSettings.shared.selectedCharacter) }
@@ -335,14 +345,17 @@ final class CharacterController {
         walk = slicedSheet("Walk-Anim", anim: "Walk", subdir: subdir, xml: xml)
         idle = slicedSheet("Idle-Anim", anim: "Idle", subdir: subdir, xml: xml)
         sleep = slicedSheet("Sleep-Anim", anim: "Sleep", subdir: subdir, xml: xml)
-        // Shadow anchors from the matching -Shadow marker sheet (alpha fallback
-        // if a marker sheet is missing). Computed before the sheet fallbacks so
-        // each maps to its own frames.
-        walkShadow = markerShadow("Walk-Shadow", anim: "Walk", subdir: subdir, xml: xml, fallback: walk)
-        idleShadow = idle.isEmpty ? [] : markerShadow("Idle-Shadow", anim: "Idle", subdir: subdir, xml: xml, fallback: idle)
-        sleepShadow = sleep.isEmpty ? [] : markerShadow("Sleep-Shadow", anim: "Sleep", subdir: subdir, xml: xml, fallback: sleep)
-        if idle.isEmpty { idle = walk; idleShadow = walkShadow }     // some characters ship Walk only
-        if sleep.isEmpty { sleep = idle; sleepShadow = idleShadow }  // fall back when no sleep animation
+        // Slice the matching -Shadow marker sheets, then derive anchors from them
+        // (alpha fallback if a marker sheet is missing). Done before the sheet
+        // fallbacks so each maps to its own frames.
+        walkMarker = slicedSheet("Walk-Shadow", anim: "Walk", subdir: subdir, xml: xml)
+        idleMarker = idle.isEmpty ? [] : slicedSheet("Idle-Shadow", anim: "Idle", subdir: subdir, xml: xml)
+        sleepMarker = sleep.isEmpty ? [] : slicedSheet("Sleep-Shadow", anim: "Sleep", subdir: subdir, xml: xml)
+        walkShadow = markerShadow(cells: walkMarker, fallback: walk)
+        idleShadow = idle.isEmpty ? [] : markerShadow(cells: idleMarker, fallback: idle)
+        sleepShadow = sleep.isEmpty ? [] : markerShadow(cells: sleepMarker, fallback: sleep)
+        if idle.isEmpty { idle = walk; idleShadow = walkShadow; idleMarker = walkMarker }     // some characters ship Walk only
+        if sleep.isEmpty { sleep = idle; sleepShadow = idleShadow; sleepMarker = idleMarker }  // fall back when no sleep animation
         loaded = !walk.isEmpty
         tickCounter = 0
         idleTicks = 0
@@ -361,12 +374,10 @@ final class CharacterController {
         return Sprite.slice(img, cols: cols, rows: rows, cellW: cw, cellH: ch)
     }
 
-    // Per-frame shadow anchor from the "-Shadow" marker sheet: position (y-up
-    // offset from the tile center) and footprint size, both read from the marker
-    // regions. Falls back to alpha-based feet detection if the sheet is absent.
-    private func markerShadow(_ png: String, anim: String, subdir: String,
-                              xml: String?, fallback: [[CGImage]]) -> [[ShadowAnchor]] {
-        let cells = slicedSheet(png, anim: anim, subdir: subdir, xml: xml)
+    // Per-frame shadow anchor from pre-sliced "-Shadow" marker cells: position
+    // (y-up offset from the tile center) and footprint size, both read from the
+    // marker regions. Falls back to alpha-based feet detection if cells is empty.
+    private func markerShadow(cells: [[CGImage]], fallback: [[CGImage]]) -> [[ShadowAnchor]] {
         guard !cells.isEmpty else { return shadowAnchors(fallback) }
         let templateSize = shadowTemplate[max(0, min(shadowTemplate.count - 1, shadowSize))]
         return cells.map { row in
@@ -464,10 +475,11 @@ final class CharacterController {
 
         let sheet: [[CGImage]]
         let shadow: [[ShadowAnchor]]
+        let marker: [[CGImage]]
         let step: Int
-        if moving { sheet = walk; shadow = walkShadow; step = walkStepTicks }
-        else if sleeping { sheet = sleep; shadow = sleepShadow; step = sleepStepTicks }
-        else { sheet = idle; shadow = idleShadow; step = idleStepTicks }
+        if moving { sheet = walk; shadow = walkShadow; marker = walkMarker; step = walkStepTicks }
+        else if sleeping { sheet = sleep; shadow = sleepShadow; marker = sleepMarker; step = sleepStepTicks }
+        else { sheet = idle; shadow = idleShadow; marker = idleMarker; step = idleStepTicks }
 
         guard !sheet.isEmpty else { currentFrame = nil; return }
         let row = min(lastRow, sheet.count - 1)
@@ -480,6 +492,7 @@ final class CharacterController {
         if row < shadow.count, col < shadow[row].count {
             currentShadow = shadow[row][col]
         }
+        currentShadowMarker = (row < marker.count && col < marker[row].count) ? marker[row][col] : nil
     }
 }
 
@@ -489,6 +502,7 @@ final class CharacterController {
 // straddling two displays shows partially in each — seamless across monitors.
 final class SpriteView: NSView {
     private let shadowLayer = CAGradientLayer()
+    private let markerLayer = CALayer()
     private let spriteLayer = CALayer()
     var screenOrigin: CGPoint = .zero
 
@@ -502,7 +516,13 @@ final class SpriteView: NSView {
         shadowLayer.locations = [0.0, 1.0]
         shadowLayer.startPoint = CGPoint(x: 0.5, y: 0.5)
         shadowLayer.endPoint = CGPoint(x: 1.0, y: 1.0)
-        layer?.addSublayer(shadowLayer)   // behind the sprite
+        layer?.addSublayer(shadowLayer)   // behind everything
+
+        // Debug overlay: the raw -Shadow marker sheet, tile-aligned to the sprite.
+        markerLayer.magnificationFilter = .nearest
+        markerLayer.contentsGravity = .resize
+        markerLayer.opacity = 0.8
+        layer?.addSublayer(markerLayer)   // behind the sprite
 
         spriteLayer.magnificationFilter = .nearest
         spriteLayer.contentsGravity = .resize
@@ -511,8 +531,10 @@ final class SpriteView: NSView {
 
     required init?(coder: NSCoder) { fatalError("not used") }
 
-    func render(_ frame: CGImage?, globalPos: CGPoint, shadow: ShadowAnchor) {
-        guard let frame else { spriteLayer.isHidden = true; shadowLayer.isHidden = true; return }
+    func render(_ frame: CGImage?, globalPos: CGPoint, shadow: ShadowAnchor, marker: CGImage?) {
+        guard let frame else {
+            spriteLayer.isHidden = true; shadowLayer.isHidden = true; markerLayer.isHidden = true; return
+        }
         let s = AppSettings.shared.scale
         let x = globalPos.x - screenOrigin.x
         let y = globalPos.y - screenOrigin.y
@@ -534,6 +556,19 @@ final class SpriteView: NSView {
             shadowLayer.isHidden = true
         }
 
+        // Debug: draw the raw marker sheet exactly like the sprite tile, so its
+        // colored blob sits where the source places the shadow relative to the art.
+        if AppSettings.shared.showShadowMarker, let marker {
+            markerLayer.isHidden = false
+            markerLayer.bounds = CGRect(x: 0, y: 0,
+                                        width: CGFloat(marker.width) * s,
+                                        height: CGFloat(marker.height) * s)
+            markerLayer.contents = marker
+            markerLayer.position = CGPoint(x: x, y: y)
+        } else {
+            markerLayer.isHidden = true
+        }
+
         spriteLayer.isHidden = false
         spriteLayer.bounds = CGRect(x: 0, y: 0,
                                     width: CGFloat(frame.width) * s,
@@ -552,7 +587,7 @@ final class SettingsWindowController: NSObject {
 
     init(controller: CharacterController) {
         self.controller = controller
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 380),
+        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 420),
                           styleMask: [.titled, .closable], backing: .buffered, defer: false)
         window.title = L("settings.window.title")
         window.isReleasedWhenClosed = false
@@ -582,6 +617,7 @@ final class SettingsWindowController: NSObject {
                            makeSlider(tag: 3, range: AppSettings.sleepRange, value: Double(s.sleepDelay)),
                            makeValueLabel(3, text: fmt(3, s.sleepDelay))])
         grid.addRow(with: [makeLabel(L("label.shadow")), makeShadowCheckbox(), NSGridCell.emptyContentView])
+        grid.addRow(with: [makeLabel(L("label.shadowmarker")), makeShadowMarkerCheckbox(), NSGridCell.emptyContentView])
         grid.addRow(with: [makeLabel(L("label.launch")), makeLaunchCheckbox(), NSGridCell.emptyContentView])
 
         grid.column(at: 0).xPlacement = .trailing
@@ -603,6 +639,16 @@ final class SettingsWindowController: NSObject {
 
     @objc private func shadowToggled(_ sender: NSButton) {
         AppSettings.shared.showShadow = (sender.state == .on)
+    }
+
+    private func makeShadowMarkerCheckbox() -> NSButton {
+        let cb = NSButton(checkboxWithTitle: "", target: self, action: #selector(shadowMarkerToggled(_:)))
+        cb.state = AppSettings.shared.showShadowMarker ? .on : .off
+        return cb
+    }
+
+    @objc private func shadowMarkerToggled(_ sender: NSButton) {
+        AppSettings.shared.showShadowMarker = (sender.state == .on)
     }
 
     private func makeLaunchCheckbox() -> NSButton {
@@ -770,7 +816,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             for (_, view) in self.overlays {
                 view.render(self.controller.currentFrame,
                             globalPos: self.controller.position,
-                            shadow: self.controller.currentShadow)
+                            shadow: self.controller.currentShadow,
+                            marker: self.controller.currentShadowMarker)
             }
         }
         RunLoop.main.add(t, forMode: .common)

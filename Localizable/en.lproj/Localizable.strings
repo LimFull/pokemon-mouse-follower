@@ -9,4 +9,5 @@
 "label.size" = "Character size";
 "label.sleep" = "Time until sleep";
 "label.shadow" = "Shadow";
+"label.shadowmarker" = "Shadow marker (debug)";
 "label.launch" = "Launch at login";

@@ -9,6 +9,7 @@
 "label.size" = "캐릭터 크기";
 "label.sleep" = "잠들기까지 시간";
 "label.shadow" = "그림자";
+"label.shadowmarker" = "그림자 마커(테스트)";
 "label.launch" = "로그인 시 자동 실행";
 
 "pokemon.001" = "이상해씨";
