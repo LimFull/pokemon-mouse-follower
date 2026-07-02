@@ -51,7 +51,10 @@ enum Characters {
             let folder = url.lastPathComponent
             guard fm.fileExists(atPath: url.appendingPathComponent("Walk-Anim.png").path) else { continue }
             let dex = Int(folder) ?? 0
-            let disp = (dex >= 1 && dex <= names.count) ? names[dex - 1] : folder
+            let fallback = (dex >= 1 && dex <= names.count) ? names[dex - 1] : folder
+            let key = "pokemon.\(folder)"
+            let loc = L(key)                     // localized name (ko/ja); key echoes back if absent
+            let disp = (loc == key) ? fallback : loc
             infos.append(.init(folder: folder, name: "\(folder) · \(disp)"))
         }
         return infos.sorted { $0.folder < $1.folder }
