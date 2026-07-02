@@ -489,12 +489,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // One transparent overlay window per screen. A single window can't span
     // displays when "Displays have separate Spaces" is on, so we use one each.
     private func setupWindows() {
-        for (w, _) in overlays { w.orderOut(nil) }
+        for (w, _) in overlays { w.close() }   // deterministic teardown, no ghost windows
         overlays.removeAll()
 
         for screen in NSScreen.screens {
             let frame = screen.frame
             let window = NSWindow(contentRect: frame, styleMask: .borderless, backing: .buffered, defer: false)
+            window.isReleasedWhenClosed = false   // ARC owns the lifetime via `overlays`
             window.isOpaque = false
             window.backgroundColor = .clear
             window.hasShadow = false
