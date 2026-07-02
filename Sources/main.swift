@@ -137,6 +137,10 @@ final class AppSettings {
         get { d.string(forKey: "character") ?? "007" }
         set { d.set(newValue, forKey: "character") }
     }
+    var showShadow: Bool {
+        get { d.bool(forKey: "showShadow") }   // defaults to false when unset
+        set { d.set(newValue, forKey: "showShadow") }
+    }
 }
 
 // MARK: - Sprite loading / slicing
@@ -179,6 +183,11 @@ enum Sprite {
         return nil
     }
 
+    // Read <ShadowSize> (0=small, 1=medium, 2=large). Defaults to medium.
+    static func shadowSize(in xml: String) -> Int {
+        return intBetween(xml, "<ShadowSize>", "</ShadowSize>") ?? 1
+    }
+
     private static func intBetween(_ s: String, _ a: String, _ b: String) -> Int? {
         guard let r1 = s.range(of: a),
               let r2 = s.range(of: b, range: r1.upperBound..<s.endIndex) else { return nil }
@@ -217,6 +226,7 @@ final class CharacterController {
 
     // Latest frame + its global position, consumed by the per-screen views.
     private(set) var currentFrame: CGImage?
+    private(set) var shadowSize = 1       // 0=small, 1=medium, 2=large (from AnimData.xml)
     var position: CGPoint { pos }
 
     init() { setCharacter(AppSettings.shared.selectedCharacter) }
@@ -225,6 +235,7 @@ final class CharacterController {
     func setCharacter(_ folder: String) {
         let subdir = "characters/\(folder)"
         let xml = Sprite.loadText("AnimData", ext: "xml", subdir: subdir)
+        shadowSize = xml.map { Sprite.shadowSize(in: $0) } ?? 1
         walk = framesFor("Walk-Anim", anim: "Walk", subdir: subdir, xml: xml)
         idle = framesFor("Idle-Anim", anim: "Idle", subdir: subdir, xml: xml)
         sleep = framesFor("Sleep-Anim", anim: "Sleep", subdir: subdir, xml: xml)
@@ -321,12 +332,25 @@ final class CharacterController {
 // this screen's origin. The window (sized to one screen) clips it, so a sprite
 // straddling two displays shows partially in each — seamless across monitors.
 final class SpriteView: NSView {
+    private let shadowLayer = CAGradientLayer()
     private let spriteLayer = CALayer()
     var screenOrigin: CGPoint = .zero
+
+    // Shadow ellipse width as a fraction of frame width, by ShadowSize (0/1/2).
+    private let shadowWidthFactor: [CGFloat] = [0.30, 0.45, 0.60]
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
+
+        // Soft radial-gradient ellipse: dark at center, fading to clear at edge.
+        shadowLayer.type = .radial
+        shadowLayer.colors = [CGColor(gray: 0, alpha: 0.35), CGColor(gray: 0, alpha: 0)]
+        shadowLayer.locations = [0.0, 1.0]
+        shadowLayer.startPoint = CGPoint(x: 0.5, y: 0.5)
+        shadowLayer.endPoint = CGPoint(x: 1.0, y: 1.0)
+        layer?.addSublayer(shadowLayer)   // behind the sprite
+
         spriteLayer.magnificationFilter = .nearest
         spriteLayer.contentsGravity = .resize
         layer?.addSublayer(spriteLayer)
@@ -334,18 +358,36 @@ final class SpriteView: NSView {
 
     required init?(coder: NSCoder) { fatalError("not used") }
 
-    func render(_ frame: CGImage?, globalPos: CGPoint) {
-        guard let frame else { spriteLayer.isHidden = true; return }
+    func render(_ frame: CGImage?, globalPos: CGPoint, shadowSize: Int) {
+        guard let frame else { spriteLayer.isHidden = true; shadowLayer.isHidden = true; return }
         let s = AppSettings.shared.scale
+        let x = globalPos.x - screenOrigin.x
+        let y = globalPos.y - screenOrigin.y
         CATransaction.begin()
         CATransaction.setDisableActions(true)
+
+        // Shadow: an ellipse on the ground, centered under the sprite. Every frame
+        // is centered on globalPos, so one rule works for all characters; only the
+        // width (from ShadowSize) varies. Constant opacity, size-only variation —
+        // matching how the source format actually renders shadows.
+        if AppSettings.shared.showShadow {
+            let sz = max(0, min(shadowWidthFactor.count - 1, shadowSize))
+            let w = CGFloat(frame.width) * shadowWidthFactor[sz] * s
+            let h = w * 0.35
+            shadowLayer.isHidden = false
+            shadowLayer.bounds = CGRect(x: 0, y: 0, width: w, height: h)
+            // Nudge toward the sprite's feet (slightly below center).
+            shadowLayer.position = CGPoint(x: x, y: y - CGFloat(frame.height) * s * 0.18)
+        } else {
+            shadowLayer.isHidden = true
+        }
+
         spriteLayer.isHidden = false
         spriteLayer.bounds = CGRect(x: 0, y: 0,
                                     width: CGFloat(frame.width) * s,
                                     height: CGFloat(frame.height) * s)
         spriteLayer.contents = frame
-        spriteLayer.position = CGPoint(x: globalPos.x - screenOrigin.x,
-                                       y: globalPos.y - screenOrigin.y)
+        spriteLayer.position = CGPoint(x: x, y: y)
         CATransaction.commit()
     }
 }
@@ -358,7 +400,7 @@ final class SettingsWindowController: NSObject {
 
     init(controller: CharacterController) {
         self.controller = controller
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 340),
+        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 380),
                           styleMask: [.titled, .closable], backing: .buffered, defer: false)
         window.title = L("settings.window.title")
         window.isReleasedWhenClosed = false
@@ -387,6 +429,7 @@ final class SettingsWindowController: NSObject {
         grid.addRow(with: [makeLabel(L("label.sleep")),
                            makeSlider(tag: 3, range: AppSettings.sleepRange, value: Double(s.sleepDelay)),
                            makeValueLabel(3, text: fmt(3, s.sleepDelay))])
+        grid.addRow(with: [makeLabel(L("label.shadow")), makeShadowCheckbox(), NSGridCell.emptyContentView])
         grid.addRow(with: [makeLabel(L("label.launch")), makeLaunchCheckbox(), NSGridCell.emptyContentView])
 
         grid.column(at: 0).xPlacement = .trailing
@@ -398,6 +441,16 @@ final class SettingsWindowController: NSObject {
             grid.centerXAnchor.constraint(equalTo: content.centerXAnchor),
             grid.centerYAnchor.constraint(equalTo: content.centerYAnchor),
         ])
+    }
+
+    private func makeShadowCheckbox() -> NSButton {
+        let cb = NSButton(checkboxWithTitle: "", target: self, action: #selector(shadowToggled(_:)))
+        cb.state = AppSettings.shared.showShadow ? .on : .off
+        return cb
+    }
+
+    @objc private func shadowToggled(_ sender: NSButton) {
+        AppSettings.shared.showShadow = (sender.state == .on)
     }
 
     private func makeLaunchCheckbox() -> NSButton {
@@ -563,7 +616,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self, self.running else { return }
             self.controller.update(mouseGlobal: NSEvent.mouseLocation)
             for (_, view) in self.overlays {
-                view.render(self.controller.currentFrame, globalPos: self.controller.position)
+                view.render(self.controller.currentFrame,
+                            globalPos: self.controller.position,
+                            shadowSize: self.controller.shadowSize)
             }
         }
         RunLoop.main.add(t, forMode: .common)
