@@ -170,22 +170,22 @@ enum Sprite {
     }
 }
 
-// MARK: - Character View
-final class CharacterView: NSView {
-    private let spriteLayer = CALayer()
-
+// MARK: - Character Controller
+// The "brain": tracks the character in GLOBAL screen coordinates and picks the
+// current animation frame. Rendering is done separately by one SpriteView per
+// screen, so the character can cross between displays (which each own a space).
+final class CharacterController {
     private var idle: [[CGImage]] = []
     private var walk: [[CGImage]] = []
     private var sleep: [[CGImage]] = []
-    private var loaded = false
-    private var lastFrame: CGImage?
+    private(set) var loaded = false
 
-    private var pos = CGPoint.zero
+    private var pos = CGPoint.zero        // global screen coordinates (y-up)
     private var vel = CGVector.zero
     private var started = false
 
     private var tickCounter = 0
-    private var idleTicks = 0        // frames spent not moving (drives sleep)
+    private var idleTicks = 0             // frames spent not moving (drives sleep)
     private var lastRow = 0
 
     private let slowRadius: CGFloat = 130
@@ -199,18 +199,13 @@ final class CharacterView: NSView {
     // octant (0=E,1=NE,2=N,3=NW,4=W,5=SW,6=S,7=SE) -> sprite row (PMD direction order).
     private let octantToRow = [2, 3, 4, 5, 6, 7, 0, 1]
 
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        wantsLayer = true
-        spriteLayer.magnificationFilter = .nearest
-        spriteLayer.contentsGravity = .resize
-        layer?.addSublayer(spriteLayer)
-        setCharacter(AppSettings.shared.selectedCharacter)
-    }
+    // Latest frame + its global position, consumed by the per-screen views.
+    private(set) var currentFrame: CGImage?
+    var position: CGPoint { pos }
 
-    required init?(coder: NSCoder) { fatalError("not used") }
+    init() { setCharacter(AppSettings.shared.selectedCharacter) }
 
-    // Load a character's Idle/Walk sheets, sizing frames from its AnimData.xml.
+    // Load a character's sheets, sizing frames from its AnimData.xml.
     func setCharacter(_ folder: String) {
         let subdir = "characters/\(folder)"
         let xml = Sprite.loadText("AnimData", ext: "xml", subdir: subdir)
@@ -236,27 +231,13 @@ final class CharacterView: NSView {
         return Sprite.slice(img, cols: cols, rows: rows, cellW: cw, cellH: ch)
     }
 
-    // Resize the layer to the last shown frame × scale (called when scale changes).
-    func applyScale() {
-        if let f = lastFrame { setBounds(for: f) }
-    }
-
-    private func setBounds(for frame: CGImage) {
-        let s = AppSettings.shared.scale
-        spriteLayer.bounds = CGRect(x: 0, y: 0,
-                                    width: CGFloat(frame.width) * s,
-                                    height: CGFloat(frame.height) * s)
-        spriteLayer.position = pos
-    }
-
-    func tick(mouseGlobal: CGPoint) {
-        guard loaded, let win = window else { return }
+    // Advance one frame. `mouseGlobal` is already in global screen coordinates.
+    func update(mouseGlobal: CGPoint) {
+        guard loaded else { currentFrame = nil; return }
 
         let gap = AppSettings.shared.followGap
         let maxSpeed = AppSettings.shared.maxSpeed
-
-        let target = CGPoint(x: mouseGlobal.x - win.frame.origin.x,
-                             y: mouseGlobal.y - win.frame.origin.y)
+        let target = mouseGlobal
 
         if !started {
             pos = CGPoint(x: target.x, y: target.y - gap)
@@ -309,34 +290,58 @@ final class CharacterView: NSView {
         else if sleeping { sheet = sleep; step = sleepStepTicks }
         else { sheet = idle; step = idleStepTicks }
 
-        guard !sheet.isEmpty else { return }
+        guard !sheet.isEmpty else { currentFrame = nil; return }
         let row = min(lastRow, sheet.count - 1)
         let frames = sheet[row]
-        guard !frames.isEmpty else { return }
+        guard !frames.isEmpty else { currentFrame = nil; return }
 
         tickCounter += 1
-        let frame = frames[(tickCounter / step) % frames.count]
+        currentFrame = frames[(tickCounter / step) % frames.count]
+    }
+}
 
+// MARK: - Sprite View (one per screen)
+// Draws the shared character's current frame at its global position, offset by
+// this screen's origin. The window (sized to one screen) clips it, so a sprite
+// straddling two displays shows partially in each — seamless across monitors.
+final class SpriteView: NSView {
+    private let spriteLayer = CALayer()
+    var screenOrigin: CGPoint = .zero
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        spriteLayer.magnificationFilter = .nearest
+        spriteLayer.contentsGravity = .resize
+        layer?.addSublayer(spriteLayer)
+    }
+
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    func render(_ frame: CGImage?, globalPos: CGPoint) {
+        guard let frame else { spriteLayer.isHidden = true; return }
+        let s = AppSettings.shared.scale
         CATransaction.begin()
         CATransaction.setDisableActions(true)
+        spriteLayer.isHidden = false
+        spriteLayer.bounds = CGRect(x: 0, y: 0,
+                                    width: CGFloat(frame.width) * s,
+                                    height: CGFloat(frame.height) * s)
         spriteLayer.contents = frame
-        if lastFrame == nil || frame.width != lastFrame!.width || frame.height != lastFrame!.height {
-            setBounds(for: frame)
-        }
-        spriteLayer.position = pos
+        spriteLayer.position = CGPoint(x: globalPos.x - screenOrigin.x,
+                                       y: globalPos.y - screenOrigin.y)
         CATransaction.commit()
-        lastFrame = frame
     }
 }
 
 // MARK: - Settings Window
 final class SettingsWindowController: NSObject {
     let window: NSWindow
-    private weak var characterView: CharacterView?
+    private weak var controller: CharacterController?
     private var valueLabels: [Int: NSTextField] = [:]
 
-    init(characterView: CharacterView) {
-        self.characterView = characterView
+    init(controller: CharacterController) {
+        self.controller = controller
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 340),
                           styleMask: [.titled, .closable], backing: .buffered, defer: false)
         window.title = L("settings.window.title")
@@ -435,7 +440,7 @@ final class SettingsWindowController: NSObject {
     @objc private func characterChanged(_ sender: NSPopUpButton) {
         let folder = Characters.all[sender.indexOfSelectedItem].folder
         AppSettings.shared.selectedCharacter = folder
-        characterView?.setCharacter(folder)
+        controller?.setCharacter(folder)
     }
 
     @objc private func sliderChanged(_ sender: NSSlider) {
@@ -444,7 +449,7 @@ final class SettingsWindowController: NSObject {
         switch sender.tag {
         case 0: s.followGap = v
         case 1: s.maxSpeed = v
-        case 2: s.scale = v; characterView?.applyScale()
+        case 2: s.scale = v   // reflected on the next render tick
         case 3: s.sleepDelay = v
         default: break
         }
@@ -459,15 +464,15 @@ final class SettingsWindowController: NSObject {
 
 // MARK: - App Delegate
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private var window: NSWindow!
-    private var characterView: CharacterView!
+    private let controller = CharacterController()
+    private var overlays: [(window: NSWindow, view: SpriteView)] = []
     private var statusItem: NSStatusItem!
     private var timer: Timer?
     private var running = true
     private var settingsController: SettingsWindowController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        setupWindow()
+        setupWindows()
         setupStatusItem()
         setupTimer()
         NotificationCenter.default.addObserver(
@@ -481,35 +486,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return true
     }
 
-    private func totalScreenFrame() -> NSRect {
-        var frame = NSRect.zero
+    // One transparent overlay window per screen. A single window can't span
+    // displays when "Displays have separate Spaces" is on, so we use one each.
+    private func setupWindows() {
+        for (w, _) in overlays { w.orderOut(nil) }
+        overlays.removeAll()
+
         for screen in NSScreen.screens {
-            frame = frame.isEmpty ? screen.frame : frame.union(screen.frame)
+            let frame = screen.frame
+            let window = NSWindow(contentRect: frame, styleMask: .borderless, backing: .buffered, defer: false)
+            window.isOpaque = false
+            window.backgroundColor = .clear
+            window.hasShadow = false
+            window.ignoresMouseEvents = true
+            window.level = .init(rawValue: Int(CGWindowLevelForKey(.overlayWindow)))
+            window.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary, .ignoresCycle]
+            window.setFrame(frame, display: true)
+
+            let view = SpriteView(frame: NSRect(origin: .zero, size: frame.size))
+            view.screenOrigin = frame.origin
+            view.isHidden = !running
+            window.contentView = view
+            window.orderFrontRegardless()
+
+            overlays.append((window, view))
         }
-        return frame.isEmpty ? (NSScreen.main?.frame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)) : frame
     }
 
-    private func setupWindow() {
-        let frame = totalScreenFrame()
-        window = NSWindow(contentRect: frame, styleMask: .borderless, backing: .buffered, defer: false)
-        window.isOpaque = false
-        window.backgroundColor = .clear
-        window.hasShadow = false
-        window.ignoresMouseEvents = true
-        window.level = .init(rawValue: Int(CGWindowLevelForKey(.overlayWindow)))
-        window.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary, .ignoresCycle]
-        window.setFrame(frame, display: true)
-
-        characterView = CharacterView(frame: NSRect(origin: .zero, size: frame.size))
-        window.contentView = characterView
-        window.orderFrontRegardless()
-    }
-
-    @objc private func screensChanged() {
-        let frame = totalScreenFrame()
-        window.setFrame(frame, display: true)
-        characterView.frame = NSRect(origin: .zero, size: frame.size)
-    }
+    @objc private func screensChanged() { setupWindows() }
 
     private func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -540,7 +544,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func setupTimer() {
         let t = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
             guard let self, self.running else { return }
-            self.characterView.tick(mouseGlobal: NSEvent.mouseLocation)
+            self.controller.update(mouseGlobal: NSEvent.mouseLocation)
+            for (_, view) in self.overlays {
+                view.render(self.controller.currentFrame, globalPos: self.controller.position)
+            }
         }
         RunLoop.main.add(t, forMode: .common)
         timer = t
@@ -548,7 +555,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func showSettings() {
         if settingsController == nil {
-            settingsController = SettingsWindowController(characterView: characterView)
+            settingsController = SettingsWindowController(controller: controller)
         }
         settingsController?.show()
     }
@@ -556,7 +563,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func toggleRunning(_ sender: NSMenuItem) {
         running.toggle()
         sender.title = running ? L("menu.pause") : L("menu.resume")
-        characterView.isHidden = !running
+        for (_, view) in overlays { view.isHidden = !running }
     }
 
     @objc private func quit() {
