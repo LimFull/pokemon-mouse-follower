@@ -558,15 +558,82 @@ final class SpriteView: NSView {
     }
 }
 
+// MARK: - Character Preview
+// Plays a character's downward-facing Idle animation (sprite row 0 = South),
+// respecting the alt-color setting. Used at the top of the settings window.
+final class CharacterPreviewView: NSView {
+    private let imgLayer = CALayer()
+    private var frames: [CGImage] = []
+    private var idx = 0
+    private var timer: Timer?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layer?.cornerRadius = 8
+        layer?.borderWidth = 1
+        layer?.borderColor = NSColor.separatorColor.cgColor
+        imgLayer.magnificationFilter = .nearest
+        imgLayer.contentsGravity = .resizeAspect
+        layer?.addSublayer(imgLayer)
+    }
+
+    required init?(coder: NSCoder) { fatalError("not used") }
+    override var intrinsicContentSize: NSSize { NSSize(width: 84, height: 84) }
+    override func layout() { super.layout(); imgLayer.frame = bounds.insetBy(dx: 6, dy: 6) }
+
+    func setCharacter(_ folder: String) {
+        frames = CharacterPreviewView.idleDownFrames(folder)
+        idx = 0
+        imgLayer.contents = frames.first
+        timer?.invalidate(); timer = nil
+        guard frames.count > 1 else { return }
+        let t = Timer(timeInterval: 0.18, repeats: true) { [weak self] _ in
+            guard let self, !self.frames.isEmpty else { return }
+            self.idx = (self.idx + 1) % self.frames.count
+            CATransaction.begin(); CATransaction.setDisableActions(true)
+            self.imgLayer.contents = self.frames[self.idx]
+            CATransaction.commit()
+        }
+        RunLoop.main.add(t, forMode: .common)
+        timer = t
+    }
+
+    deinit { timer?.invalidate() }
+
+    // Row 0 (facing down) of the Idle sheet, falling back to Walk if needed.
+    private static func idleDownFrames(_ folder: String) -> [CGImage] {
+        var subdir = "characters/\(folder)"
+        if AppSettings.shared.altColor,
+           Bundle.main.url(forResource: "AnimData", withExtension: "xml",
+                           subdirectory: "\(subdir)/altcolor") != nil {
+            subdir += "/altcolor"
+        }
+        let xml = Sprite.loadText("AnimData", ext: "xml", subdir: subdir)
+        for (png, anim) in [("Idle-Anim", "Idle"), ("Walk-Anim", "Walk")] {
+            guard let img = Sprite.loadCG(png, subdir: subdir) else { continue }
+            var cw = img.height / 8, ch = img.height / 8
+            if let xml, let (w, h) = Sprite.frameSize(anim, in: xml) { cw = w; ch = h }
+            guard cw > 0, ch > 0 else { continue }
+            let rows = max(1, img.height / ch), cols = max(1, img.width / cw)
+            let sheet = Sprite.slice(img, cols: cols, rows: rows, cellW: cw, cellH: ch)
+            if let down = sheet.first, !down.isEmpty { return down }
+        }
+        return []
+    }
+}
+
 // MARK: - Settings Window
 final class SettingsWindowController: NSObject {
     let window: NSWindow
     private weak var controller: CharacterController?
     private var valueLabels: [Int: NSTextField] = [:]
+    private var popup: NSPopUpButton!
+    private var preview: CharacterPreviewView!
 
     init(controller: CharacterController) {
         self.controller = controller
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 420),
+        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 540),
                           styleMask: [.titled, .closable], backing: .buffered, defer: false)
         window.title = L("settings.window.title")
         window.isReleasedWhenClosed = false
@@ -582,7 +649,8 @@ final class SettingsWindowController: NSObject {
         grid.rowSpacing = 16
         grid.columnSpacing = 12
 
-        grid.addRow(with: [makeLabel(L("label.character")), makePopup(), NSGridCell.emptyContentView])
+        popup = makePopup()
+        grid.addRow(with: [makeLabel(L("label.character")), popup, NSGridCell.emptyContentView])
         grid.addRow(with: [makeLabel(L("label.distance")),
                            makeSlider(tag: 0, range: AppSettings.gapRange, value: Double(s.followGap)),
                            makeValueLabel(0, text: fmt(0, s.followGap))])
@@ -602,12 +670,47 @@ final class SettingsWindowController: NSObject {
         grid.column(at: 0).xPlacement = .trailing
         grid.column(at: 1).width = 180
 
+        // Preview of the selected character (down-facing idle) with prev/next
+        // arrows, plus a random picker — above the character dropdown.
+        preview = CharacterPreviewView(frame: NSRect(x: 0, y: 0, width: 84, height: 84))
+        preview.translatesAutoresizingMaskIntoConstraints = false
+        preview.widthAnchor.constraint(equalToConstant: 84).isActive = true
+        preview.heightAnchor.constraint(equalToConstant: 84).isActive = true
+        let previewRow = NSStackView(views: [makeStepButton("◀", #selector(prevCharacter)),
+                                             preview,
+                                             makeStepButton("▶", #selector(nextCharacter))])
+        previewRow.orientation = .horizontal
+        previewRow.alignment = .centerY
+        previewRow.spacing = 14
+        let randomBtn = NSButton(title: L("button.random"), target: self, action: #selector(randomCharacter))
+        randomBtn.bezelStyle = .rounded
+        let topStack = NSStackView(views: [previewRow, randomBtn])
+        topStack.orientation = .vertical
+        topStack.alignment = .centerX
+        topStack.spacing = 10
+
+        let outer = NSStackView(views: [topStack, grid])
+        outer.orientation = .vertical
+        outer.alignment = .centerX
+        outer.spacing = 22
+        outer.translatesAutoresizingMaskIntoConstraints = false
+
         let content = window.contentView!
-        content.addSubview(grid)
+        content.addSubview(outer)
         NSLayoutConstraint.activate([
-            grid.centerXAnchor.constraint(equalTo: content.centerXAnchor),
-            grid.centerYAnchor.constraint(equalTo: content.centerYAnchor),
+            outer.centerXAnchor.constraint(equalTo: content.centerXAnchor),
+            outer.centerYAnchor.constraint(equalTo: content.centerYAnchor),
         ])
+
+        preview.setCharacter(AppSettings.shared.selectedCharacter)
+    }
+
+    private func makeStepButton(_ title: String, _ action: Selector) -> NSButton {
+        let b = NSButton(title: title, target: self, action: action)
+        b.bezelStyle = .rounded
+        b.font = .systemFont(ofSize: 15)
+        b.widthAnchor.constraint(equalToConstant: 40).isActive = true
+        return b
     }
 
     private func makeShadowCheckbox() -> NSButton {
@@ -629,6 +732,7 @@ final class SettingsWindowController: NSObject {
     @objc private func altColorToggled(_ sender: NSButton) {
         AppSettings.shared.altColor = (sender.state == .on)
         controller?.setCharacter(AppSettings.shared.selectedCharacter)   // reload with/without variant
+        preview.setCharacter(AppSettings.shared.selectedCharacter)       // refresh preview color
     }
 
     private func makeLaunchCheckbox() -> NSButton {
@@ -685,9 +789,33 @@ final class SettingsWindowController: NSObject {
     }
 
     @objc private func characterChanged(_ sender: NSPopUpButton) {
-        let folder = Characters.all[sender.indexOfSelectedItem].folder
+        applyCharacter(Characters.all[sender.indexOfSelectedItem].folder)
+    }
+
+    @objc private func prevCharacter() { stepCharacter(-1) }
+    @objc private func nextCharacter() { stepCharacter(1) }
+
+    private func stepCharacter(_ delta: Int) {
+        let all = Characters.all
+        guard !all.isEmpty else { return }
+        let i = Characters.index(of: AppSettings.shared.selectedCharacter)
+        let n = ((i + delta) % all.count + all.count) % all.count
+        applyCharacter(all[n].folder)
+    }
+
+    @objc private func randomCharacter() {
+        let all = Characters.all
+        guard !all.isEmpty else { return }
+        applyCharacter(all[Int.random(in: 0..<all.count)].folder)
+    }
+
+    // Single place that switches character: persist, sync the dropdown, reload
+    // the live follower, and refresh the preview.
+    private func applyCharacter(_ folder: String) {
         AppSettings.shared.selectedCharacter = folder
+        popup.selectItem(at: Characters.index(of: folder))
         controller?.setCharacter(folder)
+        preview.setCharacter(folder)
     }
 
     @objc private func sliderChanged(_ sender: NSSlider) {

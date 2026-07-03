@@ -4,6 +4,7 @@
 "menu.quit" = "終了";
 "settings.window.title" = "Pokémon Mouse Follower 設定";
 "label.character" = "キャラクター";
+"button.random" = "ランダム";
 "label.distance" = "カーソルとの距離";
 "label.speed" = "最高速度";
 "label.size" = "キャラクターの大きさ";
