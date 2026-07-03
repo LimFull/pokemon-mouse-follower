@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pokémon Mouse Follower — 커서를 따라다니는 포켓몬 macOS 앱</title>
+<meta name="description" content="무료 오픈소스 macOS 메뉴바 앱. 도트 포켓몬이 화면을 돌아다니며 마우스 커서를 따라다닙니다. 포켓몬 251마리, 다른 색상, 그림자 등 지원.">
+<link rel="canonical" href="https://limfull.github.io/pokemon-mouse-follower/ko/">
+<meta name="theme-color" content="#5b61f0">
+<link rel="icon" href="../assets/icon.png">
+<link rel="apple-touch-icon" href="../assets/icon.png">
+
+<link rel="alternate" hreflang="en" href="https://limfull.github.io/pokemon-mouse-follower/">
+<link rel="alternate" hreflang="ko" href="https://limfull.github.io/pokemon-mouse-follower/ko/">
+<link rel="alternate" hreflang="ja" href="https://limfull.github.io/pokemon-mouse-follower/ja/">
+<link rel="alternate" hreflang="x-default" href="https://limfull.github.io/pokemon-mouse-follower/">
+
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Pokémon Mouse Follower">
+<meta property="og:title" content="Pokémon Mouse Follower — 커서를 따라다니는 포켓몬">
+<meta property="og:description" content="무료 macOS 메뉴바 앱. 도트 포켓몬이 화면을 돌아다니며 마우스를 따라다닙니다. 251마리, 다른 색상, 그림자.">
+<meta property="og:url" content="https://limfull.github.io/pokemon-mouse-follower/ko/">
+<meta property="og:image" content="https://limfull.github.io/pokemon-mouse-follower/assets/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Pokémon Mouse Follower — 커서를 따라다니는 포켓몬">
+<meta name="twitter:description" content="무료 macOS 메뉴바 앱. 도트 포켓몬이 마우스를 따라다닙니다.">
+<meta name="twitter:image" content="https://limfull.github.io/pokemon-mouse-follower/assets/og.png">
+
+<link rel="stylesheet" href="../assets/style.css">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Pokémon Mouse Follower",
+  "operatingSystem": "macOS 13.0 이상",
+  "applicationCategory": "UtilitiesApplication",
+  "description": "도트 포켓몬이 화면을 돌아다니며 마우스 커서를 따라다니는 무료 오픈소스 macOS 메뉴바 앱.",
+  "url": "https://limfull.github.io/pokemon-mouse-follower/ko/",
+  "image": "https://limfull.github.io/pokemon-mouse-follower/assets/og.png",
+  "downloadUrl": "https://github.com/LimFull/pokemon-mouse-follower/releases/latest",
+  "softwareVersion": "1.0.5",
+  "author": { "@type": "Person", "name": "GADEUK LIM" },
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "inLanguage": "ko",
+  "mainEntity": [
+    { "@type": "Question", "name": "Pokémon Mouse Follower는 무엇인가요?",
+      "acceptedAnswer": { "@type": "Answer", "text": "무료 오픈소스 macOS 메뉴바 앱입니다. 도트 포켓몬 캐릭터가 화면을 돌아다니며 마우스 커서를 따라다닙니다. 커서와 약간의 거리를 두고, 캐릭터 자신의 속도와 가속도로 움직입니다." } },
+    { "@type": "Question", "name": "무료인가요?",
+      "acceptedAnswer": { "@type": "Answer", "text": "네. 완전히 무료이며 오픈소스입니다. 전체 소스 코드는 GitHub에서 볼 수 있습니다." } },
+    { "@type": "Question", "name": "어떤 macOS 버전을 지원하나요?",
+      "acceptedAnswer": { "@type": "Answer", "text": "macOS 13(Ventura) 이상. Apple Silicon과 Intel 맥 모두 지원합니다(universal 빌드)." } },
+    { "@type": "Question", "name": "클릭이나 다른 앱 사용을 방해하나요?",
+      "acceptedAnswer": { "@type": "Answer", "text": "아니요. 캐릭터는 투명한 클릭 통과 오버레이에 그려져 아래 앱 조작을 방해하지 않습니다. Dock 아이콘도 없이 메뉴바에만 아이콘이 뜹니다." } },
+    { "@type": "Question", "name": "포켓몬은 몇 마리 중에서 고를 수 있나요?",
+      "acceptedAnswer": { "@type": "Answer", "text": "1·2세대 포켓몬 251마리, 그리고 대체 색상(altColor)이 있는 124마리의 다른 색상 스프라이트를 고를 수 있습니다." } },
+    { "@type": "Question", "name": "어떻게 설치하나요?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Releases 페이지에서 .dmg를 받아 열고, Pokémon Mouse Follower를 Applications 폴더로 드래그한 뒤 실행하면 됩니다. Xcode나 개발자 도구는 필요 없습니다." } },
+    { "@type": "Question", "name": "스프라이트는 어디서 왔나요?",
+      "acceptedAnswer": { "@type": "Answer", "text": "도트 애니메이션은 커뮤니티 프로젝트인 PMD Sprite Collab에서 가져왔습니다. 본 앱은 비상업적 개인 팬 프로젝트이며, 포켓몬은 Nintendo / Creatures Inc. / GAME FREAK inc.의 상표입니다." } }
+  ]
+}
+</script>
+</head>
+<body>
+
+<header class="site">
+  <nav class="nav wrap">
+    <a class="brand" href="./"><img class="pixel" src="../assets/icon.png" alt="">Pokémon Mouse Follower</a>
+    <span class="spacer"></span>
+    <a class="navlink" href="#features">기능</a>
+    <a class="navlink" href="#faq">FAQ</a>
+    <a class="navlink" href="https://github.com/LimFull/pokemon-mouse-follower">GitHub</a>
+    <span class="langs"><a href="../">EN</a><a href="./" aria-current="true">KO</a><a href="../ja/">JA</a></span>
+    <a class="btn sm" href="https://github.com/LimFull/pokemon-mouse-follower/releases/latest">다운로드</a>
+  </nav>
+</header>
+
+<main>
+<section class="hero wrap">
+  <div class="grid">
+    <div>
+      <div class="badges">
+        <span class="badge">무료 · 오픈소스</span>
+        <span class="badge">macOS 13+</span>
+        <span class="badge">Apple Silicon · Intel</span>
+      </div>
+      <h1>커서를 따라다니는 포켓몬.</h1>
+      <p class="lead">작은 macOS 메뉴바 앱. 도트 포켓몬이 화면을 거닐며 마우스를 쫓고, 멈추면 웅크려 잠듭니다.</p>
+      <div class="cta">
+        <a class="btn" href="https://github.com/LimFull/pokemon-mouse-follower/releases/latest">↓ macOS용 다운로드</a>
+        <a class="btn ghost" href="https://github.com/LimFull/pokemon-mouse-follower">GitHub에서 보기</a>
+      </div>
+      <p class="cta note">무료 · 계정 불필요 · 드래그 한 번으로 설치.</p>
+    </div>
+    <div class="shot">
+      <img src="../assets/follower.gif" width="752" height="572"
+           alt="흰 화면 위를 걸으며 마우스 커서를 따라다니는 꼬부기" loading="eager">
+    </div>
+  </div>
+</section>
+
+<div class="band" aria-hidden="true">
+  <div class="row wrap">
+    <span class="walker pixel w001"></span>
+    <span class="walker pixel w025"></span>
+    <span class="walker pixel w007"></span>
+    <span class="walker pixel w133"></span>
+    <span class="walker pixel w004"></span>
+    <span class="walker pixel w054"></span>
+    <span class="walker pixel w143"></span>
+  </div>
+</div>
+
+<section id="features">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>작지만 사랑스러운 앱</h2>
+      <p>모든 게 메뉴바에서 조용히 돌아갑니다. 한 번 설정하면 존재를 잊게 됩니다.</p>
+    </div>
+    <div class="features">
+      <div class="feature"><div class="ico">🐾</div><h3>메뉴바 전용</h3><p>Dock 아이콘 없이 메뉴바에 발바닥 하나. 작업을 방해하지 않습니다.</p></div>
+      <div class="feature"><div class="ico">🎯</div><h3>물리 기반 추적</h3><p>커서와 거리를 두고 자신의 속도·가속도로 움직여, 커서에 붙어있는 게 아니라 살아있는 느낌을 줍니다.</p></div>
+      <div class="feature"><div class="ico">🧭</div><h3>8방향 애니메이션</h3><p>스프라이트가 이동 방향으로 몸을 돌립니다. 진짜 도트 감성 그대로.</p></div>
+      <div class="feature"><div class="ico">😴</div><h3>대기 → 수면</h3><p>멈추면 가만히 있다가 잠들고, 마우스를 움직이면 바로 깨어납니다.</p></div>
+      <div class="feature"><div class="ico">🐱</div><h3>포켓몬 251마리</h3><p>1·2세대 전부, 그중 124마리는 다른 색상까지. 미리보기·화살표·랜덤 버튼으로 선택합니다.</p></div>
+      <div class="feature"><div class="ico">🖥️</div><h3>클릭 통과 · 멀티 모니터</h3><p>작업을 막지 않는 투명 오버레이, 디스플레이 사이도 자연스럽게 넘나듭니다.</p></div>
+    </div>
+  </div>
+</section>
+
+<section style="background:var(--bg-soft); border-top:1px solid var(--border); border-bottom:1px solid var(--border);">
+  <div class="wrap split">
+    <img src="../assets/settings.png" width="400" height="540"
+         alt="설정 창: 선택한 포켓몬의 미리보기와 이전/다음 화살표, 랜덤 버튼, 거리·속도·크기·수면 시간 슬라이더">
+    <div>
+      <h3>내 취향대로</h3>
+      <p>메뉴바에서 <strong>Settings</strong>를 열면 모든 변경이 즉시 반영됩니다:</p>
+      <ul>
+        <li>선택한 캐릭터 미리보기, ◀ ▶ 화살표와 <strong>랜덤</strong> 버튼</li>
+        <li>커서와의 거리, 최대 속도, 캐릭터 크기</li>
+        <li>잠들기까지 걸리는 시간</li>
+        <li>다른 색상 스프라이트와 부드러운 발밑 그림자</li>
+        <li>로그인 시 자동 실행</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="flow">
+  <div class="wrap">
+    <div class="sec-head"><h2>동작 방식</h2><p>이동은 마우스 속도와 무관합니다 — 빠르게 움직이면 뒤처졌다가 자신의 속도로 따라잡습니다.</p></div>
+    <pre>걷기  →  멈춤  →  대기  →  [잠들기까지 시간]  →  수면
+                                       ↑ 커서 이동 ↓
+                                       └──── 걷기 ────┘</pre>
+  </div>
+</section>
+
+<section id="install" style="background:var(--bg-soft); border-top:1px solid var(--border);">
+  <div class="wrap">
+    <div class="sec-head"><h2>30초면 설치</h2><p>Xcode도 개발자 도구도 필요 없이, 받아서 드래그만.</p></div>
+    <div class="steps">
+      <div class="step"><h3>다운로드</h3><p><a href="https://github.com/LimFull/pokemon-mouse-follower/releases/latest">Releases</a>에서 최신 <code>.dmg</code>를 받아 엽니다.</p></div>
+      <div class="step"><h3>Applications로 드래그</h3><p><strong>Pokémon Mouse Follower</strong>를 응용 프로그램 폴더로 옮깁니다.</p></div>
+      <div class="step"><h3>실행</h3><p>Launchpad에서 실행하면 메뉴바에 🐾가 뜨고 포켓몬이 마우스를 따라다닙니다.</p></div>
+    </div>
+    <p style="text-align:center; margin-top:26px;"><a class="btn" href="https://github.com/LimFull/pokemon-mouse-follower/releases/latest">↓ macOS용 다운로드</a></p>
+  </div>
+</section>
+
+<section id="faq">
+  <div class="wrap">
+    <div class="sec-head"><h2>자주 묻는 질문</h2></div>
+    <div class="faq">
+      <details open><summary>Pokémon Mouse Follower는 무엇인가요?</summary><p>무료 오픈소스 macOS 메뉴바 앱입니다. 도트 포켓몬 캐릭터가 화면을 돌아다니며 마우스 커서를 따라다닙니다. 커서와 약간의 거리를 두고, 자신의 속도와 가속도로 움직입니다.</p></details>
+      <details><summary>무료인가요?</summary><p>네 — 완전히 무료이며 오픈소스입니다. 전체 소스 코드는 <a href="https://github.com/LimFull/pokemon-mouse-follower">GitHub</a>에서 볼 수 있습니다.</p></details>
+      <details><summary>어떤 macOS 버전을 지원하나요?</summary><p>macOS 13(Ventura) 이상, Apple Silicon과 Intel 맥 모두(universal 빌드).</p></details>
+      <details><summary>맥이 느려지거나 클릭을 막나요?</summary><p>아니요. 투명한 클릭 통과 오버레이에 그려지는 가벼운 메뉴바 앱이라 아래 앱을 방해하지 않고, Dock 아이콘도 없습니다.</p></details>
+      <details><summary>포켓몬은 몇 마리 중에서 고를 수 있나요?</summary><p>1·2세대 251마리, 그리고 대체 색상이 있는 124마리의 다른 색상 스프라이트. 미리보기·화살표·랜덤 버튼으로 둘러볼 수 있습니다.</p></details>
+      <details><summary>어떻게 설치하나요?</summary><p><a href="https://github.com/LimFull/pokemon-mouse-follower/releases/latest">Releases</a>에서 <code>.dmg</code>를 받아 앱을 Applications로 드래그한 뒤 실행합니다. macOS에서 그냥 열리며 개발자 도구는 필요 없습니다.</p></details>
+      <details><summary>어떻게 삭제하나요?</summary><p>메뉴바 🐾 아이콘 → 종료 후, 응용 프로그램에서 앱을 휴지통으로 옮기면 됩니다.</p></details>
+      <details><summary>스프라이트는 어디서 왔나요?</summary><p>도트 애니메이션은 커뮤니티 프로젝트인 <a href="https://sprites.pmdcollab.org/">PMD Sprite Collab</a>에서 가져왔습니다. 비상업적 개인 팬 프로젝트이며, Pokémon © Nintendo / Creatures Inc. / GAME FREAK inc.</p></details>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer class="site">
+  <div class="wrap">
+    <div class="cols">
+      <div><strong>Pokémon Mouse Follower</strong> · 무료 macOS 메뉴바 앱.<br><a href="https://github.com/LimFull/pokemon-mouse-follower">GitHub</a> · <a href="https://github.com/LimFull/pokemon-mouse-follower/releases/latest">다운로드</a></div>
+      <div class="langs"><a href="../">English</a> · <a href="./" aria-current="true">한국어</a> · <a href="../ja/">日本語</a></div>
+    </div>
+    <p class="disclaimer">스프라이트: PMD Sprite Collab. 본 프로젝트는 비상업적 개인 팬 프로젝트이며, 포켓몬 및 관련 이름·이미지의 권리는 각 권리자(Nintendo / Creatures Inc. / GAME FREAK inc.)에게 있습니다.</p>
+  </div>
+</footer>
+
+</body>
+</html>

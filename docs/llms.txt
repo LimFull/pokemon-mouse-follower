@@ -1,0 +1,27 @@
+# Pokémon Mouse Follower
+
+> A free, open-source macOS menu-bar app: a pixel-art Pokémon character walks
+> across your screen and follows your mouse cursor. It keeps a small distance
+> and moves with its own speed and acceleration, and falls asleep when idle.
+
+## Key facts
+- Platform: macOS 13 (Ventura) or later; Apple Silicon and Intel (universal build).
+- Price: Free and open source.
+- Category: Desktop pet / cursor companion / menu-bar utility for macOS.
+- Characters: 251 Pokémon (Generations 1 and 2), plus alternate-color sprites for 124 of them.
+- Behavior: walk → idle → sleep; wakes and follows when the cursor moves.
+- No Dock icon (menu-bar only); transparent click-through overlay; multi-monitor.
+- Customizable: character, distance from cursor, max speed, size, sleep delay, alt color, ground shadow, launch at login. Live character preview with previous/next arrows and a random button.
+- Localized in English, Korean, and Japanese (UI and Pokémon names).
+
+## Install
+- Download the .dmg from the Releases page, drag the app into Applications, and launch it. No developer tools required.
+
+## Links
+- Home: https://limfull.github.io/pokemon-mouse-follower/
+- Download (Releases): https://github.com/LimFull/pokemon-mouse-follower/releases/latest
+- Source code: https://github.com/LimFull/pokemon-mouse-follower
+
+## Attribution
+- Sprites: PMD Sprite Collab (https://sprites.pmdcollab.org/). Community-made pixel animations.
+- Non-commercial personal fan project. Pokémon © Nintendo / Creatures Inc. / GAME FREAK inc.

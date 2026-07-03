@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pokémon Mouse Follower — カーソルを追いかけるポケモンの macOS アプリ</title>
+<meta name="description" content="無料・オープンソースの macOS メニューバーアプリ。ドット絵のポケモンが画面を歩き回り、マウスカーソルを追いかけます。ポケモン251匹、色違い、影などに対応。">
+<link rel="canonical" href="https://limfull.github.io/pokemon-mouse-follower/ja/">
+<meta name="theme-color" content="#5b61f0">
+<link rel="icon" href="../assets/icon.png">
+<link rel="apple-touch-icon" href="../assets/icon.png">
+
+<link rel="alternate" hreflang="en" href="https://limfull.github.io/pokemon-mouse-follower/">
+<link rel="alternate" hreflang="ko" href="https://limfull.github.io/pokemon-mouse-follower/ko/">
+<link rel="alternate" hreflang="ja" href="https://limfull.github.io/pokemon-mouse-follower/ja/">
+<link rel="alternate" hreflang="x-default" href="https://limfull.github.io/pokemon-mouse-follower/">
+
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Pokémon Mouse Follower">
+<meta property="og:title" content="Pokémon Mouse Follower — カーソルを追いかけるポケモン">
+<meta property="og:description" content="無料の macOS メニューバーアプリ。ドット絵のポケモンが画面を歩き、マウスを追いかけます。251匹、色違い、影。">
+<meta property="og:url" content="https://limfull.github.io/pokemon-mouse-follower/ja/">
+<meta property="og:image" content="https://limfull.github.io/pokemon-mouse-follower/assets/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Pokémon Mouse Follower — カーソルを追いかけるポケモン">
+<meta name="twitter:description" content="無料の macOS メニューバーアプリ。ドット絵のポケモンがマウスを追いかけます。">
+<meta name="twitter:image" content="https://limfull.github.io/pokemon-mouse-follower/assets/og.png">
+
+<link rel="stylesheet" href="../assets/style.css">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Pokémon Mouse Follower",
+  "operatingSystem": "macOS 13.0 以降",
+  "applicationCategory": "UtilitiesApplication",
+  "description": "ドット絵のポケモンが画面を歩き回り、マウスカーソルを追いかける無料・オープンソースの macOS メニューバーアプリ。",
+  "url": "https://limfull.github.io/pokemon-mouse-follower/ja/",
+  "image": "https://limfull.github.io/pokemon-mouse-follower/assets/og.png",
+  "downloadUrl": "https://github.com/LimFull/pokemon-mouse-follower/releases/latest",
+  "softwareVersion": "1.0.5",
+  "author": { "@type": "Person", "name": "GADEUK LIM" },
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "inLanguage": "ja",
+  "mainEntity": [
+    { "@type": "Question", "name": "Pokémon Mouse Follower とは何ですか？",
+      "acceptedAnswer": { "@type": "Answer", "text": "無料・オープンソースの macOS メニューバーアプリです。ドット絵のポケモンが画面を歩き回り、マウスカーソルを追いかけます。カーソルと少し距離を保ち、キャラ自身の速度と加速度で動きます。" } },
+    { "@type": "Question", "name": "無料ですか？",
+      "acceptedAnswer": { "@type": "Answer", "text": "はい。完全に無料でオープンソースです。ソースコードはすべて GitHub で公開されています。" } },
+    { "@type": "Question", "name": "対応する macOS のバージョンは？",
+      "acceptedAnswer": { "@type": "Answer", "text": "macOS 13（Ventura）以降。Apple Silicon と Intel Mac の両方に対応（universal ビルド）です。" } },
+    { "@type": "Question", "name": "クリックや他のアプリの操作を邪魔しますか？",
+      "acceptedAnswer": { "@type": "Answer", "text": "いいえ。キャラは透明でクリックを透過するオーバーレイに描画されるため、下のアプリの操作を妨げません。Dock アイコンもなく、メニューバーにアイコンが出るだけです。" } },
+    { "@type": "Question", "name": "ポケモンは何匹から選べますか？",
+      "acceptedAnswer": { "@type": "Answer", "text": "第1・2世代のポケモン251匹に加え、色違い（altColor）がある124匹の別カラースプライトから選べます。" } },
+    { "@type": "Question", "name": "インストール方法は？",
+      "acceptedAnswer": { "@type": "Answer", "text": "Releases ページから .dmg をダウンロードして開き、Pokémon Mouse Follower を Applications フォルダにドラッグして起動します。Xcode や開発者ツールは不要です。" } },
+    { "@type": "Question", "name": "スプライトはどこから来ていますか？",
+      "acceptedAnswer": { "@type": "Answer", "text": "ドットアニメーションはコミュニティプロジェクトの PMD Sprite Collab から来ています。本アプリは非商用の個人ファンプロジェクトで、ポケモンは Nintendo / Creatures Inc. / GAME FREAK inc. の商標です。" } }
+  ]
+}
+</script>
+</head>
+<body>
+
+<header class="site">
+  <nav class="nav wrap">
+    <a class="brand" href="./"><img class="pixel" src="../assets/icon.png" alt="">Pokémon Mouse Follower</a>
+    <span class="spacer"></span>
+    <a class="navlink" href="#features">機能</a>
+    <a class="navlink" href="#faq">FAQ</a>
+    <a class="navlink" href="https://github.com/LimFull/pokemon-mouse-follower">GitHub</a>
+    <span class="langs"><a href="../">EN</a><a href="../ko/">KO</a><a href="./" aria-current="true">JA</a></span>
+    <a class="btn sm" href="https://github.com/LimFull/pokemon-mouse-follower/releases/latest">ダウンロード</a>
+  </nav>
+</header>
+
+<main>
+<section class="hero wrap">
+  <div class="grid">
+    <div>
+      <div class="badges">
+        <span class="badge">無料・オープンソース</span>
+        <span class="badge">macOS 13+</span>
+        <span class="badge">Apple Silicon · Intel</span>
+      </div>
+      <h1>カーソルを追いかけるポケモン。</h1>
+      <p class="lead">小さな macOS メニューバーアプリ。ドット絵のポケモンが画面を歩き、マウスを追いかけ、止まると丸くなって眠ります。</p>
+      <div class="cta">
+        <a class="btn" href="https://github.com/LimFull/pokemon-mouse-follower/releases/latest">↓ macOS 版をダウンロード</a>
+        <a class="btn ghost" href="https://github.com/LimFull/pokemon-mouse-follower">GitHub で見る</a>
+      </div>
+      <p class="cta note">無料 · アカウント不要 · ドラッグ＆ドロップで導入。</p>
+    </div>
+    <div class="shot">
+      <img src="../assets/follower.gif" width="752" height="572"
+           alt="白い画面を歩き、マウスカーソルを追いかけるゼニガメ" loading="eager">
+    </div>
+  </div>
+</section>
+
+<div class="band" aria-hidden="true">
+  <div class="row wrap">
+    <span class="walker pixel w001"></span>
+    <span class="walker pixel w025"></span>
+    <span class="walker pixel w007"></span>
+    <span class="walker pixel w133"></span>
+    <span class="walker pixel w004"></span>
+    <span class="walker pixel w054"></span>
+    <span class="walker pixel w143"></span>
+  </div>
+</div>
+
+<section id="features">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>小さいのに、愛らしい</h2>
+      <p>すべてメニューバーで静かに動きます。一度設定すれば、存在を忘れるほど。</p>
+    </div>
+    <div class="features">
+      <div class="feature"><div class="ico">🐾</div><h3>メニューバー専用</h3><p>Dock アイコンなし、メニューバーに肉球ひとつ。作業の邪魔をしません。</p></div>
+      <div class="feature"><div class="ico">🎯</div><h3>物理ベースの追従</h3><p>カーソルと距離を保ち、自分の速度・加速度で動くので、貼り付いているのではなく生きているように感じられます。</p></div>
+      <div class="feature"><div class="ico">🧭</div><h3>8方向アニメーション</h3><p>進む方向に合わせてスプライトが向きを変えます。本物のドット絵の質感そのまま。</p></div>
+      <div class="feature"><div class="ico">😴</div><h3>待機 → 睡眠</h3><p>止まると落ち着いて眠り、マウスを動かすとすぐに目を覚まします。</p></div>
+      <div class="feature"><div class="ico">🐱</div><h3>ポケモン251匹</h3><p>第1・2世代すべて、うち124匹は色違いも。プレビュー・矢印・ランダムボタンで選べます。</p></div>
+      <div class="feature"><div class="ico">🖥️</div><h3>クリック透過・マルチモニター</h3><p>作業を妨げない透明オーバーレイ、ディスプレイ間もなめらかに移動します。</p></div>
+    </div>
+  </div>
+</section>
+
+<section style="background:var(--bg-soft); border-top:1px solid var(--border); border-bottom:1px solid var(--border);">
+  <div class="wrap split">
+    <img src="../assets/settings.png" width="400" height="540"
+         alt="設定ウィンドウ: 選択中ポケモンのプレビューと前／次の矢印、ランダムボタン、距離・速度・大きさ・睡眠時間のスライダー">
+    <div>
+      <h3>自分好みに</h3>
+      <p>メニューバーから <strong>Settings</strong> を開くと、変更はすべて即座に反映されます:</p>
+      <ul>
+        <li>選択中キャラのプレビュー、◀ ▶ 矢印と <strong>ランダム</strong> ボタン</li>
+        <li>カーソルとの距離、最高速度、キャラの大きさ</li>
+        <li>眠るまでの時間</li>
+        <li>色違いスプライトと、やわらかい足元の影</li>
+        <li>ログイン時に起動</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="flow">
+  <div class="wrap">
+    <div class="sec-head"><h2>動きの仕組み</h2><p>移動はマウス速度とは無関係です — 速く動かすと一度遅れ、自分のペースで追いつきます。</p></div>
+    <pre>歩く  →  停止  →  待機  →  [眠るまでの時間]  →  睡眠
+                                     ↑ カーソル移動 ↓
+                                     └──── 歩く ────┘</pre>
+  </div>
+</section>
+
+<section id="install" style="background:var(--bg-soft); border-top:1px solid var(--border);">
+  <div class="wrap">
+    <div class="sec-head"><h2>30秒でインストール</h2><p>Xcode も開発者ツールも不要。ダウンロードしてドラッグするだけ。</p></div>
+    <div class="steps">
+      <div class="step"><h3>ダウンロード</h3><p><a href="https://github.com/LimFull/pokemon-mouse-follower/releases/latest">Releases</a> から最新の <code>.dmg</code> を入手して開きます。</p></div>
+      <div class="step"><h3>Applications へドラッグ</h3><p><strong>Pokémon Mouse Follower</strong> をアプリケーションフォルダに入れます。</p></div>
+      <div class="step"><h3>起動</h3><p>Launchpad から起動すると、メニューバーに 🐾 が出てポケモンがマウスを追いかけ始めます。</p></div>
+    </div>
+    <p style="text-align:center; margin-top:26px;"><a class="btn" href="https://github.com/LimFull/pokemon-mouse-follower/releases/latest">↓ macOS 版をダウンロード</a></p>
+  </div>
+</section>
+
+<section id="faq">
+  <div class="wrap">
+    <div class="sec-head"><h2>よくある質問</h2></div>
+    <div class="faq">
+      <details open><summary>Pokémon Mouse Follower とは何ですか？</summary><p>無料・オープンソースの macOS メニューバーアプリです。ドット絵のポケモンが画面を歩き回り、マウスカーソルを追いかけます。カーソルと少し距離を保ち、自分の速度と加速度で動きます。</p></details>
+      <details><summary>無料ですか？</summary><p>はい — 完全に無料でオープンソースです。ソースコードはすべて <a href="https://github.com/LimFull/pokemon-mouse-follower">GitHub</a> で公開されています。</p></details>
+      <details><summary>対応する macOS のバージョンは？</summary><p>macOS 13（Ventura）以降、Apple Silicon と Intel Mac の両方（universal ビルド）。</p></details>
+      <details><summary>Mac が重くなったり、クリックを妨げたりしますか？</summary><p>いいえ。透明でクリックを透過するオーバーレイに描かれる軽量なメニューバーアプリなので、下のアプリを妨げず、Dock アイコンもありません。</p></details>
+      <details><summary>ポケモンは何匹から選べますか？</summary><p>第1・2世代の251匹、加えて色違いがある124匹の別カラースプライト。プレビュー・矢印・ランダムボタンで見て回れます。</p></details>
+      <details><summary>インストール方法は？</summary><p><a href="https://github.com/LimFull/pokemon-mouse-follower/releases/latest">Releases</a> から <code>.dmg</code> を入手し、アプリを Applications にドラッグして起動します。macOS でそのまま開き、開発者ツールは不要です。</p></details>
+      <details><summary>アンインストール方法は？</summary><p>メニューバーの 🐾 アイコン → 終了 のあと、アプリケーションからアプリをゴミ箱へ移動します。</p></details>
+      <details><summary>スプライトはどこから来ていますか？</summary><p>ドットアニメーションはコミュニティプロジェクトの <a href="https://sprites.pmdcollab.org/">PMD Sprite Collab</a> から来ています。非商用の個人ファンプロジェクトで、Pokémon © Nintendo / Creatures Inc. / GAME FREAK inc.</p></details>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer class="site">
+  <div class="wrap">
+    <div class="cols">
+      <div><strong>Pokémon Mouse Follower</strong> · 無料の macOS メニューバーアプリ。<br><a href="https://github.com/LimFull/pokemon-mouse-follower">GitHub</a> · <a href="https://github.com/LimFull/pokemon-mouse-follower/releases/latest">ダウンロード</a></div>
+      <div class="langs"><a href="../">English</a> · <a href="../ko/">한국어</a> · <a href="./" aria-current="true">日本語</a></div>
+    </div>
+    <p class="disclaimer">スプライト: PMD Sprite Collab。本プロジェクトは非商用の個人ファンプロジェクトで、ポケモンおよび関連する名称・画像の権利は各権利者（Nintendo / Creatures Inc. / GAME FREAK inc.）に帰属します。</p>
+  </div>
+</footer>
+
+</body>
+</html>

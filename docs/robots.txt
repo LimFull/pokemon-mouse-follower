@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://limfull.github.io/pokemon-mouse-follower/sitemap.xml

@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pokémon Mouse Follower — a Pokémon that follows your cursor on macOS</title>
+<meta name="description" content="A free, open-source macOS menu-bar app: a pixel-art Pokémon walks across your screen and follows your mouse cursor. Choose from 251 Pokémon, alt colors, shadows and more.">
+<link rel="canonical" href="https://limfull.github.io/pokemon-mouse-follower/">
+<meta name="theme-color" content="#5b61f0">
+<link rel="icon" href="assets/icon.png">
+<link rel="apple-touch-icon" href="assets/icon.png">
+
+<link rel="alternate" hreflang="en" href="https://limfull.github.io/pokemon-mouse-follower/">
+<link rel="alternate" hreflang="ko" href="https://limfull.github.io/pokemon-mouse-follower/ko/">
+<link rel="alternate" hreflang="ja" href="https://limfull.github.io/pokemon-mouse-follower/ja/">
+<link rel="alternate" hreflang="x-default" href="https://limfull.github.io/pokemon-mouse-follower/">
+
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Pokémon Mouse Follower">
+<meta property="og:title" content="Pokémon Mouse Follower — a Pokémon that follows your cursor">
+<meta property="og:description" content="A free macOS menu-bar app: a pixel-art Pokémon walks your screen and follows the mouse. 251 Pokémon, alt colors, shadows.">
+<meta property="og:url" content="https://limfull.github.io/pokemon-mouse-follower/">
+<meta property="og:image" content="https://limfull.github.io/pokemon-mouse-follower/assets/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Pokémon Mouse Follower — a Pokémon that follows your cursor">
+<meta name="twitter:description" content="A free macOS menu-bar app: a pixel-art Pokémon walks your screen and follows the mouse.">
+<meta name="twitter:image" content="https://limfull.github.io/pokemon-mouse-follower/assets/og.png">
+
+<link rel="stylesheet" href="assets/style.css">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Pokémon Mouse Follower",
+  "operatingSystem": "macOS 13.0 or later",
+  "applicationCategory": "UtilitiesApplication",
+  "description": "A free, open-source macOS menu-bar app where a pixel-art Pokémon walks across your screen and follows your mouse cursor.",
+  "url": "https://limfull.github.io/pokemon-mouse-follower/",
+  "image": "https://limfull.github.io/pokemon-mouse-follower/assets/og.png",
+  "downloadUrl": "https://github.com/LimFull/pokemon-mouse-follower/releases/latest",
+  "softwareVersion": "1.0.5",
+  "author": { "@type": "Person", "name": "GADEUK LIM" },
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    { "@type": "Question", "name": "What is Pokémon Mouse Follower?",
+      "acceptedAnswer": { "@type": "Answer", "text": "It is a free, open-source macOS menu-bar app. A pixel-art Pokémon character walks around your screen and follows your mouse cursor, keeping a small distance and moving with its own speed and acceleration." } },
+    { "@type": "Question", "name": "Is Pokémon Mouse Follower free?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Yes. It is completely free and open source — the full source code is on GitHub." } },
+    { "@type": "Question", "name": "Which macOS versions are supported?",
+      "acceptedAnswer": { "@type": "Answer", "text": "macOS 13 (Ventura) and later, on both Apple Silicon and Intel Macs (universal build)." } },
+    { "@type": "Question", "name": "Does it get in the way of clicking or using other apps?",
+      "acceptedAnswer": { "@type": "Answer", "text": "No. The character is drawn on a transparent, click-through overlay, so it never blocks the apps underneath. It also has no Dock icon — only a paw icon in the menu bar." } },
+    { "@type": "Question", "name": "How many Pokémon can I choose from?",
+      "acceptedAnswer": { "@type": "Answer", "text": "251 Pokémon from Generations 1 and 2, plus alternate-color (shiny-style) sprites for the 124 Pokémon that have them." } },
+    { "@type": "Question", "name": "How do I install it?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Download the .dmg from the Releases page, open it, drag Pokémon Mouse Follower into your Applications folder, and launch it. No Xcode or developer tools are required." } },
+    { "@type": "Question", "name": "Where do the sprites come from?",
+      "acceptedAnswer": { "@type": "Answer", "text": "The pixel animations are from PMD Sprite Collab, a community project. This app is a non-commercial personal fan project; Pokémon is a trademark of Nintendo / Creatures Inc. / GAME FREAK inc." } }
+  ]
+}
+</script>
+</head>
+<body>
+
+<header class="site">
+  <nav class="nav wrap">
+    <a class="brand" href="./"><img class="pixel" src="assets/icon.png" alt="">Pokémon Mouse Follower</a>
+    <span class="spacer"></span>
+    <a class="navlink" href="#features">Features</a>
+    <a class="navlink" href="#faq">FAQ</a>
+    <a class="navlink" href="https://github.com/LimFull/pokemon-mouse-follower">GitHub</a>
+    <span class="langs"><a href="./" aria-current="true">EN</a><a href="ko/">KO</a><a href="ja/">JA</a></span>
+    <a class="btn sm" href="https://github.com/LimFull/pokemon-mouse-follower/releases/latest">Download</a>
+  </nav>
+</header>
+
+<main>
+<section class="hero wrap">
+  <div class="grid">
+    <div>
+      <div class="badges">
+        <span class="badge">Free &amp; open source</span>
+        <span class="badge">macOS 13+</span>
+        <span class="badge">Apple Silicon · Intel</span>
+      </div>
+      <h1>A Pokémon that follows your cursor.</h1>
+      <p class="lead">A tiny macOS menu-bar app. A pixel-art Pokémon strolls across your screen, chases your mouse, and curls up to sleep when you stop.</p>
+      <div class="cta">
+        <a class="btn" href="https://github.com/LimFull/pokemon-mouse-follower/releases/latest">↓ Download for macOS</a>
+        <a class="btn ghost" href="https://github.com/LimFull/pokemon-mouse-follower">View on GitHub</a>
+      </div>
+      <p class="cta note">Free · no account · drag-and-drop install.</p>
+    </div>
+    <div class="shot">
+      <img src="assets/follower.gif" width="752" height="572"
+           alt="A Squirtle walking across a white screen and following the mouse cursor" loading="eager">
+    </div>
+  </div>
+</section>
+
+<div class="band" aria-hidden="true">
+  <div class="row wrap">
+    <span class="walker pixel w001"></span>
+    <span class="walker pixel w025"></span>
+    <span class="walker pixel w007"></span>
+    <span class="walker pixel w133"></span>
+    <span class="walker pixel w004"></span>
+    <span class="walker pixel w054"></span>
+    <span class="walker pixel w143"></span>
+  </div>
+</div>
+
+<section id="features">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>Small app, lots of charm</h2>
+      <p>Everything runs quietly in the menu bar. Tweak it, then forget it's there.</p>
+    </div>
+    <div class="features">
+      <div class="feature"><div class="ico">🐾</div><h3>Menu-bar only</h3><p>No Dock icon — just a paw in the menu bar. It stays out of your way.</p></div>
+      <div class="feature"><div class="ico">🎯</div><h3>Physics-based following</h3><p>The character keeps its distance and moves with its own speed and acceleration, so it feels alive rather than glued to the cursor.</p></div>
+      <div class="feature"><div class="ico">🧭</div><h3>8-direction animation</h3><p>Sprites turn to face wherever they're walking, in true pixel-art style.</p></div>
+      <div class="feature"><div class="ico">😴</div><h3>Idle → sleep</h3><p>Stop moving and it settles down, then falls asleep. Move the mouse and it wakes right up.</p></div>
+      <div class="feature"><div class="ico">🐱</div><h3>251 Pokémon</h3><p>All of Gen 1 &amp; 2, with alternate-color variants for 124 of them. Pick with a preview, arrows, or a random button.</p></div>
+      <div class="feature"><div class="ico">🖥️</div><h3>Click-through &amp; multi-monitor</h3><p>A transparent overlay that never blocks your work, and crosses between displays seamlessly.</p></div>
+    </div>
+  </div>
+</section>
+
+<section style="background:var(--bg-soft); border-top:1px solid var(--border); border-bottom:1px solid var(--border);">
+  <div class="wrap split">
+    <img src="assets/settings.png" width="400" height="540"
+         alt="The Settings window: a live preview of the selected Pokémon with previous/next arrows and a random button, plus sliders for distance, speed, size and sleep time">
+    <div>
+      <h3>Make it yours</h3>
+      <p>Open <strong>Settings</strong> from the menu bar and every change applies instantly:</p>
+      <ul>
+        <li>Live preview of the selected character, with ◀ ▶ arrows and a <strong>Random</strong> button</li>
+        <li>Distance from the cursor, max speed, character size</li>
+        <li>Time until it falls asleep</li>
+        <li>Alt-color sprites and a soft ground shadow</li>
+        <li>Launch at login</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="flow">
+  <div class="wrap">
+    <div class="sec-head"><h2>How it behaves</h2><p>Movement is independent of mouse speed — if you dash, it lags behind and then catches up at its own pace.</p></div>
+    <pre>walk  →  stop  →  idle  →  [time until sleep]  →  sleep
+                                          ↑ cursor moves ↓
+                                          └──── walk ────┘</pre>
+  </div>
+</section>
+
+<section id="install" style="background:var(--bg-soft); border-top:1px solid var(--border);">
+  <div class="wrap">
+    <div class="sec-head"><h2>Install in 30 seconds</h2><p>No Xcode, no developer tools — just download and drag.</p></div>
+    <div class="steps">
+      <div class="step"><h3>Download</h3><p>Grab the latest <code>.dmg</code> from the <a href="https://github.com/LimFull/pokemon-mouse-follower/releases/latest">Releases</a> page and open it.</p></div>
+      <div class="step"><h3>Drag to Applications</h3><p>Drop <strong>Pokémon Mouse Follower</strong> into your Applications folder.</p></div>
+      <div class="step"><h3>Launch</h3><p>Open it from Launchpad. A 🐾 appears in the menu bar and your Pokémon starts following the mouse.</p></div>
+    </div>
+    <p style="text-align:center; margin-top:26px;"><a class="btn" href="https://github.com/LimFull/pokemon-mouse-follower/releases/latest">↓ Download for macOS</a></p>
+  </div>
+</section>
+
+<section id="faq">
+  <div class="wrap">
+    <div class="sec-head"><h2>Frequently asked questions</h2></div>
+    <div class="faq">
+      <details open><summary>What is Pokémon Mouse Follower?</summary><p>It is a free, open-source macOS menu-bar app. A pixel-art Pokémon character walks around your screen and follows your mouse cursor, keeping a small distance and moving with its own speed and acceleration.</p></details>
+      <details><summary>Is it free?</summary><p>Yes — completely free and open source. You can read the full source code on <a href="https://github.com/LimFull/pokemon-mouse-follower">GitHub</a>.</p></details>
+      <details><summary>Which macOS versions are supported?</summary><p>macOS 13 (Ventura) and later, on both Apple Silicon and Intel Macs (a universal build).</p></details>
+      <details><summary>Does it slow down my Mac or block clicks?</summary><p>No. It's a lightweight menu-bar app drawn on a transparent, click-through overlay, so it never blocks the apps underneath and has no Dock icon.</p></details>
+      <details><summary>How many Pokémon can I choose from?</summary><p>251 Pokémon from Generations 1 and 2, plus alternate-color sprites for the 124 that have them. You can browse with a live preview, arrows, or a random button.</p></details>
+      <details><summary>How do I install it?</summary><p>Download the <code>.dmg</code> from <a href="https://github.com/LimFull/pokemon-mouse-follower/releases/latest">Releases</a>, drag the app into Applications, and launch it. Downloads open normally on macOS — no developer tools needed.</p></details>
+      <details><summary>How do I uninstall it?</summary><p>Click the 🐾 menu-bar icon → Quit, then drag the app from Applications to the Trash.</p></details>
+      <details><summary>Where do the sprites come from?</summary><p>The pixel animations are from <a href="https://sprites.pmdcollab.org/">PMD Sprite Collab</a>, a community project. This is a non-commercial personal fan project; Pokémon © Nintendo / Creatures Inc. / GAME FREAK inc.</p></details>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer class="site">
+  <div class="wrap">
+    <div class="cols">
+      <div><strong>Pokémon Mouse Follower</strong> · a free macOS menu-bar app.<br><a href="https://github.com/LimFull/pokemon-mouse-follower">GitHub</a> · <a href="https://github.com/LimFull/pokemon-mouse-follower/releases/latest">Download</a></div>
+      <div class="langs"><a href="./" aria-current="true">English</a> · <a href="ko/">한국어</a> · <a href="ja/">日本語</a></div>
+    </div>
+    <p class="disclaimer">Sprites from PMD Sprite Collab. This is a non-commercial personal fan project. All rights to Pokémon and related names and images belong to their respective owners (Nintendo / Creatures Inc. / GAME FREAK inc.).</p>
+  </div>
+</footer>
+
+</body>
+</html>
