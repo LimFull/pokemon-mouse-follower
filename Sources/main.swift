@@ -141,6 +141,11 @@ final class AppSettings {
         get { d.bool(forKey: "showShadow") }   // defaults to false when unset
         set { d.set(newValue, forKey: "showShadow") }
     }
+    // Use the alternate-color sprite variant when a character has one.
+    var altColor: Bool {
+        get { d.bool(forKey: "altColor") }
+        set { d.set(newValue, forKey: "altColor") }
+    }
 }
 
 // MARK: - Sprite loading / slicing
@@ -327,9 +332,15 @@ final class CharacterController {
 
     init() { setCharacter(AppSettings.shared.selectedCharacter) }
 
-    // Load a character's sheets, sizing frames from its AnimData.xml.
+    // Load a character's sheets, sizing frames from its AnimData.xml. Uses the
+    // alt-color variant (characters/<folder>/altcolor) when enabled and present.
     func setCharacter(_ folder: String) {
-        let subdir = "characters/\(folder)"
+        var subdir = "characters/\(folder)"
+        if AppSettings.shared.altColor,
+           Bundle.main.url(forResource: "AnimData", withExtension: "xml",
+                           subdirectory: "\(subdir)/altcolor") != nil {
+            subdir += "/altcolor"
+        }
         let xml = Sprite.loadText("AnimData", ext: "xml", subdir: subdir)
         shadowSize = xml.map { Sprite.shadowSize(in: $0) } ?? 1
         walk = slicedSheet("Walk-Anim", anim: "Walk", subdir: subdir, xml: xml)
@@ -552,7 +563,7 @@ final class SettingsWindowController: NSObject {
 
     init(controller: CharacterController) {
         self.controller = controller
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 380),
+        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 420),
                           styleMask: [.titled, .closable], backing: .buffered, defer: false)
         window.title = L("settings.window.title")
         window.isReleasedWhenClosed = false
@@ -581,6 +592,7 @@ final class SettingsWindowController: NSObject {
         grid.addRow(with: [makeLabel(L("label.sleep")),
                            makeSlider(tag: 3, range: AppSettings.sleepRange, value: Double(s.sleepDelay)),
                            makeValueLabel(3, text: fmt(3, s.sleepDelay))])
+        grid.addRow(with: [makeLabel(L("label.altcolor")), makeAltColorCheckbox(), NSGridCell.emptyContentView])
         grid.addRow(with: [makeLabel(L("label.shadow")), makeShadowCheckbox(), NSGridCell.emptyContentView])
         grid.addRow(with: [makeLabel(L("label.launch")), makeLaunchCheckbox(), NSGridCell.emptyContentView])
 
@@ -603,6 +615,17 @@ final class SettingsWindowController: NSObject {
 
     @objc private func shadowToggled(_ sender: NSButton) {
         AppSettings.shared.showShadow = (sender.state == .on)
+    }
+
+    private func makeAltColorCheckbox() -> NSButton {
+        let cb = NSButton(checkboxWithTitle: "", target: self, action: #selector(altColorToggled(_:)))
+        cb.state = AppSettings.shared.altColor ? .on : .off
+        return cb
+    }
+
+    @objc private func altColorToggled(_ sender: NSButton) {
+        AppSettings.shared.altColor = (sender.state == .on)
+        controller?.setCharacter(AppSettings.shared.selectedCharacter)   // reload with/without variant
     }
 
     private func makeLaunchCheckbox() -> NSButton {
