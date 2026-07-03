@@ -23,6 +23,7 @@ NOTARY_PROFILE="PMF_NOTARY"
 
 VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" Info.plist)
 DMG="${APP_NAME}-${VERSION}.dmg"
+STABLE_DMG="${APP_NAME}.dmg"   # version-less copy for a stable /releases/latest/download/ link
 TAG="v${VERSION}"
 
 # 1. Build a fresh universal app bundle (build.sh ad-hoc signs it).
@@ -74,7 +75,11 @@ if [ "$NOTARIZED" = 1 ]; then
   xcrun stapler validate "$DMG" || true
 fi
 
-echo "==> Built ./$DMG"
+# Version-less copy (already notarized/stapled if the original is) so the site can
+# link to a stable .../releases/latest/download/PokemonMouseFollower.dmg URL.
+cp -f "$DMG" "$STABLE_DMG"
+
+echo "==> Built ./$DMG (and ./$STABLE_DMG)"
 
 if [ "${1:-}" != "publish" ]; then
   echo "Publish it with:  ./release.sh publish"
@@ -121,11 +126,11 @@ fi
 
 # 8. Create or update the GitHub Release and upload the .dmg.
 if gh release view "$TAG" >/dev/null 2>&1; then
-  echo "==> Release $TAG exists; uploading asset..."
-  gh release upload "$TAG" "$DMG" --clobber
+  echo "==> Release $TAG exists; uploading assets..."
+  gh release upload "$TAG" "$DMG" "$STABLE_DMG" --clobber
 else
   echo "==> Creating release $TAG..."
-  gh release create "$TAG" "$DMG" \
+  gh release create "$TAG" "$DMG" "$STABLE_DMG" \
     --title "Pokémon Mouse Follower ${VERSION}" \
     --notes "$NOTES"
 fi
