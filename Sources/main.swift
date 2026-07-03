@@ -510,8 +510,8 @@ final class SpriteView: NSView {
         // Ground ellipse: a solid, uniform-opacity core (matching the source's
         // flat shadow) with just the outer edge softened so it doesn't look cut out.
         shadowLayer.type = .radial
-        shadowLayer.colors = [CGColor(gray: 0, alpha: 0.35),
-                              CGColor(gray: 0, alpha: 0.35),
+        shadowLayer.colors = [CGColor(gray: 0, alpha: 0.30),
+                              CGColor(gray: 0, alpha: 0.30),
                               CGColor(gray: 0, alpha: 0)]
         shadowLayer.locations = [0.0, 0.7, 1.0]
         shadowLayer.startPoint = CGPoint(x: 0.5, y: 0.5)
