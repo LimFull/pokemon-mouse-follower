@@ -35,21 +35,6 @@ Dock にはアイコンを表示せず、上部メニューバーにアイコン
 2. **Pokémon Mouse Follower** アイコンを **Applications** フォルダへドラッグ
 3. Launchpad / アプリケーションから起動
 
-リリースは **Apple Developer ID 署名 + 公証（notarized）** 済みなので、Gatekeeper の警告なしにそのまま開けます。
-
-<details>
-<summary>ソース／ad-hoc ビルドは Gatekeeper 警告が出ます — 開き方</summary>
-
-ソースからビルドした場合（ad-hoc 署名）、初回起動時に macOS の Gatekeeper がブロックします。マルウェアだからではなく、署名方式によるものです。
-
-- **macOS 13〜14（Ventura / Sonoma）:** アプリを **右クリック → 開く → 開く**。
-- **macOS 15（Sequoia）以降:** 一度起動を試みて警告を出したあと、**システム設定 → プライバシーとセキュリティ** の下部にある **「このまま開く（Open Anyway）」** を押します。
-- 「壊れているため開けません」と出る場合（ダウンロード隔離属性のため）はターミナルで:
-  ```bash
-  xattr -dr com.apple.quarantine /Applications/PokemonMouseFollower.app
-  ```
-</details>
-
 ## インストール（ソースからビルド）
 
 ```bash
@@ -112,7 +97,7 @@ open ./PokemonMouseFollower.app
 Sources/main.swift        アプリ本体（オーバーレイウィンドウ、スプライトアニメ、物理、設定GUI）
 Info.plist                バンドル設定（LSUIElement、ローカライズ一覧）
 build.sh                  universal .app ビルド + ad-hoc 署名（+ install）
-release.sh                ビルド + Developer ID 署名 + 公証 + .dmg 化 + 発行
+release.sh                ビルド + 署名 + .dmg 化 + 発行
 dev.sh                    素早い arm64 デバッグビルド + フォアグラウンド実行
 fetch-shadows.sh          -Shadow マーカーシートのダウンロード
 fetch-altcolors.sh        色違い（altColor）スプライトのダウンロード

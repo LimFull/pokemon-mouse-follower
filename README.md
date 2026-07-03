@@ -34,21 +34,6 @@ Download the `.dmg` from [Releases](https://github.com/LimFull/pokemon-mouse-fol
 2. Drag **Pokémon Mouse Follower** into the **Applications** folder
 3. Launch it from Launchpad / Applications
 
-Releases are **Developer ID signed and notarized by Apple**, so they open with no Gatekeeper warning.
-
-<details>
-<summary>Source / ad-hoc builds show a Gatekeeper warning — how to open</summary>
-
-If you build from source (ad-hoc signed), macOS Gatekeeper blocks the first launch. It's not malware — it's the signing method.
-
-- **macOS 13–14 (Ventura / Sonoma):** right-click the app → **Open → Open**.
-- **macOS 15 (Sequoia)+:** try to launch it, then go to **System Settings → Privacy & Security** and click **Open Anyway** at the bottom.
-- If it says "damaged and can't be opened" (download quarantine), run:
-  ```bash
-  xattr -dr com.apple.quarantine /Applications/PokemonMouseFollower.app
-  ```
-</details>
-
 ## Install (build from source)
 
 ```bash
@@ -109,7 +94,7 @@ walk → stop → idle → [time until sleep] → sleep
 Sources/main.swift        The app (overlay window, sprite animation, physics, settings GUI)
 Info.plist                Bundle config (LSUIElement, localization list)
 build.sh                  Build universal .app + ad-hoc sign (+ install)
-release.sh                Build + Developer ID sign + notarize + package .dmg + publish
+release.sh                Build + sign + package .dmg + publish
 dev.sh                    Quick arm64 debug build + foreground run
 fetch-shadows.sh          Download the -Shadow marker sheets
 fetch-altcolors.sh        Download the alt-color sprite variants
