@@ -160,5 +160,28 @@ footer.site a:hover { color: var(--text); }
   .hero .grid, .split { grid-template-columns: 1fr; }
   .features, .steps { grid-template-columns: 1fr; }
   .hero { padding: 40px 0 20px; }
-  .band .row { gap: 18px; }
+  .band .row { gap: 18px; }        /* 7 walkers still fit down to ~680px */
+}
+
+/* Header + walking band on phones/tablets */
+@media (max-width: 680px) {
+  .nav { gap: 10px; }
+  .nav .navlink { display: none; }                     /* drop Features/FAQ/GitHub */
+  .brand { font-size: 15px; white-space: nowrap; }
+  .brand img { width: 24px; height: 24px; }
+  .band .row { height: 108px; }
+  .w143, .w054 { display: none; }                      /* 5 walkers remain */
+}
+@media (max-width: 600px) {
+  .nav { gap: 8px; }
+  .langs { display: none; }                            /* keep brand + Download (langs still in footer) */
+  .brand { font-size: 14px; }
+  .brand img { width: 22px; height: 22px; }
+}
+@media (max-width: 560px) {
+  .band .row { gap: 14px; height: 96px; }
+  .w133, .w001 { display: none; }                      /* 3 walkers remain */
+}
+@media (max-width: 440px) {
+  .wrap { padding: 0 16px; }
 }
