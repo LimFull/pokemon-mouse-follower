@@ -617,7 +617,14 @@ final class CharacterPreviewView: NSView {
             guard cw > 0, ch > 0 else { continue }
             let rows = max(1, img.height / ch), cols = max(1, img.width / cw)
             let sheet = Sprite.slice(img, cols: cols, rows: rows, cellW: cw, cellH: ch)
-            if let down = sheet.first, !down.isEmpty { return down }
+            guard let down = sheet.first, !down.isEmpty else { continue }
+            // Sprites sit high in their tile (empty space below for the shadow), so
+            // crop to the opaque bounds — shared across frames so they stay aligned —
+            // and the character ends up centered in the preview box, not the tile.
+            var box: CGRect?
+            for f in down { if let b = Sprite.opaqueBBox(f) { box = box.map { $0.union(b) } ?? b } }
+            guard let crop = box else { return down }
+            return down.map { $0.cropping(to: crop) ?? $0 }
         }
         return []
     }
