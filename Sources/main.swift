@@ -558,6 +558,31 @@ final class SpriteView: NSView {
     }
 }
 
+// MARK: - UI style (cute, Pokémon-flavored settings look)
+extension NSFont {
+    /// Friendly rounded system font; falls back to the default if unavailable.
+    static func rounded(_ size: CGFloat, _ weight: NSFont.Weight = .regular) -> NSFont {
+        let base = NSFont.systemFont(ofSize: size, weight: weight)
+        guard let d = base.fontDescriptor.withDesign(.rounded) else { return base }
+        return NSFont(descriptor: d, size: size) ?? base
+    }
+}
+enum Palette {
+    static func dynamic(_ light: NSColor, _ dark: NSColor) -> NSColor {
+        NSColor(name: nil) { $0.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? dark : light }
+    }
+    static let accent = NSColor(srgbRed: 1.0, green: 0.44, blue: 0.42, alpha: 1)   // warm coral-red
+    static let windowBG = dynamic(NSColor(srgbRed: 1.0, green: 0.98, blue: 0.95, alpha: 1),
+                                  NSColor(srgbRed: 0.11, green: 0.11, blue: 0.13, alpha: 1))
+    static let cardTop = dynamic(.white, NSColor(srgbRed: 0.18, green: 0.18, blue: 0.20, alpha: 1))
+    static let cardBottom = dynamic(NSColor(srgbRed: 0.96, green: 0.95, blue: 1.0, alpha: 1),
+                                    NSColor(srgbRed: 0.14, green: 0.14, blue: 0.16, alpha: 1))
+    static let cardBorder = dynamic(NSColor(srgbRed: 0.90, green: 0.88, blue: 0.94, alpha: 1),
+                                    NSColor(srgbRed: 0.30, green: 0.30, blue: 0.34, alpha: 1))
+    static let label = dynamic(NSColor(srgbRed: 0.38, green: 0.35, blue: 0.42, alpha: 1),
+                               NSColor(srgbRed: 0.80, green: 0.80, blue: 0.84, alpha: 1))
+}
+
 // MARK: - Character Preview
 // Plays a character's downward-facing Idle animation (sprite row 0 = South),
 // respecting the alt-color setting. Used at the top of the settings window.
@@ -567,20 +592,45 @@ final class CharacterPreviewView: NSView {
     private var idx = 0
     private var timer: Timer?
 
+    private let card = CAGradientLayer()
+
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
-        layer?.cornerRadius = 8
-        layer?.borderWidth = 1
-        layer?.borderColor = NSColor.separatorColor.cgColor
+        // Soft drop shadow on the host layer; the rounded gradient card sits inside.
+        layer?.masksToBounds = false
+        layer?.shadowColor = NSColor.black.cgColor
+        layer?.shadowOpacity = 0.14
+        layer?.shadowRadius = 7
+        layer?.shadowOffset = CGSize(width: 0, height: -2)
+        card.cornerRadius = 18
+        card.masksToBounds = true
+        card.startPoint = CGPoint(x: 0.5, y: 0)
+        card.endPoint = CGPoint(x: 0.5, y: 1)
+        card.borderWidth = 1
+        layer?.addSublayer(card)
         imgLayer.magnificationFilter = .nearest
         imgLayer.contentsGravity = .resizeAspect
-        layer?.addSublayer(imgLayer)
+        card.addSublayer(imgLayer)
+        applyColors()
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
-    override var intrinsicContentSize: NSSize { NSSize(width: 84, height: 84) }
-    override func layout() { super.layout(); imgLayer.frame = bounds.insetBy(dx: 6, dy: 6) }
+    override var intrinsicContentSize: NSSize { NSSize(width: 96, height: 96) }
+    override func layout() {
+        super.layout()
+        card.frame = bounds
+        imgLayer.frame = bounds.insetBy(dx: 12, dy: 12)
+    }
+    override func viewDidChangeEffectiveAppearance() { super.viewDidChangeEffectiveAppearance(); applyColors() }
+
+    private func applyColors() {
+        // CALayer cgColors don't auto-update with appearance, so resolve them here.
+        (effectiveAppearance).performAsCurrentDrawingAppearance {
+            card.colors = [Palette.cardTop.cgColor, Palette.cardBottom.cgColor]
+            card.borderColor = Palette.cardBorder.cgColor
+        }
+    }
 
     func setCharacter(_ folder: String) {
         frames = CharacterPreviewView.idleDownFrames(folder)
@@ -640,10 +690,11 @@ final class SettingsWindowController: NSObject {
 
     init(controller: CharacterController) {
         self.controller = controller
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 540),
+        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 524),
                           styleMask: [.titled, .closable], backing: .buffered, defer: false)
         window.title = L("settings.window.title")
         window.isReleasedWhenClosed = false
+        window.backgroundColor = Palette.windowBG
         super.init()
         buildUI()
         window.center()
@@ -679,22 +730,20 @@ final class SettingsWindowController: NSObject {
 
         // Preview of the selected character (down-facing idle) with prev/next
         // arrows, plus a random picker — above the character dropdown.
-        preview = CharacterPreviewView(frame: NSRect(x: 0, y: 0, width: 84, height: 84))
+        preview = CharacterPreviewView(frame: NSRect(x: 0, y: 0, width: 96, height: 96))
         preview.translatesAutoresizingMaskIntoConstraints = false
-        preview.widthAnchor.constraint(equalToConstant: 84).isActive = true
-        preview.heightAnchor.constraint(equalToConstant: 84).isActive = true
-        let previewRow = NSStackView(views: [makeStepButton("◀", #selector(prevCharacter)),
+        preview.widthAnchor.constraint(equalToConstant: 96).isActive = true
+        preview.heightAnchor.constraint(equalToConstant: 96).isActive = true
+        let previewRow = NSStackView(views: [makeStepButton("‹", #selector(prevCharacter)),
                                              preview,
-                                             makeStepButton("▶", #selector(nextCharacter))])
+                                             makeStepButton("›", #selector(nextCharacter))])
         previewRow.orientation = .horizontal
         previewRow.alignment = .centerY
-        previewRow.spacing = 14
-        let randomBtn = NSButton(title: L("button.random"), target: self, action: #selector(randomCharacter))
-        randomBtn.bezelStyle = .rounded
-        let topStack = NSStackView(views: [previewRow, randomBtn])
+        previewRow.spacing = 16
+        let topStack = NSStackView(views: [previewRow, makeRandomButton()])
         topStack.orientation = .vertical
         topStack.alignment = .centerX
-        topStack.spacing = 10
+        topStack.spacing = 12
 
         let outer = NSStackView(views: [topStack, grid])
         outer.orientation = .vertical
@@ -706,17 +755,27 @@ final class SettingsWindowController: NSObject {
         content.addSubview(outer)
         NSLayoutConstraint.activate([
             outer.centerXAnchor.constraint(equalTo: content.centerXAnchor),
-            outer.centerYAnchor.constraint(equalTo: content.centerYAnchor),
+            outer.topAnchor.constraint(equalTo: content.topAnchor, constant: 26),
         ])
 
         preview.setCharacter(AppSettings.shared.selectedCharacter)
     }
 
     private func makeStepButton(_ title: String, _ action: Selector) -> NSButton {
-        let b = NSButton(title: title, target: self, action: action)
+        let b = NSButton(title: "", target: self, action: action)
         b.bezelStyle = .rounded
-        b.font = .systemFont(ofSize: 15)
-        b.widthAnchor.constraint(equalToConstant: 40).isActive = true
+        b.attributedTitle = NSAttributedString(string: title, attributes: [
+            .foregroundColor: Palette.accent, .font: NSFont.rounded(20, .bold)])
+        b.widthAnchor.constraint(equalToConstant: 42).isActive = true
+        return b
+    }
+
+    private func makeRandomButton() -> NSButton {
+        let b = NSButton(title: "", target: self, action: #selector(randomCharacter))
+        b.bezelStyle = .rounded
+        b.bezelColor = Palette.accent
+        b.attributedTitle = NSAttributedString(string: "🎲  " + L("button.random"), attributes: [
+            .foregroundColor: NSColor.white, .font: NSFont.rounded(13, .semibold)])
         return b
     }
 
@@ -767,13 +826,16 @@ final class SettingsWindowController: NSObject {
     private func makeLabel(_ text: String) -> NSTextField {
         let l = NSTextField(labelWithString: text)
         l.alignment = .right
+        l.font = .rounded(13, .medium)
+        l.textColor = Palette.label
         return l
     }
 
     private func makeValueLabel(_ tag: Int, text: String) -> NSTextField {
         let l = NSTextField(labelWithString: text)
         l.alignment = .left
-        l.font = .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+        l.font = .rounded(13, .semibold)
+        l.textColor = Palette.accent
         l.widthAnchor.constraint(equalToConstant: 44).isActive = true
         valueLabels[tag] = l
         return l
