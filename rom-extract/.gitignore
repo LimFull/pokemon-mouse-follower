@@ -1,0 +1,8 @@
+.venv/
+out/
+*.nds
+*.bin
+*.log
+.DS_Store
+__pycache__/
+*.pyc
