@@ -774,9 +774,27 @@ final class SettingsWindowController: NSObject {
         let b = NSButton(title: "", target: self, action: #selector(randomCharacter))
         b.bezelStyle = .rounded
         b.bezelColor = Palette.accent
-        b.attributedTitle = NSAttributedString(string: "🎲  " + L("button.random"), attributes: [
+        b.contentTintColor = .white
+        b.attributedTitle = NSAttributedString(string: L("button.random"), attributes: [
             .foregroundColor: NSColor.white, .font: NSFont.rounded(13, .semibold)])
+        if let dice = Self.diceIcon() {
+            b.image = dice
+            b.imagePosition = .imageLeading
+        }
         return b
+    }
+
+    // A crisp vector dice icon (SF Symbol), tinted to match the button.
+    private static func diceIcon() -> NSImage? {
+        let cfg = NSImage.SymbolConfiguration(pointSize: 14, weight: .bold)
+        for name in ["die.face.5", "die.face.6", "dice.fill", "dice"] {
+            if let img = NSImage(systemSymbolName: name, accessibilityDescription: "Random")?
+                .withSymbolConfiguration(cfg) {
+                img.isTemplate = true
+                return img
+            }
+        }
+        return nil
     }
 
     private func makeShadowCheckbox() -> NSButton {
