@@ -10,6 +10,10 @@
 
 A macOS menu-bar app: a Pokémon character wanders your screen and follows the mouse cursor. It runs in the background with no Dock icon — just a 🐾 icon in the menu bar.
 
+<p align="center">
+  <img src="docs/assets/follower.gif" width="480" alt="A Squirtle walking across the screen and following the mouse cursor">
+</p>
+
 - 🐾 **Menu-bar only** — no Dock icon (`LSUIElement`)
 - 🎯 **Physics-based following** — keeps a distance from the cursor and follows smoothly with its own speed/acceleration
 - 🧭 **8-direction animation** — the sprite turns to face its movement direction
