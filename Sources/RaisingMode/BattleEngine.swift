@@ -109,11 +109,12 @@ struct BattleEvent {
         case selfHit         // hurt itself in confusion
         case residual        // end-of-round burn/poison chip damage
         case recover         // woke up / thawed / snapped out of confusion
+        case ball            // a ball was thrown at the wild (D11)
     }
     let kind: Kind
     let actorIsPlayer: Bool     // whose action (or affliction) this is
     let moveId: Int             // 0 when not a move
-    let moveName: String        // move, or a short reason ("asleep", "burned", ...)
+    let moveName: String        // move, ball name, or a short reason ("asleep", ...)
     let damage: Int
     let effectiveness: Double   // 0 / 0.25 / 0.5 / 1 / 2 / 4 (1 when n/a)
     let targetIsPlayer: Bool    // whose HP/status changed
@@ -121,6 +122,9 @@ struct BattleEvent {
     let targetMaxHP: Int
     let fainted: Bool
     let statusApplied: String?  // ailment/volatile inflicted on the target, if any
+    var shakes: Int = 0         // .ball: how many of the 4 shake checks passed
+    var caught: Bool = false    // .ball: capture succeeded
+    var ballId: Int = 0         // .ball: GameItem raw value (for the icon)
 }
 
 struct BattleResult {
@@ -130,14 +134,23 @@ struct BattleResult {
     let playerEndStatus: String?   // major ailment the player's mon carries out
     let playerEndHP: Int
     let playerMaxHP: Int
+    var captured: Bool = false     // wild was caught (D11)
+    var ballsUsed: [GameItem] = []
 }
 
 enum BattleEngine {
-    /// Simulate the whole battle. `player`/`wild` HP are mutated to the end state.
-    static func run(player: Battler, wild: Battler) -> BattleResult {
+    /// Simulate the whole battle. `player`/`wild` HP are mutated to the end
+    /// state. `balls` is the throwable stock (D11) — the player side throws
+    /// one instead of attacking when the wild looks catchable (hurt or
+    /// statused); capture ends the battle immediately.
+    static func run(player: Battler, wild: Battler,
+                    balls: [GameItem] = []) -> BattleResult {
         var events: [BattleEvent] = []
+        var stock = balls
+        var used: [GameItem] = []
+        var captured = false
         var turn = 0
-        while !player.isFainted && !wild.isFainted && turn < 200 {
+        while !player.isFainted && !wild.isFainted && !captured && turn < 200 {
             turn += 1
             // Faster mon acts first (paralysis-adjusted; ties: player).
             let playerFirst = player.effectiveSpeed >= wild.effectiveSpeed
@@ -145,9 +158,26 @@ enum BattleEngine {
                 ? [(player, wild, true), (wild, player, false)]
                 : [(wild, player, false), (player, wild, true)]
             for (atk, def, isPlayer) in order {
-                guard !atk.isFainted, !def.isFainted else { continue }
+                guard !atk.isFainted, !def.isFainted, !captured else { continue }
+                // Throw a ball instead of attacking when the wild is catchable:
+                // hurt below 40% or carrying a status (max 3 throws per battle).
+                if isPlayer, !stock.isEmpty, used.count < 3,
+                   wild.currentHP * 100 <= wild.maxHP * 40 || wild.status != nil {
+                    let ball = stock.removeFirst()
+                    used.append(ball)
+                    let (ok, shakes) = attemptCapture(wild: wild, ball: ball)
+                    captured = ok
+                    events.append(BattleEvent(
+                        kind: .ball, actorIsPlayer: true, moveId: 0,
+                        moveName: ball.displayName, damage: 0, effectiveness: 1,
+                        targetIsPlayer: false, targetHP: wild.currentHP,
+                        targetMaxHP: wild.maxHP, fainted: false, statusApplied: nil,
+                        shakes: shakes, caught: ok, ballId: ball.rawValue))
+                    continue
+                }
                 act(attacker: atk, defender: def, actorIsPlayer: isPlayer, events: &events)
             }
+            guard !captured else { break }
             // End-of-round chip damage (burn 1/16, poison 1/8).
             for (b, isPlayer) in [(player, true), (wild, false)] {
                 guard !b.isFainted, let s = b.status, s == .burn || s == .poison else { continue }
@@ -165,7 +195,30 @@ enum BattleEngine {
             playerWon: playerWon, events: events,
             expGained: playerWon ? expFor(defeated: wild) : 0,
             playerEndStatus: player.status?.rawValue,
-            playerEndHP: player.currentHP, playerMaxHP: player.maxHP)
+            playerEndHP: player.currentHP, playerMaxHP: player.maxHP,
+            captured: captured, ballsUsed: used)
+    }
+
+    /// One ball throw, mainline Gen-3/4 formula: modified rate from HP, catch
+    /// rate, ball bonus and status bonus; then four 16-bit shake checks.
+    /// Returns (caught, shakes passed 0...4).
+    static func attemptCapture(wild: Battler, ball: GameItem) -> (Bool, Int) {
+        let rate = Double(GameData.species[wild.dex]?.captureRate ?? 45)
+        let m = Double(wild.maxHP), h = Double(max(1, wild.currentHP))
+        var a = (3 * m - 2 * h) * rate * ball.ballBonus / (3 * m)
+        switch wild.status {
+        case .sleep, .freeze: a *= 2.0
+        case .paralysis, .poison, .burn: a *= 1.5
+        case nil: break
+        }
+        if a >= 255 { return (true, 4) }
+        let b = 1048560.0 / (16711680.0 / max(1, a)).squareRoot().squareRoot()
+        var shakes = 0
+        for _ in 0..<4 {
+            guard Double(Int.random(in: 0..<65536)) < b else { break }
+            shakes += 1
+        }
+        return (shakes == 4, shakes)
     }
 
     /// One battler's action for the round: status gates, accuracy, damage, ailment.
@@ -275,31 +328,23 @@ enum BattleEngine {
         }
     }
 
-    /// Pick the move with the best expected damage (power × type × STAB), giving
-    /// status moves a small chance/score so they see occasional use.
+    /// Mainline wild-Pokémon behavior: no AI, a uniformly random pick from the
+    /// known moves. Only moves that can DO something in this engine are
+    /// candidates — damaging moves always; a status move only while its
+    /// (supported) ailment could still land (unimplemented stat-stage moves
+    /// like Tail Whip would just burn the turn, so they're excluded).
     static func chooseMove(attacker: Battler, defender: Battler) -> Int {
-        var best = attacker.moves.first ?? 154
-        var bestScore = -1.0
-        for id in attacker.moves {
-            guard let m = GameData.moves[id] else { continue }
-            let eff = TypeChart.multiplier(m.type, vs: defender.type1, defender.type2)
-            let stab = (m.type == attacker.type1 || m.type == attacker.type2) ? 1.5 : 1.0
-            var score = Double(max(m.power, 1)) * eff * stab
-            // A status move is worth using while its (supported) ailment could
-            // still land; unsupported ones (Leech Seed etc.) would waste the turn.
-            if m.power <= 0 {
-                let usable: Bool
-                switch m.ailment {
-                case "confusion": usable = defender.confusionTurns == 0
-                case "infatuation": usable = !defender.infatuated
-                case .some(let a) where Ailment(rawValue: a) != nil: usable = defender.status == nil
-                default: usable = false
-                }
-                score = usable && eff > 0 ? Double.random(in: 0...9) : 0
+        let usable = attacker.moves.filter { id in
+            guard let m = GameData.moves[id] else { return false }
+            if m.power > 0 { return true }
+            switch m.ailment {
+            case "confusion": return defender.confusionTurns == 0
+            case "infatuation": return !defender.infatuated
+            case .some(let a) where Ailment(rawValue: a) != nil: return defender.status == nil
+            default: return false
             }
-            if score > bestScore { bestScore = score; best = id }
         }
-        return best
+        return usable.randomElement() ?? attacker.moves.first ?? 154
     }
 
     /// Simplified mainline damage: level/stat/power scaling × STAB × type × random.

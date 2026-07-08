@@ -576,6 +576,7 @@ final class SpriteView: NSView {
     // plus a move-effect sprite over the hit target (D22).
     private let wildLayer = CALayer()
     private let effectLayer = CALayer()
+    private let itemLayer = CALayer()
     private let pHPTrack = CALayer(); private let pHPFill = CALayer()
     private let wHPTrack = CALayer(); private let wHPFill = CALayer()
     // Evolution burst: radial white glow over the follower (design D8/#9).
@@ -610,6 +611,11 @@ final class SpriteView: NSView {
             f.cornerRadius = 2.5; f.isHidden = true
             layer?.addSublayer(t); layer?.addSublayer(f)
         }
+
+        itemLayer.magnificationFilter = .nearest
+        itemLayer.contentsGravity = .resize
+        itemLayer.isHidden = true
+        layer?.addSublayer(itemLayer)
 
         glowLayer.type = .radial
         glowLayer.colors = [CGColor(gray: 1, alpha: 0.95),
@@ -682,6 +688,21 @@ final class SpriteView: NSView {
         fill.position = CGPoint(x: center.x - (w - fw) / 2, y: center.y)   // left-anchored
         fill.backgroundColor = (frac > 0.5 ? NSColor.systemGreen
                                 : frac > 0.2 ? NSColor.systemYellow : NSColor.systemRed).cgColor
+    }
+
+    /// Draw the spawned item (nil hides it). Pixel-art icon, scale-following.
+    func renderItem(_ scene: ItemScene?) {
+        guard let scene else { itemLayer.isHidden = true; return }
+        let s = AppSettings.shared.scale
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        itemLayer.isHidden = false
+        itemLayer.contents = scene.frame
+        itemLayer.bounds = CGRect(x: 0, y: 0, width: CGFloat(scene.frame.width) * s,
+                                  height: CGFloat(scene.frame.height) * s)
+        itemLayer.position = CGPoint(x: scene.pos.x - screenOrigin.x,
+                                     y: scene.pos.y - screenOrigin.y)
+        itemLayer.opacity = Float(scene.alpha)
+        CATransaction.commit()
     }
 
     func render(_ frame: CGImage?, globalPos: CGPoint, shadow: ShadowAnchor,
@@ -1174,6 +1195,7 @@ final class SettingsWindowController: NSObject {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let controller = CharacterController()
     private let battle = BattleController()
+    private let items = ItemSpawner()
     private var wasFainted = false
     private var evoGlowTicks = 0            // evolution burst countdown (D8/#9)
     private let evoGlowTotal = 150
@@ -1293,6 +1315,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if self.battle.isBattling, let sc = scene {
                 self.controller.face(sc.wildPos)   // stand facing the wild while fighting
             }
+            // Items: the mon picks one up by walking over it (not mid-battle).
+            let itemScene = self.items.update(followerPos: self.controller.position,
+                                              canPickup: !self.battle.isBattling && !fainted)
             // Evolution burst: bright at the swap, pulsing while it fades out.
             var glow: CGFloat = 0
             if self.evoGlowTicks > 0 {
@@ -1307,6 +1332,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                             rotation: self.controller.faintRotation,
                             glow: glow)
                 view.renderBattle(scene)
+                view.renderItem(itemScene)
             }
         }
         RunLoop.main.add(t, forMode: .common)
@@ -1354,6 +1380,22 @@ if let i = CommandLine.arguments.firstIndex(of: "--dump-effect"),
     }
     dump(EffectPlayer.clip(forMove: moveId), "step")
     dump(EffectPlayer.projectile(forMove: moveId), "proj")
+    exit(0)
+}
+
+// Debug hook: `--dump-icons <outDir>` writes every drawn item icon as PNG.
+if let i = CommandLine.arguments.firstIndex(of: "--dump-icons"), CommandLine.arguments.count > i + 1 {
+    let dir = URL(fileURLWithPath: CommandLine.arguments[i + 1])
+    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    for item in GameItem.allCases {
+        guard let cg = item.icon,
+              let d = CGImageDestinationCreateWithURL(
+                dir.appendingPathComponent("\(item.rawValue)-\(item.nameKey).png") as CFURL,
+                UTType.png.identifier as CFString, 1, nil) else { continue }
+        CGImageDestinationAddImage(d, cg, nil)
+        CGImageDestinationFinalize(d)
+    }
+    print("dumped \(GameItem.allCases.count) icons → \(dir.path)")
     exit(0)
 }
 
@@ -1406,6 +1448,25 @@ if CommandLine.arguments.contains("--selftest-raising") {
             print("gender \(s.displayName) rate=\(s.genderRate ?? 99): \(g)")
         }
     }
+    // Capture (D11): a hurt, statused, high-catch-rate wild should catch fast.
+    if let w = Battler(wildDex: 16, level: 5) {   // Pidgey, capture_rate 255
+        w.currentHP = 1
+        w.status = .sleep
+        var caught = 0
+        for _ in 0..<20 where BattleEngine.attemptCapture(wild: w, ball: .pokeBall).0 { caught += 1 }
+        print("capture: Pidgey 1HP asleep — \(caught)/20 throws caught (expect most)")
+    }
+    // Items: inventory round-trip + a full engine run with balls.
+    st.addItem(.pokeBall, 3)
+    st.addItem(.potion)
+    if let p2 = Battler(mon: st.active!), let w2 = Battler(wildDex: 16, level: 3) {
+        let r = BattleEngine.run(player: p2, wild: w2, balls: [.pokeBall, .pokeBall, .pokeBall])
+        let ballEvents = r.events.filter { $0.kind == .ball }
+            .map { "\($0.shakes)s" + ($0.caught ? "O" : "X") }
+        print("ball battle: thrown=\(r.ballsUsed.count) events=\(ballEvents) captured=\(r.captured)")
+        if r.captured { _ = st.addCaptured(from: w2); print("party after capture=\(st.party.count)") }
+    }
+    print("bag: pokeball=\(st.itemCount(.pokeBall)) potion=\(st.itemCount(.potion)) canUsePotionOnHurt=\(st.canUseItem(.potion, at: 0))")
     // Headless battle playback: force a contact encounter and tick the
     // controller through the whole fight, counting effect frames drawn.
     do {

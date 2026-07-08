@@ -17,8 +17,16 @@ final class RaisingPanelView: NSView {
     override init(frame: NSRect) {
         super.init(frame: frame)
         refresh()
+        // Live refresh on captures, pickups, evolutions, party edits.
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(stateChanged), name: .raisingChanged, object: nil)
     }
     required init?(coder: NSCoder) { fatalError("not used") }
+    deinit { NotificationCenter.default.removeObserver(self) }
+
+    @objc private func stateChanged() {
+        if window != nil { refresh() }
+    }
 
     func refresh() {
         RaisingState.shared.dailyHealIfNeeded()
@@ -90,10 +98,37 @@ final class RaisingPanelView: NSView {
             root.addArrangedSubview(row)
         }
 
+        // Bag (D12): everything picked up off the overlay, with counts.
+        let bag = GameItem.allCases.filter { RaisingState.shared.itemCount($0) > 0 }
+        if !bag.isEmpty {
+            root.setCustomSpacing(16, after: root.arrangedSubviews.last ?? root)
+            root.addArrangedSubview(sectionLabel(L("detail.bag")))
+            for item in bag {
+                root.addArrangedSubview(bagRow(item, count: RaisingState.shared.itemCount(item)))
+            }
+        }
+
         root.setCustomSpacing(18, after: root.arrangedSubviews.last ?? root)
         let reset = NSButton(title: L("detail.reset"), target: self, action: #selector(resetTapped))
         reset.bezelStyle = .rounded
         root.addArrangedSubview(reset)
+    }
+
+    /// One bag line: pixel icon + "name ×count".
+    private func bagRow(_ item: GameItem, count: Int) -> NSView {
+        let icon = NSImageView()
+        if let cg = item.icon {
+            icon.image = NSImage(cgImage: cg, size: NSSize(width: 16, height: 16))
+        }
+        icon.imageScaling = .scaleProportionallyUpOrDown
+        icon.translatesAutoresizingMaskIntoConstraints = false
+        icon.widthAnchor.constraint(equalToConstant: 18).isActive = true
+        icon.heightAnchor.constraint(equalToConstant: 18).isActive = true
+        let row = NSStackView(views: [icon, monoLabel("\(item.displayName)  ×\(count)", 12, .medium)])
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 8
+        return row
     }
 
     @objc private func resetTapped() {
@@ -201,22 +236,71 @@ final class RaisingPanelView: NSView {
             if expandedMove == id { inner.addArrangedSubview(moveDetailInline(id)) }
         }
 
-        // TEMP: Train grants EXP (before battle EXP is the only source); Heal
-        // restores HP/faint (until revive items exist, Phase 3).
-        let train = NSButton(title: L("train.button"), target: self, action: #selector(trainTapped))
-        train.bezelStyle = .rounded
-        let heal = NSButton(title: L("detail.heal"), target: self, action: #selector(healTapped))
-        heal.bezelStyle = .rounded
-        let actions = NSStackView(views: [train, heal])
+        // Usable items on this mon (Phase 3c): potions when hurt, a revive
+        // when fainted, evolution items when they'd trigger one (C3/D8-1).
+        guard let idx = detailIndex else { return }
+        let usable = GameItem.allCases.filter { RaisingState.shared.canUseItem($0, at: idx) }
+        if !usable.isEmpty {
+            let itemStack = NSStackView()
+            itemStack.orientation = .vertical
+            itemStack.alignment = .leading
+            itemStack.spacing = 6
+            for item in usable {
+                let b = NSButton(title: "\(item.displayName)  ×\(RaisingState.shared.itemCount(item))",
+                                 target: self, action: #selector(useItemTapped(_:)))
+                b.bezelStyle = .rounded
+                b.tag = item.rawValue
+                if let cg = item.icon {
+                    b.image = NSImage(cgImage: cg, size: NSSize(width: 16, height: 16))
+                    b.imagePosition = .imageLeading
+                }
+                itemStack.addArrangedSubview(b)
+            }
+            root.addArrangedSubview(itemStack)
+        }
+
+        // Debug trainer (kept for PMF_FAST_BATTLE test runs only) + release.
+        let actions = NSStackView(views: [])
         actions.orientation = .horizontal
         actions.spacing = 8
+        if ProcessInfo.processInfo.environment["PMF_FAST_BATTLE"] != nil {
+            let train = NSButton(title: L("train.button"), target: self, action: #selector(trainTapped))
+            train.bezelStyle = .rounded
+            actions.addArrangedSubview(train)
+        }
+        let release = NSButton(title: L("detail.release"), target: self, action: #selector(releaseTapped))
+        release.bezelStyle = .rounded
+        release.contentTintColor = .systemRed
+        actions.addArrangedSubview(release)
         root.addArrangedSubview(actions)
     }
 
-    @objc private func healTapped() {
-        guard let i = detailIndex else { return }
-        RaisingState.shared.healMon(at: i)
+    @objc private func useItemTapped(_ sender: NSButton) {
+        guard let i = detailIndex, let item = GameItem(rawValue: sender.tag) else { return }
+        let evolved = RaisingState.shared.useItem(item, at: i)
+        if let to = evolved {
+            let a = NSAlert()
+            a.messageText = Characters.displayName(String(format: "%03d", to))
+            a.informativeText = L("evo.suffix")
+            a.runModal()
+        }
         refresh()
+    }
+
+    /// Release the mon back to the wild (D14) after a confirmation.
+    @objc private func releaseTapped() {
+        guard let i = detailIndex, RaisingState.shared.party.indices.contains(i) else { return }
+        let mon = RaisingState.shared.party[i]
+        let a = NSAlert()
+        a.messageText = L("detail.release")
+        a.informativeText = Characters.displayName(String(format: "%03d", mon.dex))
+        a.addButton(withTitle: "OK")
+        a.addButton(withTitle: "Cancel")
+        if a.runModal() == .alertFirstButtonReturn {
+            RaisingState.shared.release(at: i)
+            detailIndex = nil
+            refresh()
+        }
     }
 
     @objc private func trainTapped() {

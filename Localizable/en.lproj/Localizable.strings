@@ -34,3 +34,21 @@
 "learn.skip" = "Don't learn";
 "move.power" = "Power";
 "evo.suffix" = " evolved!";
+
+"detail.bag" = "Bag";
+"detail.use" = "Use";
+"detail.release" = "Release";
+"item.pokeball" = "Poké Ball";
+"item.greatball" = "Great Ball";
+"item.potion" = "Potion";
+"item.superpotion" = "Super Potion";
+"item.revive" = "Revive";
+"item.firestone" = "Fire Stone";
+"item.thunderstone" = "Thunder Stone";
+"item.waterstone" = "Water Stone";
+"item.leafstone" = "Leaf Stone";
+"item.moonstone" = "Moon Stone";
+"item.sunstone" = "Sun Stone";
+"item.linkcord" = "Link Cord";
+"item.friendcandy" = "Friend Candy";
+"capture.caught" = " was caught!";

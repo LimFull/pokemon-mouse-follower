@@ -135,6 +135,25 @@ final class RaisingState {
         return true
     }
 
+    /// Add a wild mon caught in battle (D11) — keeps its battle HP, moves,
+    /// gender and status, like the mainline games.
+    @discardableResult
+    func addCaptured(from wild: Battler) -> Bool {
+        guard partyHasRoom, let s = GameData.species[wild.dex] else { return false }
+        let mon = OwnedPokemon(
+            dex: wild.dex,
+            level: wild.level,
+            exp: s.expCurve.indices.contains(wild.level - 1) ? s.expCurve[wild.level - 1] : 0,
+            currentHP: max(1, wild.currentHP),
+            moves: wild.moves,
+            gender: wild.gender,
+            status: wild.status?.rawValue)
+        save.party.append(mon)
+        persist()
+        notifyChanged()
+        return true
+    }
+
     /// Release the party member at `index` (#14).
     func release(at index: Int) {
         guard save.party.indices.contains(index) else { return }
@@ -247,6 +266,86 @@ final class RaisingState {
             save.party[i].moves[slot] = moveId
             persist()
         }
+    }
+
+    // MARK: inventory (D12)
+
+    func itemCount(_ item: GameItem) -> Int { save.items[item.rawValue] ?? 0 }
+
+    func addItem(_ item: GameItem, _ n: Int = 1) {
+        save.items[item.rawValue, default: 0] += n
+        persist()
+        notifyChanged()
+    }
+
+    /// Remove one of `item` from the bag; false if none left.
+    @discardableResult
+    func consumeItem(_ item: GameItem) -> Bool {
+        guard itemCount(item) > 0 else { return false }
+        save.items[item.rawValue]! -= 1
+        if save.items[item.rawValue] == 0 { save.items.removeValue(forKey: item.rawValue) }
+        persist()
+        return true
+    }
+
+    // MARK: item use on a mon (Phase 3c — D12 potions/revive, C3/D8-1 evolution)
+
+    /// The evolution `item` would trigger for `mon`, honoring the D8-1 mapping:
+    /// stones -> ITEMS evolutions, Link Cord -> any LINK_CABLE requirement,
+    /// Friend Candy -> IQ evolutions (sun/lunar-ribbon split by local daytime).
+    func evolution(for item: GameItem, of mon: OwnedPokemon) -> Evolution? {
+        guard let s = mon.species else { return nil }
+        if let eosId = GameItem.stoneEosIds[item] {
+            return s.evolutions.first { $0.method == "ITEMS" && $0.param1 == eosId && $0.requirement != "LINK_CABLE" }
+        }
+        switch item {
+        case .linkCord:
+            return s.evolutions.first { $0.requirement == "LINK_CABLE" }
+        case .friendCandy:
+            let iq = s.evolutions.filter { $0.method == "IQ" }
+            guard iq.count > 1 else { return iq.first }
+            let day = (6..<18).contains(Calendar.current.component(.hour, from: Date()))
+            return iq.first { $0.requirement == (day ? "SUN_RIBBON" : "LUNAR_RIBBON") } ?? iq.first
+        default:
+            return nil
+        }
+    }
+
+    /// Whether `item` would do anything for the party member at `index`.
+    func canUseItem(_ item: GameItem, at index: Int) -> Bool {
+        guard save.party.indices.contains(index), itemCount(item) > 0 else { return false }
+        let mon = save.party[index]
+        if item.healAmount > 0 { return !mon.isFainted && mon.currentHP < mon.maxHP }
+        if item == .revive { return mon.isFainted }
+        if item.isEvolutionItem { return evolution(for: item, of: mon) != nil }
+        return false
+    }
+
+    /// Use `item` on the party member at `index`. Returns the evolved-to dex
+    /// for evolution items (nil otherwise); false-y (nil + no change) if unusable.
+    @discardableResult
+    func useItem(_ item: GameItem, at index: Int) -> Int? {
+        guard canUseItem(item, at: index), consumeItem(item) else { return nil }
+        var evolvedTo: Int? = nil
+        if item.healAmount > 0 {
+            save.party[index].currentHP = min(save.party[index].maxHP,
+                                              save.party[index].currentHP + item.healAmount)
+        } else if item == .revive {
+            save.party[index].currentHP = max(1, save.party[index].maxHP / 2)
+            save.party[index].status = nil
+        } else if let evo = evolution(for: item, of: save.party[index]),
+                  let to = GameData.species[evo.toDex] {
+            save.party[index].dex = evo.toDex
+            let cap = GameData.stats(to, level: save.party[index].level).hp
+            save.party[index].currentHP = min(save.party[index].currentHP, cap)
+            evolvedTo = evo.toDex
+        }
+        persist()
+        notifyChanged()
+        if evolvedTo != nil, index == save.activeIndex {
+            NotificationCenter.default.post(name: .raisingEvolved, object: nil)
+        }
+        return evolvedTo
     }
 
     // MARK: daily heal (D23)

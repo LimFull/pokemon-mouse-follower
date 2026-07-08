@@ -43,6 +43,8 @@ final class BattleController {
     private var evTick = 0
     private var curTicks = 20            // current event's playback length
     private var effects: [RunningEffect] = []   // phases: projectile, then hit
+    private var ballFrame: CGImage?      // thrown ball being drawn (D11)
+    private var ballPos = CGPoint.zero
     private var curPHP = 1.0, curWHP = 1.0
     private var pFrom = 1.0, pTo = 1.0, wFrom = 1.0, wTo = 1.0
     private var flashP = false, flashW = false
@@ -124,7 +126,14 @@ final class BattleController {
         let dist = max(0.001, hypot(dx, dy)); dx /= dist; dy /= dist
         wm.setPos(CGPoint(x: playerPos.x + dx * 75 * scale, y: playerPos.y + dy * 75 * scale))
         wm.faceStanding(toward: playerPos)
-        result = BattleEngine.run(player: p, wild: w)
+        // Balls to throw (D11): only with party room; cheap balls go first.
+        var balls: [GameItem] = []
+        if RaisingState.shared.partyHasRoom {
+            let st = RaisingState.shared
+            balls += Array(repeating: .pokeBall, count: min(3, st.itemCount(.pokeBall)))
+            balls += Array(repeating: .greatBall, count: min(3 - balls.count, st.itemCount(.greatBall)))
+        }
+        result = BattleEngine.run(player: p, wild: w, balls: balls)
         events = result?.events ?? []
         evIdx = 0; evTick = 0; curPHP = 1.0; curWHP = 1.0; wildAlpha = 1.0; playerAlpha = 1.0
         flashP = false; flashW = false
@@ -139,12 +148,46 @@ final class BattleController {
         let t = min(1.0, Double(evTick) / Double(curTicks) * 1.4)
         if e.targetIsPlayer { curPHP = lerp(pFrom, pTo, t) } else { curWHP = lerp(wFrom, wTo, t) }
         if evTick > 8 { flashP = false; flashW = false }
+        if e.kind == .ball { tickBall(e) }
         if !effects.isEmpty {
             effects[0].advance()
             if effects[0].isDone { effects.removeFirst() }
         }
         evTick += 1
         if evTick >= curTicks { evTick = 0; evIdx += 1 }
+    }
+
+    /// Ball-throw beat (D11): the ball arcs player -> wild, the wild is pulled
+    /// in, the ball wobbles once per passed shake check, then either clicks
+    /// shut (caught — the wild stays in) or bursts open (the wild pops back).
+    private func tickBall(_ e: BattleEvent) {
+        let icon = GameItem(rawValue: e.ballId)?.icon
+        let scale = AppSettings.shared.scale
+        let wpos = wildMon?.pos ?? playerPos
+        let flight = 16
+        if evTick < flight {
+            let f = CGFloat(evTick) / CGFloat(flight)
+            ballFrame = icon
+            ballPos = CGPoint(x: playerPos.x + (wpos.x - playerPos.x) * f,
+                              y: playerPos.y + (wpos.y - playerPos.y) * f
+                                 + sin(f * .pi) * 34 * scale)
+            wildAlpha = 1
+            return
+        }
+        wildAlpha = 0                              // pulled inside the ball
+        let st = evTick - flight
+        let shakeLen = 14
+        if st < e.shakes * shakeLen {
+            let phase = CGFloat(st % shakeLen) / CGFloat(shakeLen)
+            ballFrame = icon
+            ballPos = CGPoint(x: wpos.x + sin(phase * 2 * .pi) * 4 * scale, y: wpos.y)
+        } else if e.caught {
+            ballFrame = icon                       // sits still, wild stays in
+            ballPos = wpos
+        } else {
+            ballFrame = nil                        // burst open — the wild is back
+            wildAlpha = 1
+        }
     }
 
     /// Set up one event beat: HP-bar animation targets, hit flash, and the
@@ -158,6 +201,12 @@ final class BattleController {
         else { wFrom = curWHP; wTo = to; flashW = e.damage > 0 }
 
         effects = []
+        ballFrame = nil
+        if e.kind == .ball {
+            // flight + one wobble per shake + a settle/burst tail
+            curTicks = 16 + e.shakes * 14 + 26
+            return
+        }
         curTicks = (e.damage > 0 || e.kind == .attack) ? eventTicks : eventTicks * 3 / 5
         guard e.kind == .attack else { return }
         let wildPos = wildMon?.pos ?? playerPos
@@ -179,14 +228,25 @@ final class BattleController {
 
     private func finishBattle() {
         let won = result?.playerWon ?? false
+        var captured = false
         if let r = result {
+            for b in r.ballsUsed { RaisingState.shared.consumeItem(b) }
             RaisingState.shared.applyBattleOutcome(playerHP: r.playerEndHP, status: r.playerEndStatus,
                                                    won: r.playerWon, expGained: r.expGained)
+            if r.captured, let w = wild {
+                captured = RaisingState.shared.addCaptured(from: w)
+            }
         }
-        if won {
+        if captured {
+            // The wild is inside the ball (already hidden); linger briefly.
+            endTicks = fast ? 30 : 60
+            phase = .ending
+        } else if won {
+            ballFrame = nil
             endTicks = fast ? 40 : 90
             phase = .ending                 // the beaten wild fades away
         } else {
+            ballFrame = nil
             // My mon fainted (it now stays down where it fell). The wild is NOT
             // defeated — it lingers/wanders so I can send out another mon and keep
             // challenging it; it leaves on its own despawn timer.
@@ -197,12 +257,14 @@ final class BattleController {
     private func tickEnding() {
         wildMon?.faceStanding(toward: playerPos)
         endTicks -= 1
-        wildAlpha = max(0, Double(endTicks) / 40.0)   // defeated wild fades out
+        if ballFrame == nil {
+            wildAlpha = max(0, Double(endTicks) / 40.0)   // defeated wild fades out
+        }                                                  // caught: stays in the ball
         if endTicks <= 0 { despawn() }
     }
 
     private func despawn() {
-        wild = nil; wildMon = nil; events = []; result = nil; effects = []
+        wild = nil; wildMon = nil; events = []; result = nil; effects = []; ballFrame = nil
         playerAlpha = 1.0; wildAlpha = 1.0
         phase = .idle
         spawnCooldown = nextSpawnDelay()
@@ -212,7 +274,8 @@ final class BattleController {
 
     private func scene() -> BattleScene? {
         guard phase != .idle, let wm = wildMon, let frame = wm.currentFrame else { return nil }
-        let fx = effects.first?.current(scale: AppSettings.shared.scale)
+        let fx = ballFrame.map { ($0, ballPos) }
+            ?? effects.first?.current(scale: AppSettings.shared.scale)
         return BattleScene(
             wildFrame: frame, wildPos: wm.pos, playerPos: playerPos,
             playerHP: curPHP, wildHP: curWHP, flashPlayer: flashP, flashWild: flashW,

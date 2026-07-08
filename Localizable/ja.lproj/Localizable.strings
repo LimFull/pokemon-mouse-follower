@@ -286,3 +286,21 @@
 "pokemon.249" = "ルギア";
 "pokemon.250" = "ホウオウ";
 "pokemon.251" = "セレビィ";
+
+"detail.bag" = "バッグ";
+"detail.use" = "使う";
+"detail.release" = "逃がす";
+"item.pokeball" = "モンスターボール";
+"item.greatball" = "スーパーボール";
+"item.potion" = "キズぐすり";
+"item.superpotion" = "いいキズぐすり";
+"item.revive" = "げんきのかけら";
+"item.firestone" = "ほのおのいし";
+"item.thunderstone" = "かみなりのいし";
+"item.waterstone" = "みずのいし";
+"item.leafstone" = "リーフのいし";
+"item.moonstone" = "つきのいし";
+"item.sunstone" = "たいようのいし";
+"item.linkcord" = "つながりのヒモ";
+"item.friendcandy" = "なかよしキャンディ";
+"capture.caught" = "を捕まえた！";

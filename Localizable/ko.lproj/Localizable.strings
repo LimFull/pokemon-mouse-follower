@@ -286,3 +286,21 @@
 "pokemon.249" = "루기아";
 "pokemon.250" = "칠색조";
 "pokemon.251" = "세레비";
+
+"detail.bag" = "가방";
+"detail.use" = "사용";
+"detail.release" = "놓아주기";
+"item.pokeball" = "몬스터볼";
+"item.greatball" = "수퍼볼";
+"item.potion" = "상처약";
+"item.superpotion" = "좋은상처약";
+"item.revive" = "기력의조각";
+"item.firestone" = "불꽃의돌";
+"item.thunderstone" = "천둥의돌";
+"item.waterstone" = "물의돌";
+"item.leafstone" = "리프의돌";
+"item.moonstone" = "달의돌";
+"item.sunstone" = "태양의돌";
+"item.linkcord" = "연결의끈";
+"item.friendcandy" = "우정의사탕";
+"capture.caught" = "를(을) 잡았다!";
