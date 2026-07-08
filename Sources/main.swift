@@ -309,6 +309,9 @@ final class CharacterController {
     private var idle: [[CGImage]] = []
     private var walk: [[CGImage]] = []
     private var sleep: [[CGImage]] = []
+    private var faint: [[CGImage]] = []       // Faint-Anim (may be absent -> rotate fallback)
+    private var faintTick = 0
+    private(set) var faintRotation: CGFloat = 0   // z-rotation for the fallback faint pose
     // Shadow anchor per frame, parallel to the sheets above (position + size).
     private var idleShadow: [[ShadowAnchor]] = []
     private var walkShadow: [[ShadowAnchor]] = []
@@ -360,6 +363,14 @@ final class CharacterController {
         walk = slicedSheet("Walk-Anim", anim: "Walk", subdir: subdir, xml: xml)
         idle = slicedSheet("Idle-Anim", anim: "Idle", subdir: subdir, xml: xml)
         sleep = slicedSheet("Sleep-Anim", anim: "Sleep", subdir: subdir, xml: xml)
+        // Prefer the current (alt-color) folder's Faint sheet; fall back to the
+        // base folder when the variant doesn't ship one.
+        faint = slicedSheet("Faint-Anim", anim: "Faint", subdir: subdir, xml: xml)
+        let baseSubdir = "characters/\(folder)"
+        if faint.isEmpty, subdir != baseSubdir {
+            let baseXml = Sprite.loadText("AnimData", ext: "xml", subdir: baseSubdir)
+            faint = slicedSheet("Faint-Anim", anim: "Faint", subdir: baseSubdir, xml: baseXml)
+        }
         // Shadow anchors from the matching -Shadow marker sheet (alpha fallback
         // if a marker sheet is missing). Computed before the sheet fallbacks so
         // each maps to its own frames.
@@ -526,6 +537,32 @@ final class CharacterController {
         currentFrame = sheet[row][col]
         if row < shadow.count, col < shadow[row].count { currentShadow = shadow[row][col] }
     }
+
+    /// Restart the faint sequence (call once when the mon is knocked out).
+    func startFaint() { faintTick = 0 }
+
+    /// Play the Faint animation once and hold its last frame, in place. When no
+    /// Faint sheet exists, collapse the idle sprite onto its side instead.
+    func updateFainted() {
+        guard loaded else { return }
+        faintTick += 1
+        if !faint.isEmpty {
+            faintRotation = 0
+            let row = min(lastRow, faint.count - 1)
+            let frames = faint[row]
+            if !frames.isEmpty {
+                let step = 6
+                currentFrame = frames[min(frames.count - 1, (faintTick - 1) / step)]
+            }
+        } else {
+            let sheet = idle.isEmpty ? walk : idle
+            if !sheet.isEmpty {
+                let row = min(lastRow, sheet.count - 1)
+                currentFrame = sheet[row].first
+            }
+            faintRotation = min(1.0, CGFloat(faintTick) / 18.0) * (.pi / 2)   // 0 -> lying on its side
+        }
+    }
 }
 
 // MARK: - Sprite View (one per screen)
@@ -575,11 +612,11 @@ final class SpriteView: NSView {
 
     /// Draw the wild encounter / battle overlay (nil hides it). Also applies the
     /// hit-flash to the player sprite drawn by `render`.
-    func renderBattle(_ scene: BattleScene?, faintedIdle: Bool = false) {
+    func renderBattle(_ scene: BattleScene?) {
         guard let scene else {
             wildLayer.isHidden = true
             [pHPTrack, pHPFill, wHPTrack, wHPFill].forEach { $0.isHidden = true }
-            spriteLayer.opacity = faintedIdle ? 0.4 : 1   // a knocked-out mon stays dimmed
+            spriteLayer.opacity = 1
             return
         }
         let s = AppSettings.shared.scale
@@ -616,7 +653,7 @@ final class SpriteView: NSView {
                                 : frac > 0.2 ? NSColor.systemYellow : NSColor.systemRed).cgColor
     }
 
-    func render(_ frame: CGImage?, globalPos: CGPoint, shadow: ShadowAnchor) {
+    func render(_ frame: CGImage?, globalPos: CGPoint, shadow: ShadowAnchor, rotation: CGFloat = 0) {
         guard let frame else { spriteLayer.isHidden = true; shadowLayer.isHidden = true; return }
         let s = AppSettings.shared.scale
         let x = globalPos.x - screenOrigin.x
@@ -645,6 +682,8 @@ final class SpriteView: NSView {
                                     height: CGFloat(frame.height) * s)
         spriteLayer.contents = frame
         spriteLayer.position = CGPoint(x: x, y: y)
+        spriteLayer.transform = rotation == 0 ? CATransform3DIdentity
+                                              : CATransform3DMakeRotation(rotation, 0, 0, 1)
         CATransaction.commit()
     }
 }
@@ -1089,6 +1128,7 @@ final class SettingsWindowController: NSObject {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let controller = CharacterController()
     private let battle = BattleController()
+    private var wasFainted = false
     private var overlays: [(window: NSWindow, view: SpriteView)] = []
     private var statusItem: NSStatusItem!
     private var timer: Timer?
@@ -1180,22 +1220,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let t = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
             guard let self, self.running else { return }
             let cursor = NSEvent.mouseLocation
-            if !self.battle.isBattling {
-                // The follower just roams after the cursor; encounters happen by
-                // chance when it wanders near a wild (it doesn't seek them out).
-                self.controller.update(mouseGlobal: cursor)
+            let fainted = AppSettings.shared.raisingMode
+                && (RaisingState.shared.active?.isFainted ?? false)
+            if fainted {
+                // A knocked-out active mon plays the faint animation once and stays
+                // put where it fell (it doesn't follow the cursor).
+                if !self.wasFainted { self.controller.startFaint(); self.wasFainted = true }
+                self.controller.updateFainted()
+            } else {
+                self.wasFainted = false
+                if !self.battle.isBattling {
+                    // Roams after the cursor; encounters happen by chance.
+                    self.controller.update(mouseGlobal: cursor)
+                }
             }
             let scene = self.battle.update(playerGlobalPos: self.controller.position)
             if self.battle.isBattling, let sc = scene {
                 self.controller.face(sc.wildPos)   // stand facing the wild while fighting
             }
-            let faintedIdle = scene == nil && AppSettings.shared.raisingMode
-                && (RaisingState.shared.active?.isFainted ?? false)
             for (_, view) in self.overlays {
                 view.render(self.controller.currentFrame,
                             globalPos: self.controller.position,
-                            shadow: self.controller.currentShadow)
-                view.renderBattle(scene, faintedIdle: faintedIdle)
+                            shadow: self.controller.currentShadow,
+                            rotation: self.controller.faintRotation)
+                view.renderBattle(scene)
             }
         }
         RunLoop.main.add(t, forMode: .common)

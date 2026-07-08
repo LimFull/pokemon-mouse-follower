@@ -104,7 +104,9 @@ final class BattleController {
         // notices (stops & looks) and, if they meet, a battle begins.
         if d < 150 * scale { wm.faceStanding(toward: playerPos) }
         else { wm.wander(bounds: screenBounds()) }
-        if d < 85 * scale { startBattle() }
+        // Only a conscious active mon starts a battle (a fainted one lies where it
+        // fell until you switch/heal); the wild just lingers meanwhile.
+        if let a = RaisingState.shared.active, !a.isFainted, d < 85 * scale { startBattle() }
     }
 
     private func startBattle() {
@@ -139,22 +141,25 @@ final class BattleController {
     }
 
     private func finishBattle() {
+        let won = result?.playerWon ?? false
         if let r = result {
             RaisingState.shared.applyBattleOutcome(playerHPFraction: curPHP, won: r.playerWon, expGained: r.expGained)
         }
-        endTicks = fast ? 40 : 90
-        phase = .ending
+        if won {
+            endTicks = fast ? 40 : 90
+            phase = .ending                 // the beaten wild fades away
+        } else {
+            // My mon fainted (it now stays down where it fell). The wild is NOT
+            // defeated — it lingers/wanders so I can send out another mon and keep
+            // challenging it; it leaves on its own despawn timer.
+            phase = .present
+        }
     }
 
     private func tickEnding() {
         wildMon?.faceStanding(toward: playerPos)
         endTicks -= 1
-        let fade = max(0, Double(endTicks) / 40.0)
-        if result?.playerWon == true {
-            wildAlpha = fade; playerAlpha = 1          // wild faints away, player stands
-        } else {
-            playerAlpha = fade; wildAlpha = fade       // player faints; wild also leaves (no sudden pop)
-        }
+        wildAlpha = max(0, Double(endTicks) / 40.0)   // defeated wild fades out
         if endTicks <= 0 { despawn() }
     }
 
