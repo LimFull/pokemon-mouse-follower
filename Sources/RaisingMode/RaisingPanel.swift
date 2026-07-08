@@ -182,6 +182,7 @@ final class RaisingPanelView: NSView {
             String(format: "DEFENSE  %4d", st.def),
             String(format: "SP.ATK   %4d", st.spAtk),
             String(format: "SP.DEF   %4d", st.spDef),
+            String(format: "SPEED    %4d", st.spe),
         ].joined(separator: "\n")
         inner.addArrangedSubview(divider())
         inner.addArrangedSubview(monoLabel(statsText, 12, .medium))

@@ -197,6 +197,25 @@ final class RaisingState {
         return r
     }
 
+    /// Apply a finished battle to the active mon: set its HP from the final
+    /// fraction, grant EXP on a win (level-ups/evolution via gainExp), and switch
+    /// to the next non-fainted party member if it fainted (D10).
+    @discardableResult
+    func applyBattleOutcome(playerHPFraction: Double, won: Bool, expGained: Int) -> GrowthResult {
+        var result = GrowthResult()
+        let i = save.activeIndex
+        guard save.party.indices.contains(i) else { return result }
+        let maxHP = save.party[i].maxHP
+        save.party[i].currentHP = max(0, min(maxHP, Int((Double(maxHP) * playerHPFraction).rounded())))
+        if won && expGained > 0 { result = gainExp(expGained) }   // persists + may evolve/notify
+        if save.party[i].isFainted, let next = save.party.indices.first(where: { !save.party[$0].isFainted }) {
+            save.activeIndex = next
+        }
+        persist()
+        notifyChanged()
+        return result
+    }
+
     /// Resolve a queued move: replace the move at `slot` (0–3) with `moveId`,
     /// or pass slot = nil to decline learning it (#5).
     func learnMove(_ moveId: Int, replacing slot: Int?) {

@@ -515,6 +515,10 @@ final class CharacterController {
 final class SpriteView: NSView {
     private let shadowLayer = CAGradientLayer()
     private let spriteLayer = CALayer()
+    // Battle scene: wild sprite + an HP bar (track+fill) over each combatant.
+    private let wildLayer = CALayer()
+    private let pHPTrack = CALayer(); private let pHPFill = CALayer()
+    private let wHPTrack = CALayer(); private let wHPFill = CALayer()
     var screenOrigin: CGPoint = .zero
 
     override init(frame frameRect: NSRect) {
@@ -535,9 +539,62 @@ final class SpriteView: NSView {
         spriteLayer.magnificationFilter = .nearest
         spriteLayer.contentsGravity = .resize
         layer?.addSublayer(spriteLayer)
+
+        wildLayer.magnificationFilter = .nearest
+        wildLayer.contentsGravity = .resize
+        wildLayer.isHidden = true
+        layer?.addSublayer(wildLayer)
+        for (t, f) in [(pHPTrack, pHPFill), (wHPTrack, wHPFill)] {
+            t.backgroundColor = CGColor(gray: 0.1, alpha: 0.55); t.cornerRadius = 2.5; t.isHidden = true
+            f.cornerRadius = 2.5; f.isHidden = true
+            layer?.addSublayer(t); layer?.addSublayer(f)
+        }
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
+
+    /// Draw the wild encounter / battle overlay (nil hides it). Also applies the
+    /// hit-flash to the player sprite drawn by `render`.
+    func renderBattle(_ scene: BattleScene?) {
+        guard let scene else {
+            wildLayer.isHidden = true
+            [pHPTrack, pHPFill, wHPTrack, wHPFill].forEach { $0.isHidden = true }
+            spriteLayer.opacity = 1
+            return
+        }
+        let s = AppSettings.shared.scale
+        let wx = scene.wildPos.x - screenOrigin.x, wy = scene.wildPos.y - screenOrigin.y
+        let px = scene.playerPos.x - screenOrigin.x, py = scene.playerPos.y - screenOrigin.y
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+
+        wildLayer.isHidden = false
+        wildLayer.bounds = CGRect(x: 0, y: 0, width: CGFloat(scene.wildFrame.width) * s,
+                                  height: CGFloat(scene.wildFrame.height) * s)
+        wildLayer.contents = scene.wildFrame
+        wildLayer.position = CGPoint(x: wx, y: wy)
+        wildLayer.opacity = scene.flashWild ? 0.25 : Float(scene.wildAlpha)
+        spriteLayer.opacity = scene.flashPlayer ? 0.25 : 1
+
+        if scene.showBars {
+            let top = 20 * s
+            layoutHP(pHPTrack, pHPFill, center: CGPoint(x: px, y: py + top), frac: scene.playerHP)
+            layoutHP(wHPTrack, wHPFill, center: CGPoint(x: wx, y: wy + top), frac: scene.wildHP)
+        } else {
+            [pHPTrack, pHPFill, wHPTrack, wHPFill].forEach { $0.isHidden = true }
+        }
+        CATransaction.commit()
+    }
+
+    private func layoutHP(_ track: CALayer, _ fill: CALayer, center: CGPoint, frac: Double) {
+        let w: CGFloat = 46, h: CGFloat = 5
+        track.isHidden = false; fill.isHidden = false
+        track.bounds = CGRect(x: 0, y: 0, width: w, height: h); track.position = center
+        let fw = max(1, w * CGFloat(max(0, min(1, frac))))
+        fill.bounds = CGRect(x: 0, y: 0, width: fw, height: h)
+        fill.position = CGPoint(x: center.x - (w - fw) / 2, y: center.y)   // left-anchored
+        fill.backgroundColor = (frac > 0.5 ? NSColor.systemGreen
+                                : frac > 0.2 ? NSColor.systemYellow : NSColor.systemRed).cgColor
+    }
 
     func render(_ frame: CGImage?, globalPos: CGPoint, shadow: ShadowAnchor) {
         guard let frame else { spriteLayer.isHidden = true; shadowLayer.isHidden = true; return }
@@ -1011,6 +1068,7 @@ final class SettingsWindowController: NSObject {
 // MARK: - App Delegate
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let controller = CharacterController()
+    private let battle = BattleController()
     private var overlays: [(window: NSWindow, view: SpriteView)] = []
     private var statusItem: NSStatusItem!
     private var timer: Timer?
@@ -1088,6 +1146,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let toggle = NSMenuItem(title: L("menu.pause"), action: #selector(toggleRunning), keyEquivalent: "p")
         toggle.target = self
         menu.addItem(toggle)
+        let spawn = NSMenuItem(title: "Spawn wild (debug)", action: #selector(debugSpawn), keyEquivalent: "")
+        spawn.target = self
+        menu.addItem(spawn)
         menu.addItem(.separator())
         let quit = NSMenuItem(title: L("menu.quit"), action: #selector(quit), keyEquivalent: "q")
         quit.target = self
@@ -1098,11 +1159,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func setupTimer() {
         let t = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
             guard let self, self.running else { return }
-            self.controller.update(mouseGlobal: NSEvent.mouseLocation)
+            let cursor = NSEvent.mouseLocation
+            if !self.battle.isBattling {
+                // Walk toward a present wild encounter, otherwise the cursor.
+                self.controller.update(mouseGlobal: self.battle.followTarget(cursor: cursor))
+            }
+            let scene = self.battle.update(playerGlobalPos: self.controller.position)
             for (_, view) in self.overlays {
                 view.render(self.controller.currentFrame,
                             globalPos: self.controller.position,
                             shadow: self.controller.currentShadow)
+                view.renderBattle(scene)
             }
         }
         RunLoop.main.add(t, forMode: .common)
@@ -1121,6 +1188,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         sender.title = running ? L("menu.pause") : L("menu.resume")
         for (_, view) in overlays { view.isHidden = !running }
     }
+
+    @objc private func debugSpawn() { battle.forceSpawn() }
 
     @objc private func quit() {
         NSApplication.shared.terminate(nil)

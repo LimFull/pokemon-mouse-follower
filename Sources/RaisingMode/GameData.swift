@@ -38,13 +38,19 @@ struct Growth: Codable {
     }
 }
 
+/// Mainline base stats (Gen1-2, from PokeAPI). Drives stat computation (D4 revised).
+struct MainlineBase: Codable {
+    let hp, atk, def, spa, spd, spe: Int
+}
+
 struct SpeciesData: Codable {
     let dex: Int
     let id: String                      // zero-padded dex, matches animations/<id>/
     let names: [String: String]         // lang -> name (EoS NA ROM: "e" only)
     let type1: String
     let type2: String?
-    let baseStats: BaseStats
+    let baseStats: BaseStats            // EoS md base stats (legacy / fallback)
+    let base: MainlineBase?             // mainline base stats (preferred)
     let isBaseForm: Bool
     let preEvoDex: Int?
     let evolutions: [Evolution]
@@ -52,7 +58,7 @@ struct SpeciesData: Codable {
     let expCurve: [Int]                 // total exp required to reach L1..L100
     let growth: Growth
     enum CodingKeys: String, CodingKey {
-        case dex, id, names, type1, type2
+        case dex, id, names, type1, type2, base
         case baseStats = "base_stats"
         case isBaseForm = "is_base_form"
         case preEvoDex = "pre_evo_dex"
@@ -93,9 +99,9 @@ struct MoveData: Codable {
     var displayName: String { names["e"] ?? "Move \(moveId)" }
 }
 
-/// Concrete stats of a mon at a given level (EoS model: base + summed growth).
+/// Concrete stats of a mon at a given level.
 struct Stats {
-    let hp, atk, def, spAtk, spDef: Int
+    let hp, atk, def, spAtk, spDef, spe: Int
 }
 
 // MARK: - Loader
@@ -109,17 +115,23 @@ enum GameData {
         .filter { $0.isBaseForm }
         .sorted { $0.dex < $1.dex }
 
-    /// Stats of `s` at `level` = base stats + cumulative per-level growth.
+    /// Stats of `s` at `level`, from mainline base stats (IV/EV/nature omitted,
+    /// design D4). Falls back to the EoS growth model if base stats are missing.
     static func stats(_ s: SpeciesData, level: Int) -> Stats {
+        let lv = max(1, level)
+        if let b = s.base {
+            func st(_ base: Int) -> Int { (2 * base * lv) / 100 + 5 }
+            return Stats(
+                hp: (2 * b.hp * lv) / 100 + lv + 10,
+                atk: st(b.atk), def: st(b.def), spAtk: st(b.spa), spDef: st(b.spd), spe: st(b.spe))
+        }
         func cum(_ deltas: [Int], _ base: Int) -> Int {
-            base + deltas.prefix(max(0, min(level, deltas.count))).reduce(0, +)
+            base + deltas.prefix(max(0, min(lv, deltas.count))).reduce(0, +)
         }
         return Stats(
-            hp: cum(s.growth.hp, s.baseStats.hp),
-            atk: cum(s.growth.atk, s.baseStats.atk),
-            def: cum(s.growth.def, s.baseStats.def),
-            spAtk: cum(s.growth.spAtk, s.baseStats.spAtk),
-            spDef: cum(s.growth.spDef, s.baseStats.spDef))
+            hp: cum(s.growth.hp, s.baseStats.hp), atk: cum(s.growth.atk, s.baseStats.atk),
+            def: cum(s.growth.def, s.baseStats.def), spAtk: cum(s.growth.spAtk, s.baseStats.spAtk),
+            spDef: cum(s.growth.spDef, s.baseStats.spDef), spe: 0)
     }
 
     // MARK: private

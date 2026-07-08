@@ -94,8 +94,8 @@ enum BattleEngine {
         var turn = 0
         while !player.isFainted && !wild.isFainted && turn < 200 {
             turn += 1
-            // No Speed stat in the EoS model — higher level acts first (ties: player).
-            let playerFirst = player.level >= wild.level
+            // Faster mon acts first (ties: player).
+            let playerFirst = player.stats.spe >= wild.stats.spe
             let order: [(Battler, Battler, Bool)] = playerFirst
                 ? [(player, wild, true), (wild, player, false)]
                 : [(wild, player, false), (player, wild, true)]
