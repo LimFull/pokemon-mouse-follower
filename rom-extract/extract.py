@@ -250,6 +250,8 @@ def extract_monsters(rom, config, out_dir, strings_by_lang):
     monsters, evolutions, seen = [], [], set()
     for i, e in enumerate(md.entries):
         method_id = int(e.evo_method)
+        tp = int(e.type_primary)
+        ts = int(e.type_secondary)
         monsters.append({
             "md_index": i,
             "md_index_base": int(e.md_index_base),
@@ -257,6 +259,17 @@ def extract_monsters(rom, config, out_dir, strings_by_lang):
             "national_pokedex_number": int(e.national_pokedex_number),
             "gender": int(e.gender),
             "names": name_of(i),
+            "type_primary_id": tp,
+            "type_primary": TYPE_NAMES[tp] if tp < len(TYPE_NAMES) else None,
+            "type_secondary_id": ts,
+            "type_secondary": TYPE_NAMES[ts] if ts < len(TYPE_NAMES) else None,
+            "base_stats": {
+                "hp": int(e.base_hp), "atk": int(e.base_atk), "def": int(e.base_def),
+                "sp_atk": int(e.base_sp_atk), "sp_def": int(e.base_sp_def),
+            },
+            "ability_primary_id": int(e.ability_primary),
+            "ability_secondary_id": int(e.ability_secondary),
+            "iq_group": int(e.iq_group),
             "can_evolve": bool(e.can_evolve),
             "pre_evo_index": int(e.pre_evo_index),
             "evo_method_id": method_id,
