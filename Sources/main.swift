@@ -665,8 +665,14 @@ final class CharacterPreviewView: NSView {
 
     deinit { timer?.invalidate() }
 
+    /// A still down-facing idle frame for `folder`, as an NSImage (party rows etc.).
+    static func stillImage(_ folder: String) -> NSImage? {
+        guard let cg = idleDownFrames(folder).first else { return nil }
+        return NSImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height))
+    }
+
     // Row 0 (facing down) of the Idle sheet, falling back to Walk if needed.
-    private static func idleDownFrames(_ folder: String) -> [CGImage] {
+    static func idleDownFrames(_ folder: String) -> [CGImage] {
         var subdir = "characters/\(folder)"
         if AppSettings.shared.altColor,
            Bundle.main.url(forResource: "AnimData", withExtension: "xml",
@@ -701,6 +707,8 @@ final class SettingsWindowController: NSObject {
     private var valueLabels: [Int: NSTextField] = [:]
     private var popup: NSPopUpButton!
     private var preview: CharacterPreviewView!
+    private var raisingPanel: RaisingPanelView?
+    private let raisingPanelWidth: CGFloat = 340
 
     init(controller: CharacterController) {
         self.controller = controller
@@ -739,7 +747,6 @@ final class SettingsWindowController: NSObject {
         grid.addRow(with: [makeLabel(L("label.shadow")), makeShadowCheckbox(), NSGridCell.emptyContentView])
         grid.addRow(with: [makeLabel(L("label.launch")), makeLaunchCheckbox(), NSGridCell.emptyContentView])
         grid.addRow(with: [makeLabel(L("label.raising")), makeRaisingCheckbox(), NSGridCell.emptyContentView])
-        grid.addRow(with: [NSGridCell.emptyContentView, makeDetailsButton(), NSGridCell.emptyContentView])
 
         grid.column(at: 0).xPlacement = .trailing
         grid.column(at: 1).width = 180
@@ -768,13 +775,60 @@ final class SettingsWindowController: NSObject {
         outer.translatesAutoresizingMaskIntoConstraints = false
 
         let content = window.contentView!
-        content.addSubview(outer)
+
+        // Left column holds the existing settings at a fixed width; the raising
+        // panel lives to its right and is revealed by widening the window.
+        let leftColumn = NSView()
+        leftColumn.translatesAutoresizingMaskIntoConstraints = false
+        content.addSubview(leftColumn)
+        leftColumn.addSubview(outer)
+
+        let divider = NSBox()
+        divider.boxType = .separator
+        divider.translatesAutoresizingMaskIntoConstraints = false
+        content.addSubview(divider)
+
+        let panel = RaisingPanelView(frame: .zero)
+        panel.translatesAutoresizingMaskIntoConstraints = false
+        content.addSubview(panel)
+        raisingPanel = panel
+
+        // NOTE: pin only tops + fixed heights (never subview.bottom == content.bottom),
+        // otherwise NSWindow shrink-wraps its height to the Auto Layout fitting size
+        // and the window collapses to the title bar.
+        let contentH: CGFloat = 596
         NSLayoutConstraint.activate([
-            outer.centerXAnchor.constraint(equalTo: content.centerXAnchor),
-            outer.topAnchor.constraint(equalTo: content.topAnchor, constant: 26),
+            leftColumn.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            leftColumn.topAnchor.constraint(equalTo: content.topAnchor),
+            leftColumn.widthAnchor.constraint(equalToConstant: 400),
+            leftColumn.heightAnchor.constraint(equalToConstant: contentH),
+            outer.centerXAnchor.constraint(equalTo: leftColumn.centerXAnchor),
+            outer.topAnchor.constraint(equalTo: leftColumn.topAnchor, constant: 26),
+
+            divider.leadingAnchor.constraint(equalTo: leftColumn.trailingAnchor),
+            divider.topAnchor.constraint(equalTo: content.topAnchor, constant: 12),
+            divider.heightAnchor.constraint(equalToConstant: contentH - 24),
+            divider.widthAnchor.constraint(equalToConstant: 1),
+
+            panel.leadingAnchor.constraint(equalTo: divider.trailingAnchor),
+            panel.topAnchor.constraint(equalTo: content.topAnchor),
+            panel.widthAnchor.constraint(equalToConstant: raisingPanelWidth),
+            panel.heightAnchor.constraint(equalToConstant: contentH),
         ])
 
         preview.setCharacter(AppSettings.shared.selectedCharacter)
+
+        if AppSettings.shared.raisingMode {
+            applyRaisingWidth(expanded: true, animate: false)
+            panel.refresh()
+        }
+    }
+
+    private func applyRaisingWidth(expanded: Bool, animate: Bool) {
+        let width: CGFloat = 400 + (expanded ? raisingPanelWidth + 1 : 0)   // +1 divider
+        var f = window.frame
+        f.size.width = width
+        window.setFrame(f, display: true, animate: animate)
     }
 
     private func makeStepButton(_ title: String, _ action: Selector) -> NSButton {
@@ -855,20 +909,10 @@ final class SettingsWindowController: NSObject {
     }
 
     @objc private func raisingToggled(_ sender: NSButton) {
-        AppSettings.shared.raisingMode = (sender.state == .on)
-        if AppSettings.shared.raisingMode {
-            RaisingDetailWindowController.shared.show()   // surface state / starter picker
-        }
-    }
-
-    private func makeDetailsButton() -> NSButton {
-        let b = NSButton(title: L("button.details"), target: self, action: #selector(openDetails))
-        b.bezelStyle = .rounded
-        return b
-    }
-
-    @objc private func openDetails() {
-        RaisingDetailWindowController.shared.show()
+        let on = sender.state == .on
+        AppSettings.shared.raisingMode = on
+        applyRaisingWidth(expanded: on, animate: true)
+        if on { raisingPanel?.refresh() }
     }
 
     private func makePopup() -> NSPopUpButton {
