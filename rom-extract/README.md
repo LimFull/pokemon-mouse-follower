@@ -44,6 +44,12 @@ moves/
   moves.json                       # 기술 559개 전체 데이터: 위력, 타입, 분류, PP, 명중률,
                                    #   크리티컬 확률, 사거리 설정, 다국어 이름/설명 등
   learnsets.json                   # 포켓몬별 레벨업/TM·HM/알 기술 목록 (다국어 이름 포함)
+monsters/
+  monsters.json                    # monster.md 전체 엔트리(1155): entid, 도감번호, 성별,
+                                   #   이름, can_evolve, pre_evo_index, evo_method/param
+  evolutions.json                  # 진화 259개(♂♀ 중복제거): from→to, 방법(LEVEL/IQ/ITEMS/
+                                   #   RECRUITED/NO_REQ), param1(레벨/아이템ID/IQ), 추가조건
+                                   #   (LINK_CABLE/성별/리본/ATK-DEF비교/MIMIC 등), 다국어 이름
 anim/
   anim.bin                         # overlay10에서 재구성한 원본 애니메이션 테이블 (SkyTemple 호환)
   move_animations.json             # 기술 ID → 애니메이션 ID(anim1~4), 속도, 방향, 효과음(sfx) 매핑

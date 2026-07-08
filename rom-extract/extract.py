@@ -4,9 +4,10 @@ Pokémon Mystery Dungeon: Explorers of Sky ROM asset extractor.
 
 Extracts, using skytemple-files (the library behind SkyTemple):
   1. Move data      (BALANCE/waza_p.bin)          -> out/moves/moves.json, learnsets.json
-  2. Animation maps (overlay10 tables, "anim.bin") -> out/anim/*.json (+ raw anim.bin)
-  3. Effect sprites (EFFECT/effect.bin)            -> out/effects/effect_NNNN/ PNG sheets (+ raw .bin)
-  4. Game strings   (MESSAGE/*.str)                -> out/strings/*.json (move/monster names, descriptions, full dump)
+  2. Monster data   (BALANCE/monster.md)          -> out/monsters/monsters.json, evolutions.json
+  3. Animation maps (overlay10 tables, "anim.bin") -> out/anim/*.json (+ raw anim.bin)
+  4. Effect sprites (EFFECT/effect.bin)            -> out/effects/effect_NNNN/ PNG sheets (+ raw .bin)
+  5. Game strings   (MESSAGE/*.str)                -> out/strings/*.json (move/monster names, descriptions, full dump)
 
 Usage:
     .venv/bin/python extract.py [--rom rom.nds] [--out out] [--only moves,anim,effects,strings] [--jobs 4]
@@ -211,6 +212,81 @@ def extract_moves(rom, config, out_dir, strings_by_lang):
         )
     dump_json(os.path.join(out, "learnsets.json"), learnsets)
     return waza
+
+
+# ---------------------------------------------------------------- monsters / evolution
+
+def extract_monsters(rom, config, out_dir, strings_by_lang):
+    """Per-monster evolution data from BALANCE/monster.md.
+
+    The evolution requirement is stored on the *evolved* entry: its
+    ``pre_evo_index`` points back to the pre-evolution, and ``evo_method`` /
+    ``evo_param1`` / ``evo_param2`` describe how to reach it.
+      method LEVEL -> param1 = level, ITEMS -> param1 = item id, IQ -> param1 = IQ,
+      param2 = an extra requirement (link cable, gender, ribbon, stat compare, ...).
+    """
+    from skytemple_files.data.md.protocol import EvolutionMethod, AdditionalRequirement
+
+    out = ensure_dir(os.path.join(out_dir, "monsters"))
+    md = FileType.MD.deserialize(rom.getFileByName("BALANCE/monster.md"))
+    name_blk = find_block(config, "pokemon", "names")[1]
+
+    # Every species has two md entries (♂/♀); the secondary one sits past the name
+    # table, so resolve names through md_index_base (the primary/base entry index).
+    base_of = {i: int(e.md_index_base) for i, e in enumerate(md.entries)}
+
+    def name_of(idx):
+        idx = base_of.get(idx, idx)
+        if name_blk and 0 <= idx and name_blk.begin + idx < name_blk.end:
+            return {lang: s[name_blk.begin + idx] for lang, s in strings_by_lang.items()}
+        return {}
+
+    def enum_name(enum, v):
+        try:
+            return enum(int(v)).name
+        except Exception:
+            return None
+
+    monsters, evolutions, seen = [], [], set()
+    for i, e in enumerate(md.entries):
+        method_id = int(e.evo_method)
+        monsters.append({
+            "md_index": i,
+            "md_index_base": int(e.md_index_base),
+            "entid": int(e.entid),
+            "national_pokedex_number": int(e.national_pokedex_number),
+            "gender": int(e.gender),
+            "names": name_of(i),
+            "can_evolve": bool(e.can_evolve),
+            "pre_evo_index": int(e.pre_evo_index),
+            "evo_method_id": method_id,
+            "evo_method": enum_name(EvolutionMethod, method_id),
+            "evo_param1": int(e.evo_param1),
+            "evo_requirement_id": int(e.evo_param2),
+            "evo_requirement": enum_name(AdditionalRequirement, e.evo_param2),
+        })
+        if e.pre_evo_index != 0 and method_id != 0:
+            # Collapse the ♂/♀ duplicate entries into one edge per distinct evolution.
+            key = (base_of.get(int(e.pre_evo_index)), int(e.md_index_base),
+                   method_id, int(e.evo_param1), int(e.evo_param2))
+            if key in seen:
+                continue
+            seen.add(key)
+            evolutions.append({
+                "from_md_index": int(e.pre_evo_index),
+                "from_name": name_of(int(e.pre_evo_index)),
+                "to_md_index": i,
+                "to_entid": int(e.entid),
+                "to_national_pokedex_number": int(e.national_pokedex_number),
+                "to_name": name_of(i),
+                "method_id": method_id,
+                "method": enum_name(EvolutionMethod, method_id),
+                "param1": int(e.evo_param1),   # level / item id / IQ, per method
+                "requirement_id": int(e.evo_param2),
+                "requirement": enum_name(AdditionalRequirement, e.evo_param2),
+            })
+    dump_json(os.path.join(out, "monsters.json"), monsters)
+    dump_json(os.path.join(out, "evolutions.json"), evolutions)
 
 
 # ---------------------------------------------------------------- animation tables
@@ -431,7 +507,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--rom", default=os.path.join(os.path.dirname(__file__), "rom.nds"))
     ap.add_argument("--out", default=os.path.join(os.path.dirname(__file__), "out"))
-    ap.add_argument("--only", default="strings,moves,anim,effects", help="comma-separated sections")
+    ap.add_argument("--only", default="strings,moves,monsters,anim,effects", help="comma-separated sections")
     ap.add_argument("--jobs", type=int, default=4, help="parallel effect-render workers")
     args = ap.parse_args()
 
@@ -457,6 +533,9 @@ def main():
     if "moves" in sections:
         log("== moves ==")
         extract_moves(rom, config, args.out, strings_by_lang)
+    if "monsters" in sections:
+        log("== monsters / evolution ==")
+        extract_monsters(rom, config, args.out, strings_by_lang)
     if "anim" in sections:
         log("== animation tables ==")
         anim = extract_anim(rom, config, args.out, strings_by_lang)
