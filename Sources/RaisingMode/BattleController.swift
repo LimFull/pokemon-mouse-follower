@@ -21,6 +21,8 @@ struct BattleScene {
     let playerAlpha: Double
     let wildAlpha: Double
     let showBars: Bool
+    let effectFrame: CGImage?    // move-effect sprite over the hit target (D22)
+    let effectPos: CGPoint
 }
 
 final class BattleController {
@@ -39,6 +41,8 @@ final class BattleController {
     private var events: [BattleEvent] = []
     private var evIdx = 0
     private var evTick = 0
+    private var curTicks = 20            // current event's playback length
+    private var effect: RunningEffect?   // move-effect sprite in flight
     private var curPHP = 1.0, curWHP = 1.0
     private var pFrom = 1.0, pTo = 1.0, wFrom = 1.0, wTo = 1.0
     private var flashP = false, flashW = false
@@ -51,10 +55,12 @@ final class BattleController {
 
     var isBattling: Bool { phase == .battling || phase == .ending }
 
-    /// Debug: spawn a wild encounter immediately.
-    func forceSpawn() {
+    /// Debug: spawn a wild encounter immediately; `at` pins its position
+    /// (used by the selftest to force a contact battle deterministically).
+    func forceSpawn(at pos: CGPoint? = nil) {
         guard phase == .idle, let a = RaisingState.shared.active, !a.isFainted else { return }
         spawn(near: a)
+        if let pos { wildMon?.place(at: pos) }
     }
 
     func update(playerGlobalPos: CGPoint) -> BattleScene? {
@@ -129,23 +135,33 @@ final class BattleController {
         wildMon?.faceStanding(toward: playerPos)
         guard evIdx < events.count else { finishBattle(); return }
         let e = events[evIdx]
-        let ticks = duration(of: e)
-        if evTick == 0 {
-            let to = frac(e.targetHP, e.targetMaxHP)
-            if e.targetIsPlayer { pFrom = curPHP; pTo = to; flashP = e.damage > 0 }
-            else { wFrom = curWHP; wTo = to; flashW = e.damage > 0 }
-        }
-        let t = min(1.0, Double(evTick) / Double(ticks) * 1.4)
+        if evTick == 0 { beginEvent(e) }
+        let t = min(1.0, Double(evTick) / Double(curTicks) * 1.4)
         if e.targetIsPlayer { curPHP = lerp(pFrom, pTo, t) } else { curWHP = lerp(wFrom, wTo, t) }
         if evTick > 8 { flashP = false; flashW = false }
+        effect?.advance()
+        if effect?.isDone == true { effect = nil }
         evTick += 1
-        if evTick >= ticks { evTick = 0; evIdx += 1 }
+        if evTick >= curTicks { evTick = 0; evIdx += 1 }
     }
 
-    /// Playback length per event: full beat for anything that deals damage,
-    /// a shorter one for misses/skips/status-only beats.
-    private func duration(of e: BattleEvent) -> Int {
-        e.damage > 0 || e.kind == .attack ? eventTicks : eventTicks * 3 / 5
+    /// Set up one event beat: HP-bar animation targets, hit flash, and the
+    /// move-effect sprite over whoever got hit. The beat lasts long enough for
+    /// the effect to play out (capped so slow effects don't stall the battle);
+    /// misses/skips/status-only beats run shorter.
+    private func beginEvent(_ e: BattleEvent) {
+        let to = frac(e.targetHP, e.targetMaxHP)
+        if e.targetIsPlayer { pFrom = curPHP; pTo = to; flashP = e.damage > 0 }
+        else { wFrom = curWHP; wTo = to; flashW = e.damage > 0 }
+
+        effect = nil
+        curTicks = (e.damage > 0 || e.kind == .attack) ? eventTicks : eventTicks * 3 / 5
+        if e.kind == .attack, let clip = EffectPlayer.clip(forMove: e.moveId) {
+            let anchor = e.targetIsPlayer ? playerPos : (wildMon?.pos ?? playerPos)
+            let cap = max(curTicks, min(clip.loop ? curTicks * 2 : clip.totalTicks, 54))
+            curTicks = cap
+            effect = RunningEffect(clip: clip, anchor: anchor, maxTicks: cap)
+        }
     }
 
     private func finishBattle() {
@@ -173,7 +189,7 @@ final class BattleController {
     }
 
     private func despawn() {
-        wild = nil; wildMon = nil; events = []; result = nil
+        wild = nil; wildMon = nil; events = []; result = nil; effect = nil
         playerAlpha = 1.0; wildAlpha = 1.0
         phase = .idle
         spawnCooldown = nextSpawnDelay()
@@ -183,10 +199,12 @@ final class BattleController {
 
     private func scene() -> BattleScene? {
         guard phase != .idle, let wm = wildMon, let frame = wm.currentFrame else { return nil }
+        let fx = effect?.current(scale: AppSettings.shared.scale)
         return BattleScene(
             wildFrame: frame, wildPos: wm.pos, playerPos: playerPos,
             playerHP: curPHP, wildHP: curWHP, flashPlayer: flashP, flashWild: flashW,
-            playerAlpha: playerAlpha, wildAlpha: wildAlpha, showBars: isBattling)
+            playerAlpha: playerAlpha, wildAlpha: wildAlpha, showBars: isBattling,
+            effectFrame: fx?.0, effectPos: fx?.1 ?? .zero)
     }
 
     // MARK: helpers

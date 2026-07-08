@@ -11,6 +11,8 @@ import Foundation
 /// evolution, party edit) so the overlay can reload the right sprite.
 extension Notification.Name {
     static let raisingChanged = Notification.Name("raisingChanged")
+    /// Posted right after a mon evolves, so the overlay can play the burst.
+    static let raisingEvolved = Notification.Name("raisingEvolved")
 }
 
 enum Gender: String, Codable {
@@ -209,7 +211,10 @@ final class RaisingState {
             }
         }
         persist()
-        if r.evolvedTo != nil { notifyChanged() }   // follower sprite changed
+        if r.evolvedTo != nil {
+            notifyChanged()   // follower sprite changed
+            NotificationCenter.default.post(name: .raisingEvolved, object: nil)
+        }
         return r
     }
 

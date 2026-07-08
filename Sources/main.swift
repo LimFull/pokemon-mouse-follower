@@ -572,10 +572,14 @@ final class CharacterController {
 final class SpriteView: NSView {
     private let shadowLayer = CAGradientLayer()
     private let spriteLayer = CALayer()
-    // Battle scene: wild sprite + an HP bar (track+fill) over each combatant.
+    // Battle scene: wild sprite + an HP bar (track+fill) over each combatant,
+    // plus a move-effect sprite over the hit target (D22).
     private let wildLayer = CALayer()
+    private let effectLayer = CALayer()
     private let pHPTrack = CALayer(); private let pHPFill = CALayer()
     private let wHPTrack = CALayer(); private let wHPFill = CALayer()
+    // Evolution burst: radial white glow over the follower (design D8/#9).
+    private let glowLayer = CAGradientLayer()
     var screenOrigin: CGPoint = .zero
 
     override init(frame frameRect: NSRect) {
@@ -606,6 +610,21 @@ final class SpriteView: NSView {
             f.cornerRadius = 2.5; f.isHidden = true
             layer?.addSublayer(t); layer?.addSublayer(f)
         }
+
+        glowLayer.type = .radial
+        glowLayer.colors = [CGColor(gray: 1, alpha: 0.95),
+                            CGColor(gray: 1, alpha: 0.55),
+                            CGColor(gray: 1, alpha: 0)]
+        glowLayer.locations = [0.0, 0.55, 1.0]
+        glowLayer.startPoint = CGPoint(x: 0.5, y: 0.5)
+        glowLayer.endPoint = CGPoint(x: 1.0, y: 1.0)
+        glowLayer.isHidden = true
+        layer?.addSublayer(glowLayer)
+
+        effectLayer.magnificationFilter = .nearest
+        effectLayer.contentsGravity = .resize
+        effectLayer.isHidden = true
+        layer?.addSublayer(effectLayer)   // above everything: the move effect
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
@@ -615,6 +634,7 @@ final class SpriteView: NSView {
     func renderBattle(_ scene: BattleScene?) {
         guard let scene else {
             wildLayer.isHidden = true
+            effectLayer.isHidden = true
             [pHPTrack, pHPFill, wHPTrack, wHPFill].forEach { $0.isHidden = true }
             spriteLayer.opacity = 1
             return
@@ -639,6 +659,17 @@ final class SpriteView: NSView {
         } else {
             [pHPTrack, pHPFill, wHPTrack, wHPFill].forEach { $0.isHidden = true }
         }
+
+        if let fx = scene.effectFrame {
+            effectLayer.isHidden = false
+            effectLayer.bounds = CGRect(x: 0, y: 0, width: CGFloat(fx.width) * s,
+                                        height: CGFloat(fx.height) * s)
+            effectLayer.contents = fx
+            effectLayer.position = CGPoint(x: scene.effectPos.x - screenOrigin.x,
+                                           y: scene.effectPos.y - screenOrigin.y)
+        } else {
+            effectLayer.isHidden = true
+        }
         CATransaction.commit()
     }
 
@@ -653,8 +684,12 @@ final class SpriteView: NSView {
                                 : frac > 0.2 ? NSColor.systemYellow : NSColor.systemRed).cgColor
     }
 
-    func render(_ frame: CGImage?, globalPos: CGPoint, shadow: ShadowAnchor, rotation: CGFloat = 0) {
-        guard let frame else { spriteLayer.isHidden = true; shadowLayer.isHidden = true; return }
+    func render(_ frame: CGImage?, globalPos: CGPoint, shadow: ShadowAnchor,
+                rotation: CGFloat = 0, glow: CGFloat = 0) {
+        guard let frame else {
+            spriteLayer.isHidden = true; shadowLayer.isHidden = true; glowLayer.isHidden = true
+            return
+        }
         let s = AppSettings.shared.scale
         let x = globalPos.x - screenOrigin.x
         let y = globalPos.y - screenOrigin.y
@@ -684,6 +719,17 @@ final class SpriteView: NSView {
         spriteLayer.position = CGPoint(x: x, y: y)
         spriteLayer.transform = rotation == 0 ? CATransform3DIdentity
                                               : CATransform3DMakeRotation(rotation, 0, 0, 1)
+
+        // Evolution burst: a white radial glow swelling over the sprite.
+        if glow > 0 {
+            let d = max(CGFloat(frame.width), CGFloat(frame.height)) * s * (1.1 + 0.5 * glow)
+            glowLayer.isHidden = false
+            glowLayer.bounds = CGRect(x: 0, y: 0, width: d, height: d)
+            glowLayer.position = CGPoint(x: x, y: y)
+            glowLayer.opacity = Float(glow)
+        } else {
+            glowLayer.isHidden = true
+        }
         CATransaction.commit()
     }
 }
@@ -1129,6 +1175,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let controller = CharacterController()
     private let battle = BattleController()
     private var wasFainted = false
+    private var evoGlowTicks = 0            // evolution burst countdown (D8/#9)
+    private let evoGlowTotal = 150
     private var overlays: [(window: NSWindow, view: SpriteView)] = []
     private var statusItem: NSStatusItem!
     private var timer: Timer?
@@ -1144,12 +1192,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             name: NSApplication.didChangeScreenParametersNotification, object: nil)
         NotificationCenter.default.addObserver(
             self, selector: #selector(raisingChanged), name: .raisingChanged, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(raisingEvolved), name: .raisingEvolved, object: nil)
         if CommandLine.arguments.contains("--show-settings") { showSettings() }
     }
 
     // The active raising mon (or the normal character) should be the follower.
     @objc private func raisingChanged() {
         controller.setCharacter(RaisingState.shared.followerFolder)
+    }
+
+    // A mon just evolved: cover the sprite swap with a white burst that fades.
+    @objc private func raisingEvolved() {
+        if AppSettings.shared.raisingMode { evoGlowTicks = evoGlowTotal }
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -1238,11 +1293,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if self.battle.isBattling, let sc = scene {
                 self.controller.face(sc.wildPos)   // stand facing the wild while fighting
             }
+            // Evolution burst: bright at the swap, pulsing while it fades out.
+            var glow: CGFloat = 0
+            if self.evoGlowTicks > 0 {
+                self.evoGlowTicks -= 1
+                let t = CGFloat(self.evoGlowTicks) / CGFloat(self.evoGlowTotal)
+                glow = t * (0.8 + 0.2 * sin(CGFloat(self.evoGlowTicks) * 0.35))
+            }
             for (_, view) in self.overlays {
                 view.render(self.controller.currentFrame,
                             globalPos: self.controller.position,
                             shadow: self.controller.currentShadow,
-                            rotation: self.controller.faintRotation)
+                            rotation: self.controller.faintRotation,
+                            glow: glow)
                 view.renderBattle(scene)
             }
         }
@@ -1307,12 +1370,38 @@ if CommandLine.arguments.contains("--selftest-raising") {
         let kinds = Set(r.events.map { "\($0.kind)" })
         print("status battle: Pikachu vs Pidgey → statuses=\(statuses) kinds=\(kinds.sorted())")
     }
+    // Move-effect sprites (D22): mapping + frames load from the bundle.
+    print("move effects mapped=\(MoveEffects.map.count)")
+    for (label, id) in [("Tackle", 154), ("Ember", 262), ("Thunderbolt", 129)] {
+        if let c = EffectPlayer.clip(forMove: id) {
+            print("  effect \(label): steps=\(c.steps.count) ticks=\(c.totalTicks) loop=\(c.loop) head=\(c.headAnchored)")
+        } else { print("  effect \(label): MISSING") }
+    }
     // Gender ratios (G): Magnemite genderless, Nidoran♀ always female, Chansey female.
     for d in [81, 29, 113] {
         if let s = GameData.species[d] {
             let g = (0..<6).map { _ in Gender.random(genderRate: s.genderRate).rawValue.prefix(1) }.joined()
             print("gender \(s.displayName) rate=\(s.genderRate ?? 99): \(g)")
         }
+    }
+    // Headless battle playback: force a contact encounter and tick the
+    // controller through the whole fight, counting effect frames drawn.
+    do {
+        let hadRaising = AppSettings.shared.raisingMode
+        AppSettings.shared.raisingMode = true
+        let bc = BattleController()
+        let p = CGPoint(x: 500, y: 500)
+        bc.forceSpawn(at: CGPoint(x: 520, y: 500))    // inside battle range
+        var effectFrames = 0, battleTicks = 0
+        for _ in 0..<20_000 {
+            let scene = bc.update(playerGlobalPos: p)
+            if bc.isBattling { battleTicks += 1 }
+            if scene?.effectFrame != nil { effectFrames += 1 }
+            if scene == nil && battleTicks > 0 { break }   // battle done + despawned
+        }
+        let m = RaisingState.shared.active!
+        print("playback: battleTicks=\(battleTicks) effectFrames=\(effectFrames) → \(Characters.displayName(String(format: "%03d", m.dex))) Lv\(m.level) HP \(m.currentHP)/\(m.maxHP) status=\(m.status ?? "none")")
+        AppSettings.shared.raisingMode = hadRaising
     }
     if let s7 = GameData.species[7] { _ = st.addToParty(st.makeMon(species: s7, level: 5)) }
     print("party=\(st.party.count) dailyHealNeededSameDay=\(st.dailyHealIfNeeded())")
