@@ -171,8 +171,13 @@ final class RaisingPanelView: NSView {
         header.spacing = 12
         inner.addArrangedSubview(header)
 
-        // HP line + bar.
-        inner.addArrangedSubview(monoLabel("\(L("detail.hp"))  \(mon.currentHP)/\(mon.maxHP)", 12, .semibold))
+        // HP line + status badge + bar.
+        let hpRow = NSStackView(views: [monoLabel("\(L("detail.hp"))  \(mon.currentHP)/\(mon.maxHP)", 12, .semibold)])
+        hpRow.orientation = .horizontal
+        hpRow.alignment = .centerY
+        hpRow.spacing = 8
+        if let badge = StatusBadge(mon: mon) { hpRow.addArrangedSubview(badge) }
+        inner.addArrangedSubview(hpRow)
         inner.addArrangedSubview(HPBarView(current: mon.currentHP, max: mon.maxHP, width: Self.contentWidth - 28))
 
         // Stats block (EoS model: no Speed stat).
@@ -380,6 +385,42 @@ final class RaisingPanelView: NSView {
 
 }
 
+// MARK: - Status badge (mainline-style PAR/SLP/BRN/PSN/FRZ chip; FNT when fainted)
+
+final class StatusBadge: NSView {
+    private static let style: [String: (String, NSColor)] = [
+        "paralysis": ("PAR", .systemYellow),
+        "sleep": ("SLP", .systemGray),
+        "burn": ("BRN", .systemOrange),
+        "poison": ("PSN", .systemPurple),
+        "freeze": ("FRZ", .systemTeal),
+        "fainted": ("FNT", .systemRed),
+    ]
+
+    /// nil when the mon is healthy (no badge to show).
+    init?(mon: OwnedPokemon) {
+        let key = mon.isFainted ? "fainted" : (mon.status ?? "")
+        guard let (abbr, color) = StatusBadge.style[key] else { return nil }
+        super.init(frame: .zero)
+        translatesAutoresizingMaskIntoConstraints = false
+        wantsLayer = true
+        layer?.cornerRadius = 4
+        layer?.backgroundColor = color.withAlphaComponent(0.9).cgColor
+        let l = NSTextField(labelWithString: abbr)
+        l.font = .monospacedSystemFont(ofSize: 10, weight: .bold)
+        l.textColor = .white
+        l.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(l)
+        NSLayoutConstraint.activate([
+            l.centerXAnchor.constraint(equalTo: centerXAnchor),
+            l.centerYAnchor.constraint(equalTo: centerYAnchor),
+            widthAnchor.constraint(equalTo: l.widthAnchor, constant: 10),
+            heightAnchor.constraint(equalTo: l.heightAnchor, constant: 4),
+        ])
+    }
+    required init?(coder: NSCoder) { fatalError("not used") }
+}
+
 // MARK: - HP bar (track + ratio-colored fill), works in both stack & frame layout
 
 final class HPBarView: NSView {
@@ -444,6 +485,14 @@ final class PartyRowView: NSView {
         hp.textColor = Palette.label
         hp.frame = NSRect(x: 230, y: 27, width: 66, height: 14)
         addSubview(hp)
+
+        if let badge = StatusBadge(mon: mon) {
+            addSubview(badge)
+            NSLayoutConstraint.activate([
+                badge.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+                badge.topAnchor.constraint(equalTo: topAnchor, constant: 7),
+            ])
+        }
     }
     required init?(coder: NSCoder) { fatalError("not used") }
 

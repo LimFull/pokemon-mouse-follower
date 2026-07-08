@@ -1295,9 +1295,23 @@ if CommandLine.arguments.contains("--selftest-raising") {
     print("typechart types=\(TypeChart.chart.count)")
     if let p = Battler(mon: st.active!), let w = Battler(wildDex: 16, level: 12) {
         let r = BattleEngine.run(player: p, wild: w)
-        print("battle: \(p.name) L\(p.level) vs wild \(w.name) L\(w.level) → \(r.playerWon ? "WIN" : "LOSE") in \(r.events.count) actions, exp=\(r.expGained)")
-        for e in r.events.prefix(3) {
-            print("  \(e.playerActed ? "▶" : "◀") \(e.moveName): \(e.damage) dmg x\(e.effectiveness) (def HP \(e.defenderHP)/\(e.defenderMaxHP))\(e.fainted ? " FAINT" : "")")
+        print("battle: \(p.name) L\(p.level) \(p.gender.rawValue) vs wild \(w.name) L\(w.level) \(w.gender.rawValue) → \(r.playerWon ? "WIN" : "LOSE") in \(r.events.count) events, exp=\(r.expGained) (base \(w.baseExp)), endStatus=\(r.playerEndStatus ?? "none")")
+        for e in r.events.prefix(4) {
+            print("  \(e.actorIsPlayer ? "▶" : "◀") [\(e.kind)] \(e.moveName): \(e.damage) dmg x\(e.effectiveness) (tgt \(e.targetIsPlayer ? "P" : "W") HP \(e.targetHP)/\(e.targetMaxHP))\(e.statusApplied.map { " +\($0)" } ?? "")\(e.fainted ? " FAINT" : "")")
+        }
+    }
+    // Status conditions (D19): Thunder Wave-style paralysis + burn chip damage.
+    if let p = Battler(wildDex: 25, level: 20), let w = Battler(wildDex: 16, level: 18) {
+        let r = BattleEngine.run(player: p, wild: w)
+        let statuses = r.events.compactMap { $0.statusApplied }
+        let kinds = Set(r.events.map { "\($0.kind)" })
+        print("status battle: Pikachu vs Pidgey → statuses=\(statuses) kinds=\(kinds.sorted())")
+    }
+    // Gender ratios (G): Magnemite genderless, Nidoran♀ always female, Chansey female.
+    for d in [81, 29, 113] {
+        if let s = GameData.species[d] {
+            let g = (0..<6).map { _ in Gender.random(genderRate: s.genderRate).rawValue.prefix(1) }.joined()
+            print("gender \(s.displayName) rate=\(s.genderRate ?? 99): \(g)")
         }
     }
     if let s7 = GameData.species[7] { _ = st.addToParty(st.makeMon(species: s7, level: 5)) }

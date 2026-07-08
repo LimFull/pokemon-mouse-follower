@@ -15,6 +15,13 @@ extension Notification.Name {
 
 enum Gender: String, Codable {
     case male, female, genderless
+
+    /// Random gender respecting the species ratio (design G / D17).
+    /// `genderRate` is PokeAPI-style female eighths; -1 (or nil) = genderless.
+    static func random(genderRate: Int?) -> Gender {
+        guard let r = genderRate, r >= 0 else { return .genderless }
+        return Int.random(in: 0..<8) < r ? .female : .male
+    }
 }
 
 /// One owned Pokémon instance (a raised/caught team member).
@@ -98,8 +105,8 @@ final class RaisingState {
     }
 
     /// Build a fresh mon of `species` at `level` with a level-appropriate moveset
-    /// and a random, ratio-respecting gender (D17). Gender ratios beyond the
-    /// simple 50/50 fallback arrive with the PokéAPI supplement (design 2.2-H).
+    /// and a random, ratio-respecting gender (D17 / G — genderless and
+    /// gender-locked species come out right via the species' gender_rate).
     func makeMon(species s: SpeciesData, level: Int) -> OwnedPokemon {
         let hp = GameData.stats(s, level: level).hp
         return OwnedPokemon(
@@ -108,7 +115,7 @@ final class RaisingState {
             exp: s.expCurve.indices.contains(level - 1) ? s.expCurve[level - 1] : 0,
             currentHP: hp,
             moves: s.initialMoves(atLevel: level),
-            gender: RaisingState.randomGender(),
+            gender: Gender.random(genderRate: s.genderRate),
             status: nil)
     }
 
@@ -206,16 +213,17 @@ final class RaisingState {
         return r
     }
 
-    /// Apply a finished battle to the active mon: set its HP from the final
-    /// fraction, grant EXP on a win (level-ups/evolution via gainExp), and switch
-    /// to the next non-fainted party member if it fainted (D10).
+    /// Apply a finished battle to the active mon: set its end HP and carried
+    /// major status (D19 — cleared by fainting), grant EXP on a win (level-ups/
+    /// evolution via gainExp), and switch to the next non-fainted party member
+    /// if it fainted (D10).
     @discardableResult
-    func applyBattleOutcome(playerHPFraction: Double, won: Bool, expGained: Int) -> GrowthResult {
+    func applyBattleOutcome(playerHP: Int, status: String?, won: Bool, expGained: Int) -> GrowthResult {
         var result = GrowthResult()
         let i = save.activeIndex
         guard save.party.indices.contains(i) else { return result }
-        let maxHP = save.party[i].maxHP
-        save.party[i].currentHP = max(0, min(maxHP, Int((Double(maxHP) * playerHPFraction).rounded())))
+        save.party[i].currentHP = max(0, min(save.party[i].maxHP, playerHP))
+        save.party[i].status = save.party[i].isFainted ? nil : status
         if won && expGained > 0 { result = gainExp(expGained) }   // persists + may evolve/notify
         if save.party[i].isFainted, let next = save.party.indices.first(where: { !save.party[$0].isFainted }) {
             save.activeIndex = next
@@ -277,11 +285,5 @@ final class RaisingState {
         f.locale = Locale(identifier: "en_US_POSIX")
         f.dateFormat = "yyyy-MM-dd"
         return f.string(from: Date())
-    }
-
-    private static func randomGender() -> Gender {
-        // Phase 0 placeholder: 50/50. Species gender ratio (incl. genderless /
-        // gender-locked) folds in with the PokéAPI supplement (design 2.2-H, G).
-        Bool.random() ? .male : .female
     }
 }

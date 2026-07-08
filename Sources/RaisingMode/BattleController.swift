@@ -129,21 +129,30 @@ final class BattleController {
         wildMon?.faceStanding(toward: playerPos)
         guard evIdx < events.count else { finishBattle(); return }
         let e = events[evIdx]
+        let ticks = duration(of: e)
         if evTick == 0 {
-            if e.playerActed { wFrom = curWHP; wTo = frac(e.defenderHP, e.defenderMaxHP); flashW = true }
-            else { pFrom = curPHP; pTo = frac(e.defenderHP, e.defenderMaxHP); flashP = true }
+            let to = frac(e.targetHP, e.targetMaxHP)
+            if e.targetIsPlayer { pFrom = curPHP; pTo = to; flashP = e.damage > 0 }
+            else { wFrom = curWHP; wTo = to; flashW = e.damage > 0 }
         }
-        let t = min(1.0, Double(evTick) / Double(eventTicks) * 1.4)
-        if e.playerActed { curWHP = lerp(wFrom, wTo, t) } else { curPHP = lerp(pFrom, pTo, t) }
+        let t = min(1.0, Double(evTick) / Double(ticks) * 1.4)
+        if e.targetIsPlayer { curPHP = lerp(pFrom, pTo, t) } else { curWHP = lerp(wFrom, wTo, t) }
         if evTick > 8 { flashP = false; flashW = false }
         evTick += 1
-        if evTick >= eventTicks { evTick = 0; evIdx += 1 }
+        if evTick >= ticks { evTick = 0; evIdx += 1 }
+    }
+
+    /// Playback length per event: full beat for anything that deals damage,
+    /// a shorter one for misses/skips/status-only beats.
+    private func duration(of e: BattleEvent) -> Int {
+        e.damage > 0 || e.kind == .attack ? eventTicks : eventTicks * 3 / 5
     }
 
     private func finishBattle() {
         let won = result?.playerWon ?? false
         if let r = result {
-            RaisingState.shared.applyBattleOutcome(playerHPFraction: curPHP, won: r.playerWon, expGained: r.expGained)
+            RaisingState.shared.applyBattleOutcome(playerHP: r.playerEndHP, status: r.playerEndStatus,
+                                                   won: r.playerWon, expGained: r.expGained)
         }
         if won {
             endTicks = fast ? 40 : 90

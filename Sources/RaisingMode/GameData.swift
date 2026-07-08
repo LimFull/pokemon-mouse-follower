@@ -51,6 +51,9 @@ struct SpeciesData: Codable {
     let type2: String?
     let baseStats: BaseStats            // EoS md base stats (legacy / fallback)
     let base: MainlineBase?             // mainline base stats (preferred)
+    let baseExp: Int?                   // mainline base experience yield (D6-1)
+    let captureRate: Int?               // mainline catch rate (D11, Phase 3)
+    let genderRate: Int?                // female eighths; -1 = genderless (G)
     let isBaseForm: Bool
     let preEvoDex: Int?
     let evolutions: [Evolution]
@@ -60,6 +63,9 @@ struct SpeciesData: Codable {
     enum CodingKeys: String, CodingKey {
         case dex, id, names, type1, type2, base
         case baseStats = "base_stats"
+        case baseExp = "base_exp"
+        case captureRate = "capture_rate"
+        case genderRate = "gender_rate"
         case isBaseForm = "is_base_form"
         case preEvoDex = "pre_evo_dex"
         case evolutions
@@ -93,10 +99,21 @@ struct MoveData: Codable {
     let pp: Int
     let accuracy: Int
     let desc: String?
+    let ailment: String?        // mainline status it can inflict (D19-1), if any
+    let ailmentChance: Int?     // %; 0 on a Status-category move = always
     enum CodingKeys: String, CodingKey {
         case moveId = "move_id", names, type, category, power, pp, accuracy, desc
+        case ailment
+        case ailmentChance = "ailment_chance"
     }
     var displayName: String { names["e"] ?? "Move \(moveId)" }
+
+    /// Effective % chance to inflict `ailment` on a hit (status moves: always).
+    var effectiveAilmentChance: Int {
+        guard ailment != nil else { return 0 }
+        let c = ailmentChance ?? 0
+        return c == 0 ? 100 : c
+    }
 }
 
 /// Concrete stats of a mon at a given level.
