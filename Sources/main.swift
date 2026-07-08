@@ -305,11 +305,22 @@ struct ShadowAnchor {
 // The "brain": tracks the character in GLOBAL screen coordinates and picks the
 // current animation frame. Rendering is done separately by one SpriteView per
 // screen, so the character can cross between displays (which each own a space).
+/// Battle pose for a combatant during playback (design D2/D2-1).
+enum BattlePose {
+    case stand      // idle, facing the opponent
+    case attack     // Attack-Anim (contact moves)
+    case shoot      // Shoot-Anim (projectile moves; falls back to attack)
+    case hurt       // Hurt-Anim while damage lands
+}
+
 final class CharacterController {
     private var idle: [[CGImage]] = []
     private var walk: [[CGImage]] = []
     private var sleep: [[CGImage]] = []
     private var faint: [[CGImage]] = []       // Faint-Anim (may be absent -> rotate fallback)
+    private var attack: [[CGImage]] = []      // battle poses (D2-1); empty -> idle fallback
+    private var shoot: [[CGImage]] = []
+    private var hurt: [[CGImage]] = []
     private var faintTick = 0
     private(set) var faintRotation: CGFloat = 0   // z-rotation for the fallback faint pose
     // Shadow anchor per frame, parallel to the sheets above (position + size).
@@ -363,14 +374,21 @@ final class CharacterController {
         walk = slicedSheet("Walk-Anim", anim: "Walk", subdir: subdir, xml: xml)
         idle = slicedSheet("Idle-Anim", anim: "Idle", subdir: subdir, xml: xml)
         sleep = slicedSheet("Sleep-Anim", anim: "Sleep", subdir: subdir, xml: xml)
-        // Prefer the current (alt-color) folder's Faint sheet; fall back to the
-        // base folder when the variant doesn't ship one.
+        // Prefer the current (alt-color) folder's battle sheets; fall back to
+        // the base folder when the variant doesn't ship them.
         faint = slicedSheet("Faint-Anim", anim: "Faint", subdir: subdir, xml: xml)
+        attack = slicedSheet("Attack-Anim", anim: "Attack", subdir: subdir, xml: xml)
+        shoot = slicedSheet("Shoot-Anim", anim: "Shoot", subdir: subdir, xml: xml)
+        hurt = slicedSheet("Hurt-Anim", anim: "Hurt", subdir: subdir, xml: xml)
         let baseSubdir = "characters/\(folder)"
-        if faint.isEmpty, subdir != baseSubdir {
+        if subdir != baseSubdir {
             let baseXml = Sprite.loadText("AnimData", ext: "xml", subdir: baseSubdir)
-            faint = slicedSheet("Faint-Anim", anim: "Faint", subdir: baseSubdir, xml: baseXml)
+            if faint.isEmpty { faint = slicedSheet("Faint-Anim", anim: "Faint", subdir: baseSubdir, xml: baseXml) }
+            if attack.isEmpty { attack = slicedSheet("Attack-Anim", anim: "Attack", subdir: baseSubdir, xml: baseXml) }
+            if shoot.isEmpty { shoot = slicedSheet("Shoot-Anim", anim: "Shoot", subdir: baseSubdir, xml: baseXml) }
+            if hurt.isEmpty { hurt = slicedSheet("Hurt-Anim", anim: "Hurt", subdir: baseSubdir, xml: baseXml) }
         }
+        if shoot.isEmpty { shoot = attack }   // 37 species ship no Shoot sheet
         // Shadow anchors from the matching -Shadow marker sheet (alpha fallback
         // if a marker sheet is missing). Computed before the sheet fallbacks so
         // each maps to its own frames.
@@ -518,14 +536,30 @@ final class CharacterController {
         }
     }
 
-    /// Stand in place (no movement) turned to face `point` — used during a battle.
-    func face(_ point: CGPoint) {
+    /// Stand in place (no movement) turned to face `point` — used during a
+    /// battle. `pose` selects a battle sheet (D2-1): attack/shoot/hurt play
+    /// once from `poseTick` and hold their last frame; stand cycles idle.
+    func face(_ point: CGPoint, pose: BattlePose = .stand, poseTick: Int = 0) {
         guard loaded else { return }
         let dx = point.x - pos.x, dy = point.y - pos.y
         if abs(dx) > 0.01 || abs(dy) > 0.01 {
             var deg = atan2(dy, dx) * 180 / .pi
             if deg < 0 { deg += 360 }
             lastRow = octantToRow[Int((deg / 45).rounded()) % 8]
+        }
+        let poseSheet: [[CGImage]]
+        switch pose {
+        case .attack: poseSheet = attack
+        case .shoot: poseSheet = shoot
+        case .hurt: poseSheet = hurt
+        case .stand: poseSheet = []
+        }
+        if !poseSheet.isEmpty {
+            let row = min(lastRow, poseSheet.count - 1)
+            if !poseSheet[row].isEmpty {
+                currentFrame = poseSheet[row][min(poseSheet[row].count - 1, poseTick / 3)]
+                return   // keep the previous shadow anchor during the pose
+            }
         }
         let sheet = idle.isEmpty ? walk : idle
         let shadow = idle.isEmpty ? walkShadow : idleShadow
@@ -1313,7 +1347,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             let scene = self.battle.update(playerGlobalPos: self.controller.position)
             if self.battle.isBattling, let sc = scene {
-                self.controller.face(sc.wildPos)   // stand facing the wild while fighting
+                // Face the wild; play the battle pose the controller picked.
+                self.controller.face(sc.wildPos, pose: sc.playerPose, poseTick: sc.playerPoseTick)
             }
             // Items: the mon picks one up by walking over it (not mid-battle).
             let itemScene = self.items.update(followerPos: self.controller.position,

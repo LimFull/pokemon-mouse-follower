@@ -9,6 +9,9 @@ import AppKit
 final class WildMon {
     private var walk: [[CGImage]] = []
     private var idle: [[CGImage]] = []
+    private var attack: [[CGImage]] = []   // battle poses (D2-1); empty -> idle
+    private var shoot: [[CGImage]] = []
+    private var hurt: [[CGImage]] = []
     private let octantToRow = [2, 3, 4, 5, 6, 7, 0, 1]
 
     private(set) var pos: CGPoint = .zero
@@ -24,7 +27,11 @@ final class WildMon {
         let xml = Sprite.loadText("AnimData", ext: "xml", subdir: subdir)
         walk = Self.sheet("Walk-Anim", "Walk", subdir, xml)
         idle = Self.sheet("Idle-Anim", "Idle", subdir, xml)
+        attack = Self.sheet("Attack-Anim", "Attack", subdir, xml)
+        shoot = Self.sheet("Shoot-Anim", "Shoot", subdir, xml)
+        hurt = Self.sheet("Hurt-Anim", "Hurt", subdir, xml)
         if idle.isEmpty { idle = walk }
+        if shoot.isEmpty { shoot = attack }
         guard !walk.isEmpty else { return nil }
         frame(moving: false)
     }
@@ -58,10 +65,25 @@ final class WildMon {
         frame(moving: true)
     }
 
-    /// Stand still, turned toward `point` (used when a battle starts).
-    func faceStanding(toward point: CGPoint) {
+    /// Stand still, turned toward `point` (used when a battle starts). `pose`
+    /// plays a battle sheet once from `poseTick`, holding its last frame (D2-1).
+    func faceStanding(toward point: CGPoint, pose: BattlePose = .stand, poseTick: Int = 0) {
         tick += 1
         faceVector(point.x - pos.x, point.y - pos.y)
+        let poseSheet: [[CGImage]]
+        switch pose {
+        case .attack: poseSheet = attack
+        case .shoot: poseSheet = shoot
+        case .hurt: poseSheet = hurt
+        case .stand: poseSheet = []
+        }
+        if !poseSheet.isEmpty {
+            let r = min(row, poseSheet.count - 1)
+            if !poseSheet[r].isEmpty {
+                currentFrame = poseSheet[r][min(poseSheet[r].count - 1, poseTick / 3)]
+                return
+            }
+        }
         frame(moving: false)
     }
 

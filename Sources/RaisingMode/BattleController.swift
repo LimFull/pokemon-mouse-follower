@@ -23,6 +23,8 @@ struct BattleScene {
     let showBars: Bool
     let effectFrame: CGImage?    // move-effect sprite over the hit target (D22)
     let effectPos: CGPoint
+    var playerPose: BattlePose = .stand   // battle pose for the follower (D2-1)
+    var playerPoseTick: Int = 0
 }
 
 final class BattleController {
@@ -45,6 +47,7 @@ final class BattleController {
     private var effects: [RunningEffect] = []   // phases: projectile, then hit
     private var ballFrame: CGImage?      // thrown ball being drawn (D11)
     private var ballPos = CGPoint.zero
+    private var playerPose: (BattlePose, Int) = (.stand, 0)   // pose + its tick
     private var curPHP = 1.0, curWHP = 1.0
     private var pFrom = 1.0, pTo = 1.0, wFrom = 1.0, wTo = 1.0
     private var flashP = false, flashW = false
@@ -141,10 +144,17 @@ final class BattleController {
     }
 
     private func tickBattling() {
-        wildMon?.faceStanding(toward: playerPos)
-        guard evIdx < events.count else { finishBattle(); return }
+        guard evIdx < events.count else {
+            wildMon?.faceStanding(toward: playerPos)
+            finishBattle()
+            return
+        }
         let e = events[evIdx]
         if evTick == 0 { beginEvent(e) }
+        // Battle poses (D2-1): attacker lunges/shoots, the hit side flinches.
+        let (pPose, wPose) = poses(for: e)
+        playerPose = pPose
+        wildMon?.faceStanding(toward: playerPos, pose: wPose.0, poseTick: wPose.1)
         let t = min(1.0, Double(evTick) / Double(curTicks) * 1.4)
         if e.targetIsPlayer { curPHP = lerp(pFrom, pTo, t) } else { curWHP = lerp(wFrom, wTo, t) }
         if evTick > 8 { flashP = false; flashW = false }
@@ -155,6 +165,42 @@ final class BattleController {
         }
         evTick += 1
         if evTick >= curTicks { evTick = 0; evIdx += 1 }
+    }
+
+    /// Per-tick battle poses for the current event (D2-1): the attacker plays
+    /// Attack (Shoot for projectile moves) at the start of its beat; the side
+    /// taking damage plays Hurt while the hit lands.
+    private func poses(for e: BattleEvent) -> (player: (BattlePose, Int), wild: (BattlePose, Int)) {
+        var p: (BattlePose, Int) = (.stand, 0)
+        var w: (BattlePose, Int) = (.stand, 0)
+        switch e.kind {
+        case .attack, .miss:
+            let hasProj = EffectPlayer.projectile(forMove: e.moveId) != nil
+            if evTick < 26 {
+                let atk = (hasProj ? BattlePose.shoot : .attack, evTick)
+                if e.actorIsPlayer { p = atk } else { w = atk }
+            }
+            if e.kind == .attack, e.damage > 0 {
+                let hitStart = hasProj ? 18 : 6
+                if evTick >= hitStart, evTick < hitStart + 18 {
+                    let hurtPose = (BattlePose.hurt, evTick - hitStart)
+                    if e.targetIsPlayer { p = hurtPose } else { w = hurtPose }
+                }
+            }
+        case .selfHit:
+            if evTick < 18 {
+                let hurtPose = (BattlePose.hurt, evTick)
+                if e.actorIsPlayer { p = hurtPose } else { w = hurtPose }
+            }
+        case .residual:
+            if evTick < 14 {
+                let hurtPose = (BattlePose.hurt, evTick)
+                if e.targetIsPlayer { p = hurtPose } else { w = hurtPose }
+            }
+        default:
+            break
+        }
+        return (p, w)
     }
 
     /// Ball-throw beat (D11): the ball arcs player -> wild, the wild is pulled
@@ -280,7 +326,9 @@ final class BattleController {
             wildFrame: frame, wildPos: wm.pos, playerPos: playerPos,
             playerHP: curPHP, wildHP: curWHP, flashPlayer: flashP, flashWild: flashW,
             playerAlpha: playerAlpha, wildAlpha: wildAlpha, showBars: isBattling,
-            effectFrame: fx?.0, effectPos: fx?.1 ?? .zero)
+            effectFrame: fx?.0, effectPos: fx?.1 ?? .zero,
+            playerPose: phase == .battling ? playerPose.0 : .stand,
+            playerPoseTick: playerPose.1)
     }
 
     // MARK: helpers
