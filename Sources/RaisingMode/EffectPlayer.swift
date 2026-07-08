@@ -84,26 +84,27 @@ enum EffectPlayer {
         guard let ref = MoveEffects.map[moveId] else { return nil }
         guard var steps = rawSteps(file: ref.file, anim: ref.anim) else { return nil }
         steps = cropAndCenter(steps)
-        if ref.particle == true { steps = composeBurst(steps) }
-        if ref.tint == true {
-            let type = GameData.moves[moveId]?.type
-            if ref.particle == true {
-                // Particle frames cycle through broken palette rows (purple/
-                // black/green rainbow) — flat-fill their silhouette instead.
-                // Normal/untyped get a white impact flash, others their type color.
-                let neutral = type == nil || type == "Normal" || type == "None"
-                let color = neutral ? NSColor(white: 0.96, alpha: 1) : TypeStyle.color(type)
-                steps = steps.map {
-                    EffectClip.Step(image: maskFill($0.image, with: color),
-                                    ticks: $0.ticks, dx: $0.dx, dy: $0.dy)
-                }
-            } else {
-                // Drawn art with an approximate palette: re-hue, keep shading.
-                let color = TypeStyle.color(type)
-                steps = steps.map {
-                    EffectClip.Step(image: tint($0.image, with: color),
-                                    ticks: $0.ticks, dx: $0.dx, dy: $0.dy)
-                }
+        let type = GameData.moves[moveId]?.type
+        if ref.particle == true {
+            // Shared-file particle frames are unrecoverable palette garbage
+            // (solid single-color squares — the shape lived in runtime palette
+            // gradients). Keep only each frame's SIZE and timing: draw a round
+            // glow dot in its place (white flash for Normal/untyped, else the
+            // type color), THEN compose the dots into the burst.
+            let neutral = type == nil || type == "Normal" || type == "None"
+            let color = neutral ? NSColor(white: 0.96, alpha: 1) : TypeStyle.color(type)
+            steps = steps.map {
+                EffectClip.Step(image: glowDot(width: $0.image.width,
+                                               height: $0.image.height, color: color) ?? $0.image,
+                                ticks: $0.ticks, dx: $0.dx, dy: $0.dy)
+            }
+            steps = composeBurst(steps)
+        } else if ref.tint == true {
+            // Drawn art with an approximate palette: re-hue, keep shading.
+            let color = TypeStyle.color(type)
+            steps = steps.map {
+                EffectClip.Step(image: tint($0.image, with: color),
+                                ticks: $0.ticks, dx: $0.dx, dy: $0.dy)
             }
         }
         return EffectClip(steps: steps, loop: ref.loop, headAnchored: ref.point == "HEAD")
@@ -186,21 +187,24 @@ enum EffectPlayer {
         }
     }
 
-    /// Flat-fill a frame's alpha silhouette with `color` (particle frames,
-    /// whose own colors are unreconstructable palette garbage).
-    private static func maskFill(_ img: CGImage, with color: NSColor) -> CGImage {
-        let w = img.width, h = img.height
+    /// A crisp round particle: an ellipse of `color` with a lighter core,
+    /// replacing a broken square source frame of the same dimensions.
+    private static func glowDot(width: Int, height: Int, color: NSColor) -> CGImage? {
+        let w = max(2, width), h = max(2, height)
         guard let ctx = CGContext(data: nil, width: w, height: h,
                                   bitsPerComponent: 8, bytesPerRow: 0,
                                   space: CGColorSpaceCreateDeviceRGB(),
                                   bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue),
               let srgb = color.usingColorSpace(.sRGB)
-        else { return img }
+        else { return nil }
         let rect = CGRect(x: 0, y: 0, width: w, height: h)
-        ctx.clip(to: rect, mask: img)
-        ctx.setFillColor(srgb.cgColor)
-        ctx.fill(rect)
-        return ctx.makeImage() ?? img
+        ctx.setFillColor(srgb.withAlphaComponent(0.9).cgColor)
+        ctx.fillEllipse(in: rect)
+        let core = rect.insetBy(dx: CGFloat(w) * 0.28, dy: CGFloat(h) * 0.28)
+        ctx.setFillColor(srgb.blended(withFraction: 0.55, of: .white)?.cgColor
+                         ?? NSColor.white.cgColor)
+        ctx.fillEllipse(in: core)
+        return ctx.makeImage()
     }
 
     /// Re-hue an approximate-palette frame with the move's type color: keep
