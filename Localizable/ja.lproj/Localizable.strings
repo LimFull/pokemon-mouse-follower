@@ -12,6 +12,22 @@
 "label.altcolor" = "色違い";
 "label.shadow" = "影";
 "label.launch" = "ログイン時に起動";
+"label.raising" = "育成モード";
+"button.details" = "詳細…";
+"detail.window.title" = "育成モード";
+"detail.empty" = "まだポケモンがいません。\nスターターを選んで育成を始めましょう。";
+"detail.start" = "スタート";
+"detail.reset" = "育成をリセット";
+"detail.level" = "Lv.";
+"detail.exp" = "経験値";
+"detail.type" = "タイプ";
+"detail.hp" = "HP";
+"detail.stats" = "のうりょく";
+"detail.moves" = "わざ";
+"detail.party" = "パーティ";
+"detail.gender.male" = "♂";
+"detail.gender.female" = "♀";
+"detail.gender.genderless" = "—";
 
 "pokemon.001" = "フシギダネ";
 "pokemon.002" = "フシギソウ";

@@ -101,6 +101,15 @@ enum Characters {
     static func index(of folder: String) -> Int {
         all.firstIndex { $0.folder == folder } ?? 0
     }
+
+    /// Localized species display name (no folder prefix) for a 3-digit id.
+    static func displayName(_ folder: String) -> String {
+        let dex = Int(folder) ?? 0
+        let fallback = (dex >= 1 && dex <= names.count) ? names[dex - 1] : folder
+        let key = "pokemon.\(folder)"
+        let loc = L(key)
+        return (loc == key) ? fallback : loc
+    }
 }
 
 // MARK: - Settings (persisted in UserDefaults)
@@ -695,7 +704,7 @@ final class SettingsWindowController: NSObject {
 
     init(controller: CharacterController) {
         self.controller = controller
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 524),
+        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 596),
                           styleMask: [.titled, .closable], backing: .buffered, defer: false)
         window.title = L("settings.window.title")
         window.isReleasedWhenClosed = false
@@ -729,6 +738,8 @@ final class SettingsWindowController: NSObject {
         grid.addRow(with: [makeLabel(L("label.altcolor")), makeAltColorCheckbox(), NSGridCell.emptyContentView])
         grid.addRow(with: [makeLabel(L("label.shadow")), makeShadowCheckbox(), NSGridCell.emptyContentView])
         grid.addRow(with: [makeLabel(L("label.launch")), makeLaunchCheckbox(), NSGridCell.emptyContentView])
+        grid.addRow(with: [makeLabel(L("label.raising")), makeRaisingCheckbox(), NSGridCell.emptyContentView])
+        grid.addRow(with: [NSGridCell.emptyContentView, makeDetailsButton(), NSGridCell.emptyContentView])
 
         grid.column(at: 0).xPlacement = .trailing
         grid.column(at: 1).width = 180
@@ -835,6 +846,29 @@ final class SettingsWindowController: NSObject {
         if !LoginItem.setEnabled(wantOn) {
             sender.state = wantOn ? .off : .on   // revert on failure
         }
+    }
+
+    private func makeRaisingCheckbox() -> NSButton {
+        let cb = NSButton(checkboxWithTitle: "", target: self, action: #selector(raisingToggled(_:)))
+        cb.state = AppSettings.shared.raisingMode ? .on : .off
+        return cb
+    }
+
+    @objc private func raisingToggled(_ sender: NSButton) {
+        AppSettings.shared.raisingMode = (sender.state == .on)
+        if AppSettings.shared.raisingMode {
+            RaisingDetailWindowController.shared.show()   // surface state / starter picker
+        }
+    }
+
+    private func makeDetailsButton() -> NSButton {
+        let b = NSButton(title: L("button.details"), target: self, action: #selector(openDetails))
+        b.bezelStyle = .rounded
+        return b
+    }
+
+    @objc private func openDetails() {
+        RaisingDetailWindowController.shared.show()
     }
 
     private func makePopup() -> NSPopUpButton {
@@ -1042,6 +1076,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 // MARK: - Entry point
+
+// Debug hook: `--selftest-raising` exercises the raising-mode data/state layer
+// against the bundled game data, prints a report, and exits. Harmless otherwise.
+if CommandLine.arguments.contains("--selftest-raising") {
+    print("GameData: species=\(GameData.species.count) moves=\(GameData.moves.count) starters=\(GameData.starters.count)")
+    let st = RaisingState.shared
+    st.reset()
+    st.startNewGame(dex: 1)
+    if let m = st.active, let s = m.species {
+        let sv = GameData.stats(s, level: m.level)
+        print("start: \(Characters.displayName(s.id)) Lv\(m.level) \(m.gender.rawValue) HP=\(m.currentHP)/\(m.maxHP) ATK\(sv.atk) DEF\(sv.def) moves=\(m.moves)")
+    } else { print("start FAILED — GameData not loaded from bundle?") }
+    if let s7 = GameData.species[7] { _ = st.addToParty(st.makeMon(species: s7, level: 5)) }
+    print("party=\(st.party.count) dailyHealNeededSameDay=\(st.dailyHealIfNeeded())")
+    let savePath = (FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!)
+        .appendingPathComponent("PokemonMouseFollower/raising.json")
+    print("save exists=\(FileManager.default.fileExists(atPath: savePath.path)) at \(savePath.path)")
+    st.reset()   // leave no test state behind
+    exit(0)
+}
+
 let app = NSApplication.shared
 let delegate = AppDelegate()
 app.delegate = delegate

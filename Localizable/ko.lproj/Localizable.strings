@@ -12,6 +12,22 @@
 "label.altcolor" = "다른 색상";
 "label.shadow" = "그림자";
 "label.launch" = "로그인 시 자동 실행";
+"label.raising" = "키우기 모드";
+"button.details" = "상세 정보…";
+"detail.window.title" = "키우기 모드";
+"detail.empty" = "아직 포켓몬이 없습니다.\n스타터를 선택해 키우기를 시작하세요.";
+"detail.start" = "시작";
+"detail.reset" = "키우기 초기화";
+"detail.level" = "Lv.";
+"detail.exp" = "경험치";
+"detail.type" = "타입";
+"detail.hp" = "HP";
+"detail.stats" = "능력치";
+"detail.moves" = "기술";
+"detail.party" = "파티";
+"detail.gender.male" = "♂";
+"detail.gender.female" = "♀";
+"detail.gender.genderless" = "—";
 
 "pokemon.001" = "이상해씨";
 "pokemon.002" = "이상해풀";
