@@ -28,6 +28,7 @@
 "detail.gender.male" = "♂";
 "detail.gender.female" = "♀";
 "detail.gender.genderless" = "—";
+"detail.heal" = "かいふく";
 "train.button" = "トレーニング (+経験値)";
 "learn.title" = "新しいわざをおぼえる？";
 "learn.skip" = "おぼえない";

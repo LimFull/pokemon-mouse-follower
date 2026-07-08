@@ -196,11 +196,22 @@ final class RaisingPanelView: NSView {
             if expandedMove == id { inner.addArrangedSubview(moveDetailInline(id)) }
         }
 
-        // TEMP (Phase 1): a training button to grant EXP so growth/evolution can
-        // be exercised before battles exist (Phase 2 replaces this with battle EXP).
+        // TEMP: Train grants EXP (before battle EXP is the only source); Heal
+        // restores HP/faint (until revive items exist, Phase 3).
         let train = NSButton(title: L("train.button"), target: self, action: #selector(trainTapped))
         train.bezelStyle = .rounded
-        root.addArrangedSubview(train)
+        let heal = NSButton(title: L("detail.heal"), target: self, action: #selector(healTapped))
+        heal.bezelStyle = .rounded
+        let actions = NSStackView(views: [train, heal])
+        actions.orientation = .horizontal
+        actions.spacing = 8
+        root.addArrangedSubview(actions)
+    }
+
+    @objc private func healTapped() {
+        guard let i = detailIndex else { return }
+        RaisingState.shared.healMon(at: i)
+        refresh()
     }
 
     @objc private func trainTapped() {

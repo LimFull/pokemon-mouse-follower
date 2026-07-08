@@ -150,9 +150,11 @@ final class BattleController {
         wildMon?.faceStanding(toward: playerPos)
         endTicks -= 1
         let fade = max(0, Double(endTicks) / 40.0)
-        // The loser faints (fades out); the winner stays.
-        if result?.playerWon == true { wildAlpha = fade; playerAlpha = 1 }
-        else { playerAlpha = fade; wildAlpha = 1 }
+        if result?.playerWon == true {
+            wildAlpha = fade; playerAlpha = 1          // wild faints away, player stands
+        } else {
+            playerAlpha = fade; wildAlpha = fade       // player faints; wild also leaves (no sudden pop)
+        }
         if endTicks <= 0 { despawn() }
     }
 

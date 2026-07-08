@@ -135,6 +135,15 @@ final class RaisingState {
         notifyChanged()
     }
 
+    /// Fully restore the party member at `index` (temporary heal affordance
+    /// until items/revives exist; also covered by the daily heal, D23).
+    func healMon(at index: Int) {
+        guard save.party.indices.contains(index) else { return }
+        save.party[index].heal()
+        persist()
+        notifyChanged()
+    }
+
     /// Make the party member at `index` the active follower.
     func setActive(_ index: Int) {
         guard save.party.indices.contains(index) else { return }

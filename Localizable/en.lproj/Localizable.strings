@@ -28,6 +28,7 @@
 "detail.gender.male" = "♂";
 "detail.gender.female" = "♀";
 "detail.gender.genderless" = "—";
+"detail.heal" = "Heal";
 "train.button" = "Train (+EXP)";
 "learn.title" = "Learn a new move?";
 "learn.skip" = "Don't learn";

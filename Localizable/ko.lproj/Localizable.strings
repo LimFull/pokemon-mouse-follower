@@ -28,6 +28,7 @@
 "detail.gender.male" = "♂";
 "detail.gender.female" = "♀";
 "detail.gender.genderless" = "—";
+"detail.heal" = "회복";
 "train.button" = "훈련 (+경험치)";
 "learn.title" = "새 기술을 배울까요?";
 "learn.skip" = "안 배우기";

@@ -575,11 +575,11 @@ final class SpriteView: NSView {
 
     /// Draw the wild encounter / battle overlay (nil hides it). Also applies the
     /// hit-flash to the player sprite drawn by `render`.
-    func renderBattle(_ scene: BattleScene?) {
+    func renderBattle(_ scene: BattleScene?, faintedIdle: Bool = false) {
         guard let scene else {
             wildLayer.isHidden = true
             [pHPTrack, pHPFill, wHPTrack, wHPFill].forEach { $0.isHidden = true }
-            spriteLayer.opacity = 1
+            spriteLayer.opacity = faintedIdle ? 0.4 : 1   // a knocked-out mon stays dimmed
             return
         }
         let s = AppSettings.shared.scale
@@ -1189,11 +1189,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if self.battle.isBattling, let sc = scene {
                 self.controller.face(sc.wildPos)   // stand facing the wild while fighting
             }
+            let faintedIdle = scene == nil && AppSettings.shared.raisingMode
+                && (RaisingState.shared.active?.isFainted ?? false)
             for (_, view) in self.overlays {
                 view.render(self.controller.currentFrame,
                             globalPos: self.controller.position,
                             shadow: self.controller.currentShadow)
-                view.renderBattle(scene)
+                view.renderBattle(scene, faintedIdle: faintedIdle)
             }
         }
         RunLoop.main.add(t, forMode: .common)
