@@ -8,15 +8,19 @@ anim3 is the on-target hit effect (verified: Ember->fire burst file 53,
 Gust->wind file 258, ...), so the first nonzero of (anim3, anim1, anim2, anim4)
 is used. The general-animation entry then resolves to a sprite file:
 
-  WAN_FILE0 / WAN_FILE1 -> shared effect_0000 / effect_0001, anim_id = unk1.
-                           These are tiny single PARTICLES the game multiplies
-                           at runtime -> flagged "particle" so the app composes
-                           a burst of copies.
-  WAN_OTHER             -> dedicated effect_<anim_file>. unk1 is unreliable and
-                           anim 0 is usually a particle, so the animation with
-                           the largest drawn area (bbox over sampled frames) is
-                           chosen — that's the actual hit/burst art (verified:
-                           53 anim2 = flame burst, 102 anim1 = bubble cluster).
+  The animation within the file is selected by the general entry's **unk2**
+  for every WAN type (decoded 2026-07-08, correcting the README's old unk1
+  claim): FILE1's 26 entries enumerate unk2 0..25 exactly once, FILE0's span
+  0..49 (= its 50 sequences), and every WAN_OTHER unk2 names a non-empty
+  sequence — including semantic matches like the three powders (Stun/Poison/
+  Sleep -> 0/1/2), Yawn -> the single drifting bubble, Bubble -> the bubble
+  cluster. unk1 (mostly 14) is something else.
+
+  WAN_FILE0 / WAN_FILE1 -> shared effect_0000 / effect_0001: tiny single
+                           PARTICLES the game multiplies at runtime ->
+                           flagged "particle" so the app composes a burst.
+  WAN_OTHER             -> dedicated effect_<anim_file>, sequence = unk2
+                           (largest-drawn-area fallback if ever invalid).
   SCREEN / WBA          -> full-screen effects, skipped (no sprite)
 
 Effects whose palette reconstruction is approximate (effects_index.json
@@ -46,13 +50,16 @@ def load(path):
         return json.load(f)
 
 
-def pick_anim(effect_dir, unk1):
-    """The animation with the largest drawn area (the real burst art). unk1 and
-    anim 0 usually name a tiny particle, so a plain index lookup looks wrong."""
+def pick_anim(effect_dir, unk2):
+    """The ROM-selected sequence (unk2); largest-drawn-area fallback if that
+    ever names an empty/missing sequence."""
     try:
         anims = load(os.path.join(effect_dir, "animations.json"))["animations"]
     except (OSError, KeyError, ValueError):
         return None
+    for a in anims:
+        if a["anim_id"] == unk2 and a.get("frames"):
+            return unk2
     best, best_score = None, -1.0
     for a in anims:
         frames = a.get("frames")
@@ -98,11 +105,11 @@ def main():
         t = g.get("anim_type") if g else "WAN_FILE0"   # all-zero slots (Tackle): generic particle hit
         particle = False
         if t in ("WAN_FILE0", "WAN_FILE1"):
-            eff, anim = (0 if t == "WAN_FILE0" else 1), (g.get("unk1", 0) if g else 0)
+            eff, anim = (0 if t == "WAN_FILE0" else 1), (g.get("unk2", 0) if g else 0)
             particle = True
         elif t == "WAN_OTHER":
             eff = g.get("anim_file")
-            anim = pick_anim(os.path.join(OUT, "effects", f"effect_{eff:04d}"), g.get("unk1"))
+            anim = pick_anim(os.path.join(OUT, "effects", f"effect_{eff:04d}"), g.get("unk2"))
             if anim is None:
                 skipped["none"] += 1
                 continue

@@ -76,18 +76,23 @@ strings/
 ## 데이터 연결 방법 (기술 → 이펙트 그래픽)
 
 1. `moves/moves.json`에서 기술을 찾는다 (`move_id`).
-2. `anim/move_animations.json`의 같은 인덱스에서 `anim1`(주 애니메이션 ID)을 읽는다.
-3. `anim/general_animations.json[anim1]` 항목의 해석:
-   - `anim_type == WAN_FILE0` → 공용 파일 `effect_0000` 사용, **`unk1`이 그 안의 애니메이션 번호**
-     (`effect_0000/animations.json`의 `anim_id`). 전 항목 검증 완료.
-   - `anim_type == WAN_FILE1` → 공용 파일 `effect_0001` 사용, `unk1` = 애니메이션 번호. 검증 완료.
+2. `anim/move_animations.json`의 같은 인덱스에서 애니메이션 슬롯을 읽는다.
+   **`anim3`이 타깃 위 히트 이펙트**(첫 번째로 0이 아닌 슬롯을 anim3→anim1→anim2→anim4 순으로 사용).
+   `animation` 필드는 시전자 몬스터의 모션(Attack/Shoot 등) 번호로, 이펙트와 무관.
+3. `anim/general_animations.json[슬롯]` 항목의 해석:
+   - `anim_type == WAN_FILE0`/`WAN_FILE1` → 공용 파일 `effect_0000`/`effect_0001` 사용.
    - `anim_type == WAN_OTHER` → `anim_file`이 전용 `effects/effect_NNNN/` 폴더 번호.
-     이 경우 `unk1`의 의미는 미해독 (커뮤니티에서도 unknown 필드).
    - `SCREEN`/`WBA` → 전체 화면 이펙트.
+   - **파일 안의 애니메이션 번호는 `unk2`** (`animations.json`의 `anim_id`). 2026-07-08 해독:
+     FILE1의 26개 엔트리가 unk2 0~25를 정확히 한 번씩 열거(1:1), FILE0은 0~49(=시퀀스 50개),
+     WAN_OTHER 539개 전부 유효 시퀀스를 가리킴. 의미 검증: 가루 3종(마비/독/수면)→0/1/2,
+     하품→떠오르는 거품 1개, 거품→거품 클러스터.
+     (과거 이 문서의 "unk1이 애니메이션 번호" 기록은 **오류** — unk1은 0~14 범위라 우연히
+     유효해 보였을 뿐, WAN_OTHER의 74%에서 무효. unk1의 실제 의미는 여전히 미해독.)
 4. `sfx` 필드는 효과음 ID (사운드는 이 스크립트 범위 밖).
 
-예) 10만볼트(Thunderbolt) → `anim1=22` → general[22] = WAN_FILE0, unk1=3
-    → `effect_0000/animations.json`의 anim_id 3 프레임 시퀀스 재생.
+예) 10만볼트(Thunderbolt) → `anim3=236` → general[236] = WAN_OTHER, anim_file=119, unk2=2
+    → `effect_0119/animations.json`의 anim_id 2 = 낙뢰+방전 버스트 시퀀스 재생.
 
 ## 이펙트 색상(팔레트)에 대해
 
