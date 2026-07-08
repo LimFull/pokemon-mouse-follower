@@ -9,6 +9,7 @@ import AppKit
 
 final class RaisingPanelView: NSView {
     private var detailIndex: Int?          // nil = list/empty mode
+    private var expandedMove: Int?         // move id whose description is expanded
     private var starterPopup: NSPopUpButton?
 
     private static let contentWidth: CGFloat = 300
@@ -152,14 +153,18 @@ final class RaisingPanelView: NSView {
         sprite.heightAnchor.constraint(equalToConstant: 68).isActive = true
 
         let g = L("detail.gender.\(mon.gender.rawValue)")
-        let types = [s.type1, s.type2].compactMap { $0 }.joined(separator: "/")
+        let typeRow = NSStackView(views: [monoLabel("\(L("detail.level"))\(mon.level)", 12, .medium)])
+        typeRow.orientation = .horizontal
+        typeRow.alignment = .centerY
+        typeRow.spacing = 6
+        for t in [s.type1, s.type2].compactMap({ $0 }) { typeRow.addArrangedSubview(TypeBadge(t)) }
         let headText = NSStackView(views: [
             monoLabel("\(Characters.displayName(s.id))  \(g)", 15, .bold),
-            monoLabel("\(L("detail.level"))\(mon.level)   \(types)", 12, .medium),
+            typeRow,
         ])
         headText.orientation = .vertical
         headText.alignment = .leading
-        headText.spacing = 4
+        headText.spacing = 6
         let header = NSStackView(views: [sprite, headText])
         header.orientation = .horizontal
         header.alignment = .centerY
@@ -182,11 +187,12 @@ final class RaisingPanelView: NSView {
         inner.addArrangedSubview(monoLabel(statsText, 12, .medium))
         inner.addArrangedSubview(monoLabel("\(L("detail.exp"))  \(mon.exp)", 11, .regular))
 
-        // Moves (click a row to see its description).
+        // Moves (click a row to expand/collapse its type + description inline).
         inner.addArrangedSubview(divider())
         inner.addArrangedSubview(monoLabel("▶ \(L("detail.moves"))", 12, .bold))
         for id in mon.moves {
             inner.addArrangedSubview(moveRow(id))
+            if expandedMove == id { inner.addArrangedSubview(moveDetailInline(id)) }
         }
 
         // TEMP (Phase 1): a training button to grant EXP so growth/evolution can
@@ -227,33 +233,59 @@ final class RaisingPanelView: NSView {
         RaisingState.shared.learnMove(moveId, replacing: slot < mon.moves.count ? slot : nil)
     }
 
-    // A clickable move line (monospace, retro) that shows the move's description.
+    // A clickable move line (monospace, retro) that expands/collapses its detail.
     private func moveRow(_ id: Int) -> NSButton {
         let m = GameData.moves[id]
         let name = (m?.displayName ?? "Move \(id)").padding(toLength: 14, withPad: " ", startingAt: 0)
+        let arrow = expandedMove == id ? "▾" : "▸"
         let b = NSButton(title: "", target: self, action: #selector(moveTapped(_:)))
         b.isBordered = false
         b.tag = id
         b.alignment = .left
-        b.attributedTitle = NSAttributedString(string: "  \(name) PP \(m?.pp ?? 0)  ⓘ", attributes: [
+        b.attributedTitle = NSAttributedString(string: "\(arrow) \(name) PP \(m?.pp ?? 0)", attributes: [
             .font: NSFont.monospacedSystemFont(ofSize: 12, weight: .regular),
             .foregroundColor: Palette.label])
         return b
     }
 
     @objc private func moveTapped(_ sender: NSButton) {
-        guard let m = GameData.moves[sender.tag] else { return }
-        let a = NSAlert()
-        a.messageText = "\(m.displayName)   [\(m.type ?? "-")/\(m.category ?? "-")]"
-        a.informativeText = moveDetailText(sender.tag)
-        a.addButton(withTitle: "OK")
-        a.runModal()
+        expandedMove = (expandedMove == sender.tag) ? nil : sender.tag
+        refresh()
     }
 
-    /// "PP nn · Power nn\n\n<description>" for a move (skips power for status moves).
+    // Inline expansion under a move row: type badge, category/PP/power, description.
+    private func moveDetailInline(_ id: Int) -> NSView {
+        let box = NSStackView()
+        box.orientation = .vertical
+        box.alignment = .leading
+        box.spacing = 5
+        box.edgeInsets = NSEdgeInsets(top: 0, left: 18, bottom: 6, right: 0)
+        guard let m = GameData.moves[id] else { return box }
+
+        let meta = NSStackView(views: [TypeBadge(m.type ?? "Neutral")])
+        meta.orientation = .horizontal
+        meta.alignment = .centerY
+        meta.spacing = 8
+        var info = m.category ?? ""
+        info += "   PP \(m.pp)"
+        if m.power > 0 { info += "   \(L("move.power")) \(m.power)" }
+        meta.addArrangedSubview(monoLabel(info, 11, .medium))
+        box.addArrangedSubview(meta)
+
+        if let d = m.desc, !d.isEmpty {
+            let desc = NSTextField(wrappingLabelWithString: d)
+            desc.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+            desc.textColor = Palette.label
+            desc.preferredMaxLayoutWidth = Self.contentWidth - 40
+            box.addArrangedSubview(desc)
+        }
+        return box
+    }
+
+    /// "<Type> · <Category> · PP nn · Power nn\n\n<description>" for a move.
     private func moveDetailText(_ id: Int) -> String {
         guard let m = GameData.moves[id] else { return "" }
-        var head = "PP \(m.pp)"
+        var head = "\(m.type ?? "-")   ·   \(m.category ?? "-")   ·   PP \(m.pp)"
         if m.power > 0 { head += "   ·   \(L("move.power")) \(m.power)" }
         let desc = m.desc ?? ""
         return desc.isEmpty ? head : "\(head)\n\n\(desc)"
