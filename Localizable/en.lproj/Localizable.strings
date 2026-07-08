@@ -31,4 +31,5 @@
 "train.button" = "Train (+EXP)";
 "learn.title" = "Learn a new move?";
 "learn.skip" = "Don't learn";
+"move.power" = "Power";
 "evo.suffix" = " evolved!";

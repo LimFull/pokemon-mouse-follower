@@ -14,6 +14,19 @@ from __future__ import annotations
 
 import json
 import os
+import re
+
+
+def clean_desc(s: str) -> str:
+    """Strip EoS markup codes and the structured 'Detailed Information' block,
+    leaving just the human summary sentence(s)."""
+    if not s:
+        return ""
+    s = s.replace("[CR]", " ").replace("[BAR]", " ")
+    s = re.sub(r"\[[^\]]*\]", "", s)          # [CS:E], [LS:..], [LE], ...
+    s = re.sub(r'"[^"]*"', "", s)             # quoted section headers
+    s = re.split(r"Detailed Info\w*|Select detail|View detail", s)[0]
+    return re.sub(r"\s+", " ", s).strip()
 
 HERE = os.path.dirname(__file__)
 OUT = os.path.join(HERE, "out")
@@ -119,6 +132,7 @@ def main():
             "power": mv["base_power"],
             "pp": mv["base_pp"],
             "accuracy": mv["accuracy"],
+            "desc": clean_desc(mv.get("descriptions", {}).get("e", "")),
         }
     with open(os.path.join(DEST, "moves.json"), "w", encoding="utf-8") as f:
         json.dump(move_out, f, ensure_ascii=False, separators=(",", ":"))

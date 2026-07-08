@@ -86,8 +86,9 @@ struct MoveData: Codable {
     let power: Int
     let pp: Int
     let accuracy: Int
+    let desc: String?
     enum CodingKeys: String, CodingKey {
-        case moveId = "move_id", names, type, category, power, pp, accuracy
+        case moveId = "move_id", names, type, category, power, pp, accuracy, desc
     }
     var displayName: String { names["e"] ?? "Move \(moveId)" }
 }

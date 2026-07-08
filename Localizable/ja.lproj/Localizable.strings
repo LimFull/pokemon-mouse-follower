@@ -31,6 +31,7 @@
 "train.button" = "トレーニング (+経験値)";
 "learn.title" = "新しいわざをおぼえる？";
 "learn.skip" = "おぼえない";
+"move.power" = "威力";
 "evo.suffix" = " しんか！";
 
 "pokemon.001" = "フシギダネ";

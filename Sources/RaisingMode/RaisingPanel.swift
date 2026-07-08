@@ -182,13 +182,11 @@ final class RaisingPanelView: NSView {
         inner.addArrangedSubview(monoLabel(statsText, 12, .medium))
         inner.addArrangedSubview(monoLabel("\(L("detail.exp"))  \(mon.exp)", 11, .regular))
 
-        // Moves.
+        // Moves (click a row to see its description).
         inner.addArrangedSubview(divider())
         inner.addArrangedSubview(monoLabel("▶ \(L("detail.moves"))", 12, .bold))
         for id in mon.moves {
-            let m = GameData.moves[id]
-            let name = (m?.displayName ?? "Move \(id)").padding(toLength: 14, withPad: " ", startingAt: 0)
-            inner.addArrangedSubview(monoLabel("  \(name) PP \(m?.pp ?? 0)", 12, .regular))
+            inner.addArrangedSubview(moveRow(id))
         }
 
         // TEMP (Phase 1): a training button to grant EXP so growth/evolution can
@@ -216,15 +214,49 @@ final class RaisingPanelView: NSView {
     private func promptLearn(_ moveId: Int) {
         guard let i = detailIndex, RaisingState.shared.party.indices.contains(i) else { return }
         let mon = RaisingState.shared.party[i]
+        let newName = GameData.moves[moveId]?.displayName ?? "Move \(moveId)"
         let a = NSAlert()
-        a.messageText = L("learn.title")
-        a.informativeText = GameData.moves[moveId]?.displayName ?? "Move \(moveId)"
+        a.messageText = "\(L("learn.title"))  \(newName)"
+        a.informativeText = moveDetailText(moveId)          // type · PP · power · description
         for id in mon.moves {
             a.addButton(withTitle: GameData.moves[id]?.displayName ?? "Move \(id)")
         }
         a.addButton(withTitle: L("learn.skip"))
+        a.buttons.first?.keyEquivalent = ""                 // no default/highlighted button
         let slot = a.runModal().rawValue - NSApplication.ModalResponse.alertFirstButtonReturn.rawValue
         RaisingState.shared.learnMove(moveId, replacing: slot < mon.moves.count ? slot : nil)
+    }
+
+    // A clickable move line (monospace, retro) that shows the move's description.
+    private func moveRow(_ id: Int) -> NSButton {
+        let m = GameData.moves[id]
+        let name = (m?.displayName ?? "Move \(id)").padding(toLength: 14, withPad: " ", startingAt: 0)
+        let b = NSButton(title: "", target: self, action: #selector(moveTapped(_:)))
+        b.isBordered = false
+        b.tag = id
+        b.alignment = .left
+        b.attributedTitle = NSAttributedString(string: "  \(name) PP \(m?.pp ?? 0)  ⓘ", attributes: [
+            .font: NSFont.monospacedSystemFont(ofSize: 12, weight: .regular),
+            .foregroundColor: Palette.label])
+        return b
+    }
+
+    @objc private func moveTapped(_ sender: NSButton) {
+        guard let m = GameData.moves[sender.tag] else { return }
+        let a = NSAlert()
+        a.messageText = "\(m.displayName)   [\(m.type ?? "-")/\(m.category ?? "-")]"
+        a.informativeText = moveDetailText(sender.tag)
+        a.addButton(withTitle: "OK")
+        a.runModal()
+    }
+
+    /// "PP nn · Power nn\n\n<description>" for a move (skips power for status moves).
+    private func moveDetailText(_ id: Int) -> String {
+        guard let m = GameData.moves[id] else { return "" }
+        var head = "PP \(m.pp)"
+        if m.power > 0 { head += "   ·   \(L("move.power")) \(m.power)" }
+        let desc = m.desc ?? ""
+        return desc.isEmpty ? head : "\(head)\n\n\(desc)"
     }
 
     @objc private func backToList() {
