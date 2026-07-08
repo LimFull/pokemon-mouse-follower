@@ -28,3 +28,7 @@
 "detail.gender.male" = "♂";
 "detail.gender.female" = "♀";
 "detail.gender.genderless" = "—";
+"train.button" = "Train (+EXP)";
+"learn.title" = "Learn a new move?";
+"learn.skip" = "Don't learn";
+"evo.suffix" = " evolved!";

@@ -28,6 +28,10 @@
 "detail.gender.male" = "♂";
 "detail.gender.female" = "♀";
 "detail.gender.genderless" = "—";
+"train.button" = "トレーニング (+経験値)";
+"learn.title" = "新しいわざをおぼえる？";
+"learn.skip" = "おぼえない";
+"evo.suffix" = " しんか！";
 
 "pokemon.001" = "フシギダネ";
 "pokemon.002" = "フシギソウ";

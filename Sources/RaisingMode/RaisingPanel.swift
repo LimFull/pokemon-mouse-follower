@@ -190,6 +190,41 @@ final class RaisingPanelView: NSView {
             let name = (m?.displayName ?? "Move \(id)").padding(toLength: 14, withPad: " ", startingAt: 0)
             inner.addArrangedSubview(monoLabel("  \(name) PP \(m?.pp ?? 0)", 12, .regular))
         }
+
+        // TEMP (Phase 1): a training button to grant EXP so growth/evolution can
+        // be exercised before battles exist (Phase 2 replaces this with battle EXP).
+        let train = NSButton(title: L("train.button"), target: self, action: #selector(trainTapped))
+        train.bezelStyle = .rounded
+        root.addArrangedSubview(train)
+    }
+
+    @objc private func trainTapped() {
+        guard let i = detailIndex, RaisingState.shared.party.indices.contains(i) else { return }
+        RaisingState.shared.setActive(i)
+        let result = RaisingState.shared.gainExp(300)     // demo amount
+        for moveId in result.pendingMoves { promptLearn(moveId) }
+        if let from = result.evolvedFrom, let to = result.evolvedTo {
+            let a = NSAlert()
+            a.messageText = Characters.displayName(String(format: "%03d", from)) + L("evo.suffix")
+            a.informativeText = "→ \(Characters.displayName(String(format: "%03d", to)))"
+            a.runModal()
+        }
+        refresh()
+    }
+
+    /// Party is full (4 moves): ask which move to forget, or decline (#5).
+    private func promptLearn(_ moveId: Int) {
+        guard let i = detailIndex, RaisingState.shared.party.indices.contains(i) else { return }
+        let mon = RaisingState.shared.party[i]
+        let a = NSAlert()
+        a.messageText = L("learn.title")
+        a.informativeText = GameData.moves[moveId]?.displayName ?? "Move \(moveId)"
+        for id in mon.moves {
+            a.addButton(withTitle: GameData.moves[id]?.displayName ?? "Move \(id)")
+        }
+        a.addButton(withTitle: L("learn.skip"))
+        let slot = a.runModal().rawValue - NSApplication.ModalResponse.alertFirstButtonReturn.rawValue
+        RaisingState.shared.learnMove(moveId, replacing: slot < mon.moves.count ? slot : nil)
     }
 
     @objc private func backToList() {

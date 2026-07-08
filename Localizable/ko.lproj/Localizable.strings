@@ -28,6 +28,10 @@
 "detail.gender.male" = "♂";
 "detail.gender.female" = "♀";
 "detail.gender.genderless" = "—";
+"train.button" = "훈련 (+경험치)";
+"learn.title" = "새 기술을 배울까요?";
+"learn.skip" = "안 배우기";
+"evo.suffix" = " 진화!";
 
 "pokemon.001" = "이상해씨";
 "pokemon.002" = "이상해풀";

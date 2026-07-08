@@ -7,6 +7,12 @@
 
 import Foundation
 
+/// Posted whenever the active follower may have changed (mode toggle, starter,
+/// evolution, party edit) so the overlay can reload the right sprite.
+extension Notification.Name {
+    static let raisingChanged = Notification.Name("raisingChanged")
+}
+
 enum Gender: String, Codable {
     case male, female, genderless
 }
@@ -60,6 +66,19 @@ final class RaisingState {
     }
     var allFainted: Bool { !save.party.isEmpty && save.party.allSatisfy { $0.isFainted } }
 
+    /// The sprite folder the overlay should follow: the active raising mon when
+    /// raising mode is on, otherwise the normal selected character.
+    var followerFolder: String {
+        if AppSettings.shared.raisingMode, let m = active {
+            return String(format: "%03d", m.dex)
+        }
+        return AppSettings.shared.selectedCharacter
+    }
+
+    private func notifyChanged() {
+        NotificationCenter.default.post(name: .raisingChanged, object: nil)
+    }
+
     // MARK: starter / reset
 
     /// Begin a new game with a base-form starter at level 5 (D17, #2/#3).
@@ -68,12 +87,14 @@ final class RaisingState {
         let mon = makeMon(species: s, level: 5)
         save = RaisingSave(party: [mon], activeIndex: 0, items: [:], lastHealDay: RaisingState.today())
         persist()
+        notifyChanged()
     }
 
     /// Reset raising mode entirely (D16 / #1).
     func reset() {
         save = RaisingSave()
         persist()
+        notifyChanged()
     }
 
     /// Build a fresh mon of `species` at `level` with a level-appropriate moveset
@@ -111,6 +132,80 @@ final class RaisingState {
         save.party.remove(at: index)
         if save.activeIndex >= save.party.count { save.activeIndex = max(0, save.party.count - 1) }
         persist()
+        notifyChanged()
+    }
+
+    /// Make the party member at `index` the active follower.
+    func setActive(_ index: Int) {
+        guard save.party.indices.contains(index) else { return }
+        save.activeIndex = index
+        persist()
+        notifyChanged()
+    }
+
+    // MARK: growth (level up / move learning / evolution)
+
+    struct GrowthResult {
+        var leveledTo: Int?
+        var learnedMoves: [Int] = []     // auto-added (had a free slot)
+        var pendingMoves: [Int] = []     // new moves needing a replace decision (4 already)
+        var evolvedFrom: Int?
+        var evolvedTo: Int?
+        var changed: Bool { leveledTo != nil || evolvedTo != nil || !learnedMoves.isEmpty }
+    }
+
+    /// Give the active mon `amount` EXP and apply every level-up it earns:
+    /// stat/HP growth, level-up moves (auto-learn if a slot is free, otherwise
+    /// queued in `pendingMoves`), and LEVEL-method evolution (design D6/D8/#9).
+    func gainExp(_ amount: Int) -> GrowthResult {
+        var r = GrowthResult()
+        let i = save.activeIndex
+        guard save.party.indices.contains(i), amount > 0 else { return r }
+        guard var s = save.party[i].species else { return r }
+
+        save.party[i].exp += amount
+        while save.party[i].level < 100 {
+            let next = save.party[i].level + 1
+            let need = s.expCurve.indices.contains(next - 1) ? s.expCurve[next - 1] : Int.max
+            if save.party[i].exp < need { break }
+
+            let beforeHP = GameData.stats(s, level: save.party[i].level).hp
+            save.party[i].level = next
+            r.leveledTo = next
+            let afterHP = GameData.stats(s, level: next).hp
+            save.party[i].currentHP = min(afterHP, save.party[i].currentHP + max(0, afterHP - beforeHP))
+
+            for m in s.levelUpMoves where m.level == next && !save.party[i].moves.contains(m.moveId) {
+                if save.party[i].moves.count < 4 {
+                    save.party[i].moves.append(m.moveId)
+                    r.learnedMoves.append(m.moveId)
+                } else {
+                    r.pendingMoves.append(m.moveId)
+                }
+            }
+
+            if let evo = s.levelEvolution(atLevel: next), let to = GameData.species[evo.toDex] {
+                r.evolvedFrom = s.dex
+                r.evolvedTo = evo.toDex
+                save.party[i].dex = evo.toDex
+                s = to
+                save.party[i].currentHP = min(save.party[i].currentHP, GameData.stats(s, level: next).hp)
+            }
+        }
+        persist()
+        if r.evolvedTo != nil { notifyChanged() }   // follower sprite changed
+        return r
+    }
+
+    /// Resolve a queued move: replace the move at `slot` (0–3) with `moveId`,
+    /// or pass slot = nil to decline learning it (#5).
+    func learnMove(_ moveId: Int, replacing slot: Int?) {
+        let i = save.activeIndex
+        guard save.party.indices.contains(i) else { return }
+        if let slot, save.party[i].moves.indices.contains(slot) {
+            save.party[i].moves[slot] = moveId
+            persist()
+        }
     }
 
     // MARK: daily heal (D23)

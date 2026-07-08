@@ -344,7 +344,7 @@ final class CharacterController {
     private(set) var currentShadow = ShadowAnchor(offset: .zero, size: CGSize(width: 14, height: 6))
     var position: CGPoint { pos }
 
-    init() { setCharacter(AppSettings.shared.selectedCharacter) }
+    init() { setCharacter(RaisingState.shared.followerFolder) }
 
     // Load a character's sheets, sizing frames from its AnimData.xml. Uses the
     // alt-color variant (characters/<folder>/altcolor) when enabled and present.
@@ -885,7 +885,7 @@ final class SettingsWindowController: NSObject {
 
     @objc private func altColorToggled(_ sender: NSButton) {
         AppSettings.shared.altColor = (sender.state == .on)
-        controller?.setCharacter(AppSettings.shared.selectedCharacter)   // reload with/without variant
+        controller?.setCharacter(RaisingState.shared.followerFolder)     // reload with/without variant
         preview.setCharacter(AppSettings.shared.selectedCharacter)       // refresh preview color
     }
 
@@ -912,7 +912,8 @@ final class SettingsWindowController: NSObject {
         let on = sender.state == .on
         AppSettings.shared.raisingMode = on
         applyRaisingWidth(expanded: on, animate: true)
-        if on { raisingPanel?.refresh() }
+        raisingPanel?.refresh()
+        NotificationCenter.default.post(name: .raisingChanged, object: nil)   // switch follower
     }
 
     private func makePopup() -> NSPopUpButton {
@@ -984,7 +985,7 @@ final class SettingsWindowController: NSObject {
     private func applyCharacter(_ folder: String) {
         AppSettings.shared.selectedCharacter = folder
         popup.selectItem(at: Characters.index(of: folder))
-        controller?.setCharacter(folder)
+        controller?.setCharacter(RaisingState.shared.followerFolder)   // raising mon keeps priority
         preview.setCharacter(folder)
     }
 
@@ -1023,7 +1024,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NotificationCenter.default.addObserver(
             self, selector: #selector(screensChanged),
             name: NSApplication.didChangeScreenParametersNotification, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(raisingChanged), name: .raisingChanged, object: nil)
         if CommandLine.arguments.contains("--show-settings") { showSettings() }
+    }
+
+    // The active raising mon (or the normal character) should be the follower.
+    @objc private func raisingChanged() {
+        controller.setCharacter(RaisingState.shared.followerFolder)
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -1132,6 +1140,14 @@ if CommandLine.arguments.contains("--selftest-raising") {
         let sv = GameData.stats(s, level: m.level)
         print("start: \(Characters.displayName(s.id)) Lv\(m.level) \(m.gender.rawValue) HP=\(m.currentHP)/\(m.maxHP) ATK\(sv.atk) DEF\(sv.def) moves=\(m.moves)")
     } else { print("start FAILED — GameData not loaded from bundle?") }
+    // Growth: give enough EXP to level up through the L16 evolution.
+    st.setActive(0)
+    let g = st.gainExp(50000)
+    if let m = st.active {
+        let evo = (g.evolvedFrom != nil) ? "\(g.evolvedFrom!)->\(g.evolvedTo!)" : "none"
+        print("train: Lv\(m.level) dex=\(m.dex) \(Characters.displayName(String(format: "%03d", m.dex))) moves=\(m.moves) evolved=\(evo) auto=\(g.learnedMoves) pending=\(g.pendingMoves)")
+    }
+    print("followerFolder(raising off)=\(st.followerFolder)")
     if let s7 = GameData.species[7] { _ = st.addToParty(st.makeMon(species: s7, level: 5)) }
     print("party=\(st.party.count) dailyHealNeededSameDay=\(st.dailyHealIfNeeded())")
     let savePath = (FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!)
