@@ -20,9 +20,13 @@ mkdir -p "$BUNDLE/Contents/Resources/characters"
 cp -R animations/* "$BUNDLE/Contents/Resources/characters/"
 cp -R Localizable/*.lproj "$BUNDLE/Contents/Resources/"
 cp icon/AppIcon.icns "$BUNDLE/Contents/Resources/AppIcon.icns"
+rm -rf "$BUNDLE/Contents/Resources/gamedata"
+cp -R gamedata "$BUNDLE/Contents/Resources/gamedata"
 
 echo "==> Compiling (arm64, debug)..."
-swiftc -Onone -g Sources/main.swift -o "$BUNDLE/Contents/MacOS/${APP_NAME}"
+SWIFT_SOURCES=()
+while IFS= read -r f; do SWIFT_SOURCES+=("$f"); done < <(find Sources -name '*.swift' | sort)
+swiftc -Onone -g "${SWIFT_SOURCES[@]}" -o "$BUNDLE/Contents/MacOS/${APP_NAME}"
 
 echo "==> Running in foreground (Ctrl+C to quit). Logs below:"
 echo "-------------------------------------------------------"

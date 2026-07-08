@@ -9,18 +9,20 @@ cd "$(dirname "$0")"
 
 APP_NAME="PokemonMouseFollower"
 BUNDLE="${APP_NAME}.app"
-EXEC="Sources/main.swift"
+# Compile every .swift under Sources/ (main + RaisingMode modules).
+SWIFT_SOURCES=()
+while IFS= read -r f; do SWIFT_SOURCES+=("$f"); done < <(find Sources -name '*.swift' | sort)
 
-echo "==> Compiling (universal binary)..."
+echo "==> Compiling (universal binary): ${#SWIFT_SOURCES[@]} source files..."
 rm -rf "$BUNDLE"
 mkdir -p "$BUNDLE/Contents/MacOS" "$BUNDLE/Contents/Resources"
 
 swiftc -O \
   -target arm64-apple-macosx13.0 \
-  "$EXEC" -o "/tmp/${APP_NAME}_arm64"
+  "${SWIFT_SOURCES[@]}" -o "/tmp/${APP_NAME}_arm64"
 swiftc -O \
   -target x86_64-apple-macosx13.0 \
-  "$EXEC" -o "/tmp/${APP_NAME}_x86_64" 2>/dev/null || true
+  "${SWIFT_SOURCES[@]}" -o "/tmp/${APP_NAME}_x86_64" 2>/dev/null || true
 
 if [ -f "/tmp/${APP_NAME}_x86_64" ]; then
   lipo -create "/tmp/${APP_NAME}_arm64" "/tmp/${APP_NAME}_x86_64" \
@@ -42,6 +44,10 @@ cp -R Localizable/*.lproj "$BUNDLE/Contents/Resources/"
 
 echo "==> Bundling app icon..."
 cp icon/AppIcon.icns "$BUNDLE/Contents/Resources/AppIcon.icns"
+
+echo "==> Bundling game data..."
+rm -rf "$BUNDLE/Contents/Resources/gamedata"
+cp -R gamedata "$BUNDLE/Contents/Resources/gamedata"
 
 echo "==> Ad-hoc code signing..."
 codesign --force --deep --sign - "$BUNDLE"
