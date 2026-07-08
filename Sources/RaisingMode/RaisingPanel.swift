@@ -223,7 +223,7 @@ final class RaisingPanelView: NSView {
         let newName = GameData.moves[moveId]?.displayName ?? "Move \(moveId)"
         let a = NSAlert()
         a.messageText = "\(L("learn.title"))  \(newName)"
-        a.informativeText = moveDetailText(moveId)          // type · PP · power · description
+        a.accessoryView = moveAccessoryView(moveId)         // type badge + PP/power + description
         for id in mon.moves {
             a.addButton(withTitle: GameData.moves[id]?.displayName ?? "Move \(id)")
         }
@@ -282,13 +282,46 @@ final class RaisingPanelView: NSView {
         return box
     }
 
-    /// "<Type> · <Category> · PP nn · Power nn\n\n<description>" for a move.
-    private func moveDetailText(_ id: Int) -> String {
-        guard let m = GameData.moves[id] else { return "" }
-        var head = "\(m.type ?? "-")   ·   \(m.category ?? "-")   ·   PP \(m.pp)"
-        if m.power > 0 { head += "   ·   \(L("move.power")) \(m.power)" }
-        let desc = m.desc ?? ""
-        return desc.isEmpty ? head : "\(head)\n\n\(desc)"
+    /// A boxed view (type badge + category/PP/power + description) for the
+    /// learn-move NSAlert accessory, so the new move's type shows as a color badge.
+    private func moveAccessoryView(_ id: Int) -> NSView {
+        let width: CGFloat = 260
+        let stack = NSStackView()
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 6
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        if let m = GameData.moves[id] {
+            let meta = NSStackView(views: [TypeBadge(m.type ?? "Neutral")])
+            meta.orientation = .horizontal
+            meta.alignment = .centerY
+            meta.spacing = 8
+            var info = m.category ?? ""
+            info += "   PP \(m.pp)"
+            if m.power > 0 { info += "   \(L("move.power")) \(m.power)" }
+            meta.addArrangedSubview(monoLabel(info, 11, .medium))
+            stack.addArrangedSubview(meta)
+            if let d = m.desc, !d.isEmpty {
+                let desc = NSTextField(wrappingLabelWithString: d)
+                desc.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+                desc.textColor = Palette.label
+                desc.preferredMaxLayoutWidth = width
+                stack.addArrangedSubview(desc)
+            }
+        }
+        // NSAlert lays out accessory views best by frame; size it via Auto Layout
+        // then freeze the fitting height into an explicit frame.
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: width, height: 10))
+        container.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            stack.topAnchor.constraint(equalTo: container.topAnchor),
+            stack.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+        ])
+        container.layoutSubtreeIfNeeded()
+        container.frame = NSRect(x: 0, y: 0, width: width, height: stack.fittingSize.height)
+        return container
     }
 
     @objc private func backToList() {
