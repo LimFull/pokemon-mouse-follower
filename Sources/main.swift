@@ -1335,6 +1335,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 // MARK: - Entry point
 
+// Debug hook: `--dump-effect <moveId> <outDir>` writes the corrected effect
+// clip's frames as PNGs (visual check of crop/tint/particle composition).
+if let i = CommandLine.arguments.firstIndex(of: "--dump-effect"),
+   CommandLine.arguments.count > i + 2, let moveId = Int(CommandLine.arguments[i + 1]) {
+    let dir = URL(fileURLWithPath: CommandLine.arguments[i + 2])
+    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    if let clip = EffectPlayer.clip(forMove: moveId) {
+        for (n, s) in clip.steps.enumerated() {
+            let u = dir.appendingPathComponent(String(format: "step-%02d.png", n))
+            if let d = CGImageDestinationCreateWithURL(u as CFURL, UTType.png.identifier as CFString, 1, nil) {
+                CGImageDestinationAddImage(d, s.image, nil)
+                CGImageDestinationFinalize(d)
+            }
+        }
+        print("dumped \(clip.steps.count) steps (\(clip.totalTicks) ticks) for move \(moveId) → \(dir.path)")
+    } else { print("no clip for move \(moveId)") }
+    exit(0)
+}
+
 // Debug hook: `--selftest-raising` exercises the raising-mode data/state layer
 // against the bundled game data, prints a report, and exits. Harmless otherwise.
 if CommandLine.arguments.contains("--selftest-raising") {
