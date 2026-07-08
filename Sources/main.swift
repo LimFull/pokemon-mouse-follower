@@ -1148,6 +1148,15 @@ if CommandLine.arguments.contains("--selftest-raising") {
         print("train: Lv\(m.level) dex=\(m.dex) \(Characters.displayName(String(format: "%03d", m.dex))) moves=\(m.moves) evolved=\(evo) auto=\(g.learnedMoves) pending=\(g.pendingMoves)")
     }
     print("followerFolder(raising off)=\(st.followerFolder)")
+    // Battle: active mon vs a wild Pidgey (dex 16).
+    print("typechart types=\(TypeChart.chart.count)")
+    if let p = Battler(mon: st.active!), let w = Battler(wildDex: 16, level: 12) {
+        let r = BattleEngine.run(player: p, wild: w)
+        print("battle: \(p.name) L\(p.level) vs wild \(w.name) L\(w.level) → \(r.playerWon ? "WIN" : "LOSE") in \(r.events.count) actions, exp=\(r.expGained)")
+        for e in r.events.prefix(3) {
+            print("  \(e.playerActed ? "▶" : "◀") \(e.moveName): \(e.damage) dmg x\(e.effectiveness) (def HP \(e.defenderHP)/\(e.defenderMaxHP))\(e.fainted ? " FAINT" : "")")
+        }
+    }
     if let s7 = GameData.species[7] { _ = st.addToParty(st.makeMon(species: s7, level: 5)) }
     print("party=\(st.party.count) dailyHealNeededSameDay=\(st.dailyHealIfNeeded())")
     let savePath = (FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!)
