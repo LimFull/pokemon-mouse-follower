@@ -146,6 +146,11 @@ final class AppSettings {
         get { d.bool(forKey: "altColor") }
         set { d.set(newValue, forKey: "altColor") }
     }
+    // Raising mode vs. the normal follower. Design: design/raising-mode.md.
+    var raisingMode: Bool {
+        get { d.bool(forKey: "raisingMode") }   // defaults to false when unset
+        set { d.set(newValue, forKey: "raisingMode") }
+    }
 }
 
 // MARK: - Sprite loading / slicing
