@@ -50,6 +50,9 @@ monsters/
   evolutions.json                  # 진화 259개(♂♀ 중복제거): from→to, 방법(LEVEL/IQ/ITEMS/
                                    #   RECRUITED/NO_REQ), param1(레벨/아이템ID/IQ), 추가조건
                                    #   (LINK_CABLE/성별/리본/ATK-DEF비교/MIMIC 등), 다국어 이름
+  level_stats.json                 # m_level.bin: 몬스터 570마리 × 100레벨 스탯 —
+                                   #   레벨별 필요경험치 + HP/공격/특공/방어/특방 성장치,
+                                   #   그리고 누적 스탯(게임 계산과 동일). SIR0+PKDPX 해제로 파싱
 anim/
   anim.bin                         # overlay10에서 재구성한 원본 애니메이션 테이블 (SkyTemple 호환)
   move_animations.json             # 기술 ID → 애니메이션 ID(anim1~4), 속도, 방향, 효과음(sfx) 매핑

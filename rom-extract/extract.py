@@ -289,6 +289,54 @@ def extract_monsters(rom, config, out_dir, strings_by_lang):
     dump_json(os.path.join(out, "evolutions.json"), evolutions)
 
 
+def extract_level_stats(rom, config, out_dir, strings_by_lang):
+    """Per-monster, per-level stat tables from BALANCE/m_level.bin.
+
+    Each entry is SIR0-wrapped, PKDPX-compressed. A level row holds the EXP
+    required and the *growth* added at that level (hp/atk/sp_atk/def/sp_def);
+    the game sums the growths, so we also emit the cumulative stat per level.
+    """
+    from skytemple_files.container.sir0.handler import Sir0Handler
+    from skytemple_files.data.level_bin_entry.handler import LevelBinEntryHandler
+
+    out = ensure_dir(os.path.join(out_dir, "monsters"))
+    binpack = FileType.BIN_PACK.deserialize(rom.getFileByName("BALANCE/m_level.bin"))
+    name_blk = find_block(config, "pokemon", "names")[1]
+
+    def name_of(idx):
+        if name_blk and 0 <= idx and name_blk.begin + idx < name_blk.end:
+            return {lang: s[name_blk.begin + idx] for lang, s in strings_by_lang.items()}
+        return {}
+
+    result = []
+    for i in range(len(binpack)):
+        try:
+            sir0 = Sir0Handler.deserialize(binpack[i])
+            dec = FileType.PKDPX.deserialize(sir0.content).decompress()
+            lbe = LevelBinEntryHandler.deserialize(dec)
+        except Exception:
+            continue
+        hp = atk = spatk = dfn = spdef = 0
+        levels = []
+        for lv, x in enumerate(lbe.levels, start=1):
+            hp += int(x.hp_growth); atk += int(x.attack_growth)
+            spatk += int(x.special_attack_growth); dfn += int(x.defense_growth)
+            spdef += int(x.special_defense_growth)
+            levels.append({
+                "level": lv,
+                "exp_required": int(x.experience_required),
+                "hp_growth": int(x.hp_growth),
+                "atk_growth": int(x.attack_growth),
+                "sp_atk_growth": int(x.special_attack_growth),
+                "def_growth": int(x.defense_growth),
+                "sp_def_growth": int(x.special_defense_growth),
+                "hp": hp, "attack": atk, "sp_attack": spatk,
+                "defense": dfn, "sp_defense": spdef,
+            })
+        result.append({"index": i, "names": name_of(i), "levels": levels})
+    dump_json(os.path.join(out, "level_stats.json"), result)
+
+
 # ---------------------------------------------------------------- animation tables
 
 def build_anim_bin(rom, config):
@@ -536,6 +584,8 @@ def main():
     if "monsters" in sections:
         log("== monsters / evolution ==")
         extract_monsters(rom, config, args.out, strings_by_lang)
+        log("== level-up stats ==")
+        extract_level_stats(rom, config, args.out, strings_by_lang)
     if "anim" in sections:
         log("== animation tables ==")
         anim = extract_anim(rom, config, args.out, strings_by_lang)
