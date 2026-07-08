@@ -185,7 +185,7 @@
 - **Phase 2 — 전투** (진행 중):
   - ✅ **2a 타입표**: `fetch_typechart.py` → `gamedata/typechart.json`(본가, PokéAPI).
   - ✅ **2b 전투 엔진**: `BattleEngine.swift`(`Battler`·타입상성·STAB·단순 데미지·최대기대뎀 AI·턴루프·`BattleEvent` 로그·승리 EXP). 셀프테스트 검증(이상해풀 L22 vs 구구 L12, Gust x2.0).
-  - ✅ **2c 야생 스폰·트리거**: `BattleController`(30분~1시간 스폰·5분 소멸·레벨±3 스케일·포켓몬이 다가가 근접 시 배틀). `PMF_FAST_BATTLE=1`로 테스트.
+  - ✅ **2c 야생 스폰·트리거**: `BattleController`+`WildMon`(30분~1시간 스폰·5분 소멸·레벨±3 스케일). 야생은 **화면 랜덤 위치에 나타나 배회**(멈췄다 움직임, 8방향 스프라이트). 팔로워는 평소처럼 **커서만 따라다니고**, **우연히 가까워지면(85×스케일)** 서로 바라보며 배틀. 배틀 간격도 스케일 비례. `PMF_FAST_BATTLE=1` 테스트.
   - ✅ **2d 오버레이 전투 연출**: `SpriteView`에 야생 스프라이트 + 양쪽 HP바 + 피격 플래시 + 기절 페이드, 턴별 재생. 승리 시 EXP/HP/진화 반영(`applyBattleOutcome`), 기절 시 파티 교체.
   - **D4 개정**: 스탯을 **본가 종족값 기준**으로 변경(PokéAPI `base` → `species.json`). 레벨 공식(IV/EV 제외), **스피드 스탯** 추가로 턴 순서 정상화, 데미지 보정 불필요.
   - ⬜ 남음: 상태이상(D19 풀), 기초경험치 EXP 정밀화(D6-1), 이펙트 스프라이트 재생, 진화 애니메이션.

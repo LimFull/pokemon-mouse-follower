@@ -1,11 +1,13 @@
 // Raising mode — wild encounters + on-overlay battle playback (Phase 2c/2d).
 //
-// Owns the wild-encounter lifecycle: spawn on a long random timer (D9), let the
-// active mon walk over and, on contact, run BattleEngine and play the turns back
-// on the overlay (HP bars deplete, sprites flash), then apply the outcome (EXP,
-// HP, evolution) and despawn. Set PMF_FAST_BATTLE=1 for quick testing.
+// Wild encounters spawn at a random screen spot on a long timer (D9) and wander
+// (stop-and-go). When the active mon walks near, both stop and face each other
+// and BattleEngine runs, the turns playing back on the overlay; the outcome
+// (EXP/HP/evolution) is applied and the wild despawns. Distances scale with the
+// sprite scale. Set PMF_FAST_BATTLE=1 for quick testing.
 
 import AppKit
+
 
 /// What the overlay should draw for the current battle frame (nil = nothing).
 struct BattleScene {
@@ -28,11 +30,9 @@ final class BattleController {
     private let eventTicks = 20
     private var spawnCooldown = 0
     private var despawnTicks = 0
-    private var frameTick = 0
 
     private var wild: Battler?
-    private var wildFrames: [CGImage] = []
-    private var wildPos = CGPoint.zero
+    private var wildMon: WildMon?
     private var playerPos = CGPoint.zero
 
     private var events: [BattleEvent] = []
@@ -47,11 +47,7 @@ final class BattleController {
 
     init() { spawnCooldown = nextSpawnDelay() }
 
-
     var isBattling: Bool { phase == .battling || phase == .ending }
-
-    /// The follower heads toward a present wild (so it walks over), else the cursor.
-    func followTarget(cursor: CGPoint) -> CGPoint { phase == .present ? wildPos : cursor }
 
     /// Debug: spawn a wild encounter immediately.
     func forceSpawn() {
@@ -81,14 +77,12 @@ final class BattleController {
     private func spawn(near active: OwnedPokemon) {
         let level = max(2, active.level + Int.random(in: -3...3))
         let dex = Int.random(in: 1...251)
-        guard let w = Battler(wildDex: dex, level: level) else { spawnCooldown = 60; return }
-        let frames = CharacterPreviewView.idleDownFrames(String(format: "%03d", dex))
-        guard !frames.isEmpty else { spawnCooldown = 60; return }
+        guard let w = Battler(wildDex: dex, level: level), let wm = WildMon(dex: dex) else { spawnCooldown = 120; return }
+        let b = screenBounds()
+        wm.place(at: CGPoint(x: .random(in: b.minX + 80 ... b.maxX - 80),
+                             y: .random(in: b.minY + 80 ... b.maxY - 80)))
         wild = w
-        wildFrames = frames
-        let ang = Double.random(in: 0 ..< (2 * .pi))
-        wildPos = CGPoint(x: playerPos.x + CGFloat(cos(ang)) * 320,
-                          y: playerPos.y + CGFloat(sin(ang)) * 220)
+        wildMon = wm
         despawnTicks = (fast ? 30 : 5 * 60) * 60
         phase = .present
     }
@@ -96,21 +90,34 @@ final class BattleController {
     private func tickPresent() {
         despawnTicks -= 1
         if despawnTicks <= 0 { despawn(); return }
-        let trigger = AppSettings.shared.followGap + 50
-        if hypot(playerPos.x - wildPos.x, playerPos.y - wildPos.y) < trigger { startBattle() }
+        guard let wm = wildMon else { despawn(); return }
+        let scale = AppSettings.shared.scale
+        let d = hypot(playerPos.x - wm.pos.x, playerPos.y - wm.pos.y)
+        // The follower just roams (cursor); if it happens to pass close, the wild
+        // notices (stops & looks) and, if they meet, a battle begins.
+        if d < 150 * scale { wm.faceStanding(toward: playerPos) }
+        else { wm.wander(bounds: screenBounds()) }
+        if d < 85 * scale { startBattle() }
     }
 
     private func startBattle() {
-        guard let w = wild, let mon = RaisingState.shared.active, let p = Battler(mon: mon) else { despawn(); return }
+        guard let w = wild, let wm = wildMon, let mon = RaisingState.shared.active, let p = Battler(mon: mon) else { despawn(); return }
+        // Snap the wild to a battle stance: a scale-relative gap from the player,
+        // along the direction they met, facing each other.
+        let scale = AppSettings.shared.scale
+        var dx = wm.pos.x - playerPos.x, dy = wm.pos.y - playerPos.y
+        let dist = max(0.001, hypot(dx, dy)); dx /= dist; dy /= dist
+        wm.setPos(CGPoint(x: playerPos.x + dx * 75 * scale, y: playerPos.y + dy * 75 * scale))
+        wm.faceStanding(toward: playerPos)
         result = BattleEngine.run(player: p, wild: w)
         events = result?.events ?? []
-        evIdx = 0; evTick = 0
-        curPHP = 1.0; curWHP = 1.0; wildAlpha = 1.0
+        evIdx = 0; evTick = 0; curPHP = 1.0; curWHP = 1.0; wildAlpha = 1.0
         flashP = false; flashW = false
         phase = .battling
     }
 
     private func tickBattling() {
+        wildMon?.faceStanding(toward: playerPos)
         guard evIdx < events.count else { finishBattle(); return }
         let e = events[evIdx]
         if evTick == 0 {
@@ -133,13 +140,14 @@ final class BattleController {
     }
 
     private func tickEnding() {
+        wildMon?.faceStanding(toward: playerPos)
         endTicks -= 1
         wildAlpha = max(0, Double(endTicks) / 40.0)
         if endTicks <= 0 { despawn() }
     }
 
     private func despawn() {
-        wild = nil; wildFrames = []; events = []; result = nil
+        wild = nil; wildMon = nil; events = []; result = nil
         phase = .idle
         spawnCooldown = nextSpawnDelay()
     }
@@ -147,11 +155,9 @@ final class BattleController {
     // MARK: scene
 
     private func scene() -> BattleScene? {
-        guard phase != .idle, wild != nil, !wildFrames.isEmpty else { return nil }
-        frameTick += 1
-        let frame = wildFrames[(frameTick / 10) % wildFrames.count]
+        guard phase != .idle, let wm = wildMon, let frame = wm.currentFrame else { return nil }
         return BattleScene(
-            wildFrame: frame, wildPos: wildPos, playerPos: playerPos,
+            wildFrame: frame, wildPos: wm.pos, playerPos: playerPos,
             playerHP: curPHP, wildHP: curWHP, flashPlayer: flashP, flashWild: flashW,
             wildAlpha: wildAlpha, showBars: isBattling)
     }
@@ -160,6 +166,12 @@ final class BattleController {
 
     private func frac(_ hp: Int, _ maxHP: Int) -> Double { Double(hp) / Double(max(1, maxHP)) }
     private func lerp(_ a: Double, _ b: Double, _ t: Double) -> Double { a + (b - a) * t }
+
+    private func screenBounds() -> CGRect {
+        var r = CGRect.null
+        for s in NSScreen.screens { r = r.union(s.frame) }
+        return r.isNull ? CGRect(x: 0, y: 0, width: 1440, height: 900) : r
+    }
 
     private func nextSpawnDelay() -> Int {
         fast ? 60 * 4 : Int.random(in: (30 * 60)...(60 * 60)) * 60   // 4s (fast) or 30–60 min

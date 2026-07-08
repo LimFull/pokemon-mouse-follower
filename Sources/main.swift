@@ -506,6 +506,26 @@ final class CharacterController {
             currentShadow = shadow[row][col]
         }
     }
+
+    /// Stand in place (no movement) turned to face `point` — used during a battle.
+    func face(_ point: CGPoint) {
+        guard loaded else { return }
+        let dx = point.x - pos.x, dy = point.y - pos.y
+        if abs(dx) > 0.01 || abs(dy) > 0.01 {
+            var deg = atan2(dy, dx) * 180 / .pi
+            if deg < 0 { deg += 360 }
+            lastRow = octantToRow[Int((deg / 45).rounded()) % 8]
+        }
+        let sheet = idle.isEmpty ? walk : idle
+        let shadow = idle.isEmpty ? walkShadow : idleShadow
+        guard !sheet.isEmpty else { return }
+        let row = min(lastRow, sheet.count - 1)
+        guard !sheet[row].isEmpty else { return }
+        tickCounter += 1
+        let col = (tickCounter / idleStepTicks) % sheet[row].count
+        currentFrame = sheet[row][col]
+        if row < shadow.count, col < shadow[row].count { currentShadow = shadow[row][col] }
+    }
 }
 
 // MARK: - Sprite View (one per screen)
@@ -1161,10 +1181,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self, self.running else { return }
             let cursor = NSEvent.mouseLocation
             if !self.battle.isBattling {
-                // Walk toward a present wild encounter, otherwise the cursor.
-                self.controller.update(mouseGlobal: self.battle.followTarget(cursor: cursor))
+                // The follower just roams after the cursor; encounters happen by
+                // chance when it wanders near a wild (it doesn't seek them out).
+                self.controller.update(mouseGlobal: cursor)
             }
             let scene = self.battle.update(playerGlobalPos: self.controller.position)
+            if self.battle.isBattling, let sc = scene {
+                self.controller.face(sc.wildPos)   // stand facing the wild while fighting
+            }
             for (_, view) in self.overlays {
                 view.render(self.controller.currentFrame,
                             globalPos: self.controller.position,
