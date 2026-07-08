@@ -100,13 +100,13 @@ final class BattleController {
         guard let wm = wildMon else { despawn(); return }
         let scale = AppSettings.shared.scale
         let d = hypot(playerPos.x - wm.pos.x, playerPos.y - wm.pos.y)
-        // The follower just roams (cursor); if it happens to pass close, the wild
-        // notices (stops & looks) and, if they meet, a battle begins.
-        if d < 150 * scale { wm.faceStanding(toward: playerPos) }
+        let active = RaisingState.shared.active
+        let conscious = !(active?.isFainted ?? true)
+        // A fainted mon is ignored — the wild just wanders. A conscious one that
+        // wanders close is noticed (stop & look) and, on contact, battled.
+        if conscious && d < 150 * scale { wm.faceStanding(toward: playerPos) }
         else { wm.wander(bounds: screenBounds()) }
-        // Only a conscious active mon starts a battle (a fainted one lies where it
-        // fell until you switch/heal); the wild just lingers meanwhile.
-        if let a = RaisingState.shared.active, !a.isFainted, d < 85 * scale { startBattle() }
+        if conscious, d < 85 * scale { startBattle() }
     }
 
     private func startBattle() {
