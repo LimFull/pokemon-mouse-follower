@@ -42,7 +42,7 @@ final class BattleController {
     private var evIdx = 0
     private var evTick = 0
     private var curTicks = 20            // current event's playback length
-    private var effect: RunningEffect?   // move-effect sprite in flight
+    private var effects: [RunningEffect] = []   // phases: projectile, then hit
     private var curPHP = 1.0, curWHP = 1.0
     private var pFrom = 1.0, pTo = 1.0, wFrom = 1.0, wTo = 1.0
     private var flashP = false, flashW = false
@@ -139,29 +139,42 @@ final class BattleController {
         let t = min(1.0, Double(evTick) / Double(curTicks) * 1.4)
         if e.targetIsPlayer { curPHP = lerp(pFrom, pTo, t) } else { curWHP = lerp(wFrom, wTo, t) }
         if evTick > 8 { flashP = false; flashW = false }
-        effect?.advance()
-        if effect?.isDone == true { effect = nil }
+        if !effects.isEmpty {
+            effects[0].advance()
+            if effects[0].isDone { effects.removeFirst() }
+        }
         evTick += 1
         if evTick >= curTicks { evTick = 0; evIdx += 1 }
     }
 
     /// Set up one event beat: HP-bar animation targets, hit flash, and the
-    /// move-effect sprite over whoever got hit. The beat lasts long enough for
-    /// the effect to play out (capped so slow effects don't stall the battle);
-    /// misses/skips/status-only beats run shorter.
+    /// move-effect phases — a projectile flown attacker -> target when the
+    /// move has one, then the hit clip over whoever got hit. The beat lasts
+    /// long enough for the phases to play out (capped so slow effects don't
+    /// stall the battle); misses/skips/status-only beats run shorter.
     private func beginEvent(_ e: BattleEvent) {
         let to = frac(e.targetHP, e.targetMaxHP)
         if e.targetIsPlayer { pFrom = curPHP; pTo = to; flashP = e.damage > 0 }
         else { wFrom = curWHP; wTo = to; flashW = e.damage > 0 }
 
-        effect = nil
+        effects = []
         curTicks = (e.damage > 0 || e.kind == .attack) ? eventTicks : eventTicks * 3 / 5
-        if e.kind == .attack, let clip = EffectPlayer.clip(forMove: e.moveId) {
-            let anchor = e.targetIsPlayer ? playerPos : (wildMon?.pos ?? playerPos)
-            let cap = max(curTicks, min(clip.loop ? curTicks * 2 : clip.totalTicks, 54))
-            curTicks = cap
-            effect = RunningEffect(clip: clip, anchor: anchor, maxTicks: cap)
+        guard e.kind == .attack else { return }
+        let wildPos = wildMon?.pos ?? playerPos
+        let target = e.targetIsPlayer ? playerPos : wildPos
+        let attacker = e.actorIsPlayer ? playerPos : wildPos
+        var total = 0
+        if let proj = EffectPlayer.projectile(forMove: e.moveId) {
+            let travel = 18
+            effects.append(RunningEffect(clip: proj, from: attacker, to: target, maxTicks: travel))
+            total += travel
         }
+        if let clip = EffectPlayer.clip(forMove: e.moveId) {
+            let hitTicks = min(clip.loop ? eventTicks * 2 : clip.totalTicks, 54)
+            effects.append(RunningEffect(clip: clip, anchor: target, maxTicks: hitTicks))
+            total += hitTicks
+        }
+        curTicks = max(curTicks, min(total, 70))
     }
 
     private func finishBattle() {
@@ -189,7 +202,7 @@ final class BattleController {
     }
 
     private func despawn() {
-        wild = nil; wildMon = nil; events = []; result = nil; effect = nil
+        wild = nil; wildMon = nil; events = []; result = nil; effects = []
         playerAlpha = 1.0; wildAlpha = 1.0
         phase = .idle
         spawnCooldown = nextSpawnDelay()
@@ -199,7 +212,7 @@ final class BattleController {
 
     private func scene() -> BattleScene? {
         guard phase != .idle, let wm = wildMon, let frame = wm.currentFrame else { return nil }
-        let fx = effect?.current(scale: AppSettings.shared.scale)
+        let fx = effects.first?.current(scale: AppSettings.shared.scale)
         return BattleScene(
             wildFrame: frame, wildPos: wm.pos, playerPos: playerPos,
             playerHP: curPHP, wildHP: curWHP, flashPlayer: flashP, flashWild: flashW,

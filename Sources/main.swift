@@ -1341,16 +1341,19 @@ if let i = CommandLine.arguments.firstIndex(of: "--dump-effect"),
    CommandLine.arguments.count > i + 2, let moveId = Int(CommandLine.arguments[i + 1]) {
     let dir = URL(fileURLWithPath: CommandLine.arguments[i + 2])
     try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-    if let clip = EffectPlayer.clip(forMove: moveId) {
+    func dump(_ clip: EffectClip?, _ prefix: String) {
+        guard let clip else { return }
         for (n, s) in clip.steps.enumerated() {
-            let u = dir.appendingPathComponent(String(format: "step-%02d.png", n))
+            let u = dir.appendingPathComponent(String(format: "%@-%02d.png", prefix, n))
             if let d = CGImageDestinationCreateWithURL(u as CFURL, UTType.png.identifier as CFString, 1, nil) {
                 CGImageDestinationAddImage(d, s.image, nil)
                 CGImageDestinationFinalize(d)
             }
         }
-        print("dumped \(clip.steps.count) steps (\(clip.totalTicks) ticks) for move \(moveId) → \(dir.path)")
-    } else { print("no clip for move \(moveId)") }
+        print("dumped \(prefix): \(clip.steps.count) steps (\(clip.totalTicks) ticks) for move \(moveId) → \(dir.path)")
+    }
+    dump(EffectPlayer.clip(forMove: moveId), "step")
+    dump(EffectPlayer.projectile(forMove: moveId), "proj")
     exit(0)
 }
 

@@ -16,12 +16,20 @@
 import AppKit
 
 struct MoveEffectRef: Codable {
+    struct Proj: Codable {
+        let file: Int
+        let anim: Int
+        let loop: Bool
+        let particle: Bool?
+        let tint: Bool?
+    }
     let file: Int
     let anim: Int
     let loop: Bool
     let point: String       // HEAD / CENTER / ... — anchor on the target
     let particle: Bool?     // single-particle art: compose a burst of copies
     let tint: Bool?         // approximate palette: re-hue with the type color
+    let proj: Proj?         // travel effect flown attacker -> target first
 }
 
 enum MoveEffects {
@@ -69,23 +77,42 @@ enum EffectPlayer {
     }
 
     private static var metaCache: [Int: FileMeta] = [:]
-    private static var clipCache: [Int: EffectClip?] = [:]   // per move id
+    private static var clipCache: [Int: EffectClip?] = [:]   // hit clip per move id
+    private static var projCache: [Int: EffectClip?] = [:]   // projectile per move id
 
-    /// The clip for `moveId` (fully corrected: cropped/centered, tinted,
-    /// particle-composed), or nil when the move has no sprite effect.
+    /// The on-target hit clip for `moveId` (fully corrected: cropped/centered,
+    /// tinted, particle-composed), or nil when the move has no sprite effect.
     static func clip(forMove moveId: Int) -> EffectClip? {
         if let cached = clipCache[moveId] { return cached }
-        let built = build(forMove: moveId)
+        let ref = MoveEffects.map[moveId]
+        let built = ref.flatMap {
+            build(moveId: moveId, file: $0.file, anim: $0.anim, loop: $0.loop,
+                  particle: $0.particle == true, tint: $0.tint == true,
+                  headAnchored: $0.point == "HEAD")
+        }
         clipCache[moveId] = built
         return built
     }
 
-    private static func build(forMove moveId: Int) -> EffectClip? {
-        guard let ref = MoveEffects.map[moveId] else { return nil }
-        guard var steps = rawSteps(file: ref.file, anim: ref.anim) else { return nil }
+    /// The projectile/travel clip for `moveId` (flown attacker -> target
+    /// before the hit clip plays), or nil when the move has none.
+    static func projectile(forMove moveId: Int) -> EffectClip? {
+        if let cached = projCache[moveId] { return cached }
+        let p = MoveEffects.map[moveId]?.proj
+        let built = p.flatMap {
+            build(moveId: moveId, file: $0.file, anim: $0.anim, loop: $0.loop,
+                  particle: $0.particle == true, tint: $0.tint == true, headAnchored: false)
+        }
+        projCache[moveId] = built
+        return built
+    }
+
+    private static func build(moveId: Int, file: Int, anim: Int, loop: Bool,
+                              particle: Bool, tint doTint: Bool, headAnchored: Bool) -> EffectClip? {
+        guard var steps = rawSteps(file: file, anim: anim) else { return nil }
         steps = cropAndCenter(steps)
         let type = GameData.moves[moveId]?.type
-        if ref.particle == true {
+        if particle {
             // Shared-file particle frames are unrecoverable palette garbage
             // (solid single-color squares — the shape lived in runtime palette
             // gradients). Keep only each frame's SIZE and timing: draw a round
@@ -99,7 +126,7 @@ enum EffectPlayer {
                                 ticks: $0.ticks, dx: $0.dx, dy: $0.dy)
             }
             steps = composeBurst(steps)
-        } else if ref.tint == true {
+        } else if doTint {
             // Drawn art with an approximate palette: re-hue, keep shading.
             let color = TypeStyle.color(type)
             steps = steps.map {
@@ -107,7 +134,7 @@ enum EffectPlayer {
                                 ticks: $0.ticks, dx: $0.dx, dy: $0.dy)
             }
         }
-        return EffectClip(steps: steps, loop: ref.loop, headAnchored: ref.point == "HEAD")
+        return EffectClip(steps: steps, loop: loop, headAnchored: headAnchored)
     }
 
     // MARK: raw frame loading
@@ -227,30 +254,50 @@ enum EffectPlayer {
     }
 }
 
-/// Tick-driven playback state for one running effect.
+/// Tick-driven playback state for one running effect. Stationary (hit at the
+/// target) when `from == to`; otherwise it travels from -> to over its
+/// lifetime (projectile phase), cycling its frames while in flight.
 struct RunningEffect {
     let clip: EffectClip
-    let anchor: CGPoint          // global position of the hit target
+    let from: CGPoint
+    let to: CGPoint
     var tick = 0
     let maxTicks: Int            // hard stop (event beat), also caps loops
 
     init(clip: EffectClip, anchor: CGPoint, maxTicks: Int) {
-        self.clip = clip
-        self.anchor = anchor
-        self.maxTicks = maxTicks
+        self.init(clip: clip, from: anchor, to: anchor, maxTicks: maxTicks)
     }
 
-    var isDone: Bool { tick >= maxTicks || (!clip.loop && tick >= clip.totalTicks) }
+    init(clip: EffectClip, from: CGPoint, to: CGPoint, maxTicks: Int) {
+        self.clip = clip
+        self.from = from
+        self.to = to
+        self.maxTicks = max(1, maxTicks)
+    }
+
+    private var travels: Bool { from != to }
+
+    var isDone: Bool {
+        tick >= maxTicks || (!clip.loop && !travels && tick >= clip.totalTicks)
+    }
 
     /// Current frame + its global position, nil when finished.
     func current(scale: CGFloat) -> (CGImage, CGPoint)? {
         guard !isDone else { return nil }
-        var t = clip.loop ? tick % max(1, clip.totalTicks) : tick
+        // Loops cycle; a non-loop clip in flight gets its whole animation
+        // compressed into the travel time (a grow-then-drift sequence
+        // completes mid-air instead of freezing on its first frames).
+        var t = clip.loop ? tick % max(1, clip.totalTicks)
+              : travels ? min(clip.totalTicks - 1, tick * clip.totalTicks / maxTicks)
+              : tick
         for s in clip.steps {
             if t < s.ticks {
+                let f = travels ? CGFloat(tick) / CGFloat(maxTicks) : 0
+                let base = CGPoint(x: from.x + (to.x - from.x) * f,
+                                   y: from.y + (to.y - from.y) * f)
                 let up: CGFloat = clip.headAnchored ? 10 : 0
-                let pos = CGPoint(x: anchor.x + CGFloat(s.dx) * scale,
-                                  y: anchor.y - CGFloat(s.dy) * scale + up * scale)
+                let pos = CGPoint(x: base.x + CGFloat(s.dx) * scale,
+                                  y: base.y - CGFloat(s.dy) * scale + up * scale)
                 return (s.image, pos)
             }
             t -= s.ticks

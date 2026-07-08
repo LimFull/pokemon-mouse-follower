@@ -3,10 +3,15 @@
 Bundle the move-effect sprites the battle overlay needs (Phase 2d playback).
 
 Resolves every move in ../gamedata/moves.json through the EoS animation tables
-(out/anim/move_animations.json + general_animations.json). The move entry's
-anim3 is the on-target hit effect (verified: Ember->fire burst file 53,
-Gust->wind file 258, ...), so the first nonzero of (anim3, anim1, anim2, anim4)
-is used. The general-animation entry then resolves to a sprite file:
+(out/anim/move_animations.json + general_animations.json). Slot semantics
+(verified against known moves):
+  anim3 = the on-target HIT effect (Ember->flame burst, Bubble->bubble pop,
+          Thunderbolt->lightning strike). First nonzero of (anim3, anim1,
+          anim2, anim4) is the hit.
+  anim4 = the PROJECTILE / travel effect (Bubble->three flying bubbles,
+          Water Gun->water stream, Razor Leaf->flying leaves; usually loop).
+          Exported as "proj" so the app can fly it attacker->target first.
+The general-animation entry then resolves to a sprite file:
 
   The animation within the file is selected by the general entry's **unk2**
   for every WAN type (decoded 2026-07-08, correcting the README's old unk1
@@ -89,20 +94,9 @@ def main():
                for e in load(os.path.join(OUT, "effects", "effects_index.json"))
                if isinstance(e, dict) and "index" in e}
 
-    mapping = {}
-    used_files = set()
-    skipped = {"screen": 0, "none": 0}
-    for key in moves:
-        mid = int(key)
-        entry = move_anims.get(mid)
-        if not entry:
-            skipped["none"] += 1
-            continue
-        # anim3 = on-target hit effect; fall back through the other slots.
-        cands = [a for a in (entry["anim3"], entry["anim1"], entry["anim2"], entry["anim4"])
-                 if 0 < a < len(general)]
-        g = general[cands[0]] if cands else None
-        t = g.get("anim_type") if g else "WAN_FILE0"   # all-zero slots (Tackle): generic particle hit
+    def resolve(g):
+        """General entry -> {file, anim, loop, particle?, tint?} or None (screen/invalid)."""
+        t = g.get("anim_type") if g else "WAN_FILE0"
         particle = False
         if t in ("WAN_FILE0", "WAN_FILE1"):
             eff, anim = (0 if t == "WAN_FILE0" else 1), (g.get("unk2", 0) if g else 0)
@@ -111,20 +105,47 @@ def main():
             eff = g.get("anim_file")
             anim = pick_anim(os.path.join(OUT, "effects", f"effect_{eff:04d}"), g.get("unk2"))
             if anim is None:
-                skipped["none"] += 1
-                continue
+                return None
         else:  # SCREEN / WBA — no sprite to bundle
-            skipped["screen"] += 1
-            continue
-        point = (g.get("point") if g and g.get("point") not in (None, "NONE") else None) \
-            or entry.get("point") or "CENTER"
-        rec = {"file": eff, "anim": anim, "loop": bool(g.get("loop")) if g else False, "point": point}
+            return None
+        rec = {"file": eff, "anim": anim, "loop": bool(g.get("loop")) if g else False}
         if particle:
             rec["particle"] = True
         if particle or palette.get(eff) == "approx_common":
             rec["tint"] = True     # re-hue with the move's type color in-app
+        return rec
+
+    mapping = {}
+    used_files = set()
+    skipped = {"screen": 0, "none": 0}
+    n_proj = 0
+    for key in moves:
+        mid = int(key)
+        entry = move_anims.get(mid)
+        if not entry:
+            skipped["none"] += 1
+            continue
+        # Hit effect: anim3 first, falling back through the other slots.
+        slots = (entry["anim3"], entry["anim1"], entry["anim2"], entry["anim4"])
+        cands = [a for a in slots if 0 < a < len(general)]
+        hit_slot = cands[0] if cands else None
+        rec = resolve(general[hit_slot] if hit_slot is not None else None)
+        if rec is None:
+            skipped["screen" if hit_slot is not None else "none"] += 1
+            continue
+        g = general[hit_slot] if hit_slot is not None else None
+        rec["point"] = (g.get("point") if g and g.get("point") not in (None, "NONE") else None) \
+            or entry.get("point") or "CENTER"
+        # Projectile: the anim4 slot, when present and not already used as the hit.
+        a4 = entry["anim4"]
+        if 0 < a4 < len(general) and a4 != hit_slot:
+            proj = resolve(general[a4])
+            if proj is not None:
+                rec["proj"] = proj
+                used_files.add(proj["file"])
+                n_proj += 1
         mapping[key] = rec
-        used_files.add(eff)
+        used_files.add(rec["file"])
 
     # Copy just the needed effect folders (frames + animations.json).
     eff_dest = os.path.join(DEST, "effects")
@@ -145,7 +166,7 @@ def main():
     with open(os.path.join(DEST, "move_effects.json"), "w", encoding="utf-8") as f:
         json.dump(mapping, f, ensure_ascii=False, separators=(",", ":"))
 
-    print(f"move_effects.json: {len(mapping)} moves mapped "
+    print(f"move_effects.json: {len(mapping)} moves mapped, {n_proj} with a projectile "
           f"(skipped: {skipped['screen']} screen-type, {skipped['none']} unmapped)")
     print(f"effects bundled: {len(used_files)} files, {total / 1e6:.1f} MB of frames")
 
