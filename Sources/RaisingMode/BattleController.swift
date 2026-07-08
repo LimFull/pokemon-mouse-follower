@@ -18,6 +18,7 @@ struct BattleScene {
     let wildHP: Double
     let flashPlayer: Bool
     let flashWild: Bool
+    let playerAlpha: Double
     let wildAlpha: Double
     let showBars: Bool
 }
@@ -41,6 +42,7 @@ final class BattleController {
     private var curPHP = 1.0, curWHP = 1.0
     private var pFrom = 1.0, pTo = 1.0, wFrom = 1.0, wTo = 1.0
     private var flashP = false, flashW = false
+    private var playerAlpha = 1.0
     private var wildAlpha = 1.0
     private var result: BattleResult?
     private var endTicks = 0
@@ -57,6 +59,11 @@ final class BattleController {
 
     func update(playerGlobalPos: CGPoint) -> BattleScene? {
         playerPos = playerGlobalPos
+        // Abort any encounter if raising mode was turned off or the party was
+        // reset/emptied, so a later spawn (or reset) isn't blocked by stale state.
+        if phase != .idle && (!AppSettings.shared.raisingMode || RaisingState.shared.active == nil) {
+            despawn()
+        }
         switch phase {
         case .idle: tickIdle()
         case .present: tickPresent()
@@ -111,7 +118,7 @@ final class BattleController {
         wm.faceStanding(toward: playerPos)
         result = BattleEngine.run(player: p, wild: w)
         events = result?.events ?? []
-        evIdx = 0; evTick = 0; curPHP = 1.0; curWHP = 1.0; wildAlpha = 1.0
+        evIdx = 0; evTick = 0; curPHP = 1.0; curWHP = 1.0; wildAlpha = 1.0; playerAlpha = 1.0
         flashP = false; flashW = false
         phase = .battling
     }
@@ -142,12 +149,16 @@ final class BattleController {
     private func tickEnding() {
         wildMon?.faceStanding(toward: playerPos)
         endTicks -= 1
-        wildAlpha = max(0, Double(endTicks) / 40.0)
+        let fade = max(0, Double(endTicks) / 40.0)
+        // The loser faints (fades out); the winner stays.
+        if result?.playerWon == true { wildAlpha = fade; playerAlpha = 1 }
+        else { playerAlpha = fade; wildAlpha = 1 }
         if endTicks <= 0 { despawn() }
     }
 
     private func despawn() {
         wild = nil; wildMon = nil; events = []; result = nil
+        playerAlpha = 1.0; wildAlpha = 1.0
         phase = .idle
         spawnCooldown = nextSpawnDelay()
     }
@@ -159,7 +170,7 @@ final class BattleController {
         return BattleScene(
             wildFrame: frame, wildPos: wm.pos, playerPos: playerPos,
             playerHP: curPHP, wildHP: curWHP, flashPlayer: flashP, flashWild: flashW,
-            wildAlpha: wildAlpha, showBars: isBattling)
+            playerAlpha: playerAlpha, wildAlpha: wildAlpha, showBars: isBattling)
     }
 
     // MARK: helpers

@@ -593,7 +593,7 @@ final class SpriteView: NSView {
         wildLayer.contents = scene.wildFrame
         wildLayer.position = CGPoint(x: wx, y: wy)
         wildLayer.opacity = scene.flashWild ? 0.25 : Float(scene.wildAlpha)
-        spriteLayer.opacity = scene.flashPlayer ? 0.25 : 1
+        spriteLayer.opacity = scene.flashPlayer ? 0.25 : Float(scene.playerAlpha)
 
         if scene.showBars {
             let top = 20 * s
