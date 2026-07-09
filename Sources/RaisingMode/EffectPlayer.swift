@@ -118,6 +118,7 @@ enum EffectPlayer {
                               particle: Bool, tint doTint: Bool, headAnchored: Bool) -> EffectClip? {
         guard var steps = rawSteps(file: file, anim: anim) else { return nil }
         steps = cropAndCenter(steps)
+        steps = capSize(steps)   // screen-filling art (Surf & co) fits battle scale
         let type = GameData.moves[moveId]?.type
         if particle {
             // Shared-file particle frames are unrecoverable palette garbage
@@ -161,8 +162,11 @@ enum EffectPlayer {
         var images: [Int: CGImage] = [:]
         for f in a.frames {
             if images[f.frame] == nil {
+                // The exporter skips empty frames — they're intentional blank
+                // "blink" moments, so keep the step (and its timing) as a
+                // transparent frame instead of dropping it.
                 images[f.frame] = Sprite.loadCG(String(format: "F-%02d", f.frame),
-                                                subdir: "\(dir)/frames")
+                                                subdir: "\(dir)/frames") ?? blankFrame
             }
             guard let img = images[f.frame] else { continue }
             steps.append(EffectClip.Step(
@@ -171,6 +175,14 @@ enum EffectPlayer {
         }
         return steps.isEmpty ? nil : steps
     }
+
+    /// A 1x1 transparent frame standing in for unexported blank frames.
+    private static let blankFrame: CGImage? = {
+        let ctx = CGContext(data: nil, width: 1, height: 1, bitsPerComponent: 8,
+                            bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+                            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        return ctx?.makeImage()
+    }()
 
     /// Offsets are stored as raw unsigned 16-bit values; fold back to signed.
     private static func signed16(_ v: Int) -> Int { v >= 32768 ? v - 65536 : v }
@@ -192,11 +204,35 @@ enum EffectPlayer {
         }
     }
 
+    /// Cap a clip's drawn size so screen-filling source art (Surf, Rock Slide —
+    /// up to ~290px, meant to cover the game's whole 256x192 screen) doesn't
+    /// dwarf the battle. Downscales every frame (and its offsets) uniformly.
+    private static func capSize(_ steps: [EffectClip.Step], maxDim: Int = 140) -> [EffectClip.Step] {
+        let biggest = steps.map { max($0.image.width, $0.image.height) }.max() ?? 0
+        guard biggest > maxDim else { return steps }
+        let f = CGFloat(maxDim) / CGFloat(biggest)
+        return steps.map { s in
+            let w = max(1, Int(CGFloat(s.image.width) * f))
+            let h = max(1, Int(CGFloat(s.image.height) * f))
+            guard let ctx = CGContext(data: nil, width: w, height: h,
+                                      bitsPerComponent: 8, bytesPerRow: 0,
+                                      space: CGColorSpaceCreateDeviceRGB(),
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+            else { return s }
+            ctx.interpolationQuality = .none   // keep the pixel-art look
+            ctx.draw(s.image, in: CGRect(x: 0, y: 0, width: w, height: h))
+            return EffectClip.Step(image: ctx.makeImage() ?? s.image, ticks: s.ticks,
+                                   dx: Int(CGFloat(s.dx) * f), dy: Int(CGFloat(s.dy) * f))
+        }
+    }
+
     /// A shared-file effect is one tiny particle; the game draws many. Compose
     /// each step into a burst: a center copy plus a ring of copies spreading
-    /// outward (golden-angle spacing) as the animation progresses.
+    /// outward (golden-angle spacing) as the animation progresses. The canvas
+    /// is sized to the full spread so edge particles never get sliced off.
     private static func composeBurst(_ steps: [EffectClip.Step]) -> [EffectClip.Step] {
-        let canvas = 72
+        let maxPart = steps.map { max($0.image.width, $0.image.height) }.max() ?? 16
+        let canvas = 2 * 30 + maxPart + 8   // ring radius peaks at 30
         let copies = 7
         let n = max(1, steps.count - 1)
         return steps.enumerated().map { (i, s) in
