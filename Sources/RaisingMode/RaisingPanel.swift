@@ -40,16 +40,22 @@ final class RaisingPanelView: NSView {
         if window != nil { refresh() }
     }
 
-    /// Keep fainted members' revive countdown fresh while the panel is open.
+    /// Keep the panel fresh while it's open: every second during a battle
+    /// (live gauge drives the potion buttons), every minute for the fainted
+    /// members' revive countdown.
     private var countdownTimer: Timer?
+    private var timerTicks = 0
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         countdownTimer?.invalidate()
         countdownTimer = nil
         guard window != nil else { return }
-        let t = Timer(timeInterval: 60, repeats: true) { [weak self] _ in
+        let t = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
             guard let self, self.window != nil else { return }
-            if RaisingState.shared.party.contains(where: { $0.isFainted }) { self.refresh() }
+            self.timerTicks += 1
+            if BattleController.current?.isBattling == true { self.refresh(); return }
+            if self.timerTicks % 60 == 0,
+               RaisingState.shared.party.contains(where: { $0.isFainted }) { self.refresh() }
         }
         RunLoop.main.add(t, forMode: .common)
         countdownTimer = t
@@ -446,18 +452,29 @@ final class RaisingPanelView: NSView {
 
         // Usable items on this mon (Phase 3c): potions when hurt, a revive
         // when fainted, evolution items when they'd trigger one (C3/D8-1).
+        // While its battle plays, the follower's potions stay VISIBLE even at
+        // a full gauge (just disabled) — entering a fight at 100% must not
+        // hide the buttons forever; the battle timer refresh enables them the
+        // moment the gauge dips.
         guard let idx = detailIndex else { return }
-        let usable = GameItem.allCases.filter { RaisingState.shared.canUseItem($0, at: idx) }
-        if !usable.isEmpty {
+        let state = RaisingState.shared
+        let battlingActive = idx == state.save.activeIndex
+            && BattleController.current?.playerGaugeFraction != nil
+        let shown = GameItem.allCases.filter { item in
+            if state.canUseItem(item, at: idx) { return true }
+            return battlingActive && item.healAmount > 0 && state.itemCount(item) > 0
+        }
+        if !shown.isEmpty {
             let itemStack = NSStackView()
             itemStack.orientation = .vertical
             itemStack.alignment = .leading
             itemStack.spacing = 6
-            for item in usable {
-                let b = NSButton(title: "\(item.displayName)  ×\(RaisingState.shared.itemCount(item))",
+            for item in shown {
+                let b = NSButton(title: "\(item.displayName)  ×\(state.itemCount(item))",
                                  target: self, action: #selector(useItemTapped(_:)))
                 b.bezelStyle = .rounded
                 b.tag = item.rawValue
+                b.isEnabled = state.canUseItem(item, at: idx)
                 if let cg = item.icon {
                     b.image = NSImage(cgImage: cg, size: NSSize(width: 16, height: 16))
                     b.imagePosition = .imageLeading
