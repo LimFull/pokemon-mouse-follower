@@ -209,8 +209,18 @@ final class RaisingPanelView: NSView {
         b.isBordered = false
         b.alignment = .left
         b.attributedTitle = NSAttributedString(
-            string: "\(bagExpanded ? "▾" : "▸") 🎒 \(L("detail.bag"))  ·  \(total)",
+            string: "\(L("detail.bag"))  ·  \(total)  \(bagExpanded ? "▾" : "▸")",
             attributes: [.font: NSFont.rounded(13, .bold), .foregroundColor: Palette.ink])
+        // Bundled backpack SVG (Lucide, ISC) as a template so it tints with
+        // the appearance; the old 🎒 emoji couldn't follow the palette.
+        if let url = Bundle.main.url(forResource: "backpack", withExtension: "svg"),
+           let icon = NSImage(contentsOf: url) {
+            icon.size = NSSize(width: 15, height: 15)
+            icon.isTemplate = true
+            b.image = icon
+            b.imagePosition = .imageLeading
+            b.contentTintColor = Palette.ink
+        }
         return b
     }
 

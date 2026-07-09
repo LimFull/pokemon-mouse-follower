@@ -20,6 +20,7 @@ mkdir -p "$BUNDLE/Contents/Resources/characters"
 cp -R animations/* "$BUNDLE/Contents/Resources/characters/"
 cp -R Localizable/*.lproj "$BUNDLE/Contents/Resources/"
 cp icon/AppIcon.icns "$BUNDLE/Contents/Resources/AppIcon.icns"
+cp icon/backpack.svg "$BUNDLE/Contents/Resources/backpack.svg"   # bag header (Lucide, ISC)
 rm -rf "$BUNDLE/Contents/Resources/gamedata"
 cp -R gamedata "$BUNDLE/Contents/Resources/gamedata"
 

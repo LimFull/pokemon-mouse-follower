@@ -44,6 +44,7 @@ cp -R Localizable/*.lproj "$BUNDLE/Contents/Resources/"
 
 echo "==> Bundling app icon..."
 cp icon/AppIcon.icns "$BUNDLE/Contents/Resources/AppIcon.icns"
+cp icon/backpack.svg "$BUNDLE/Contents/Resources/backpack.svg"   # bag header (Lucide, ISC)
 
 echo "==> Bundling game data..."
 rm -rf "$BUNDLE/Contents/Resources/gamedata"
