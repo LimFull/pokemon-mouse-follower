@@ -1598,7 +1598,8 @@ if CommandLine.arguments.contains("--selftest-raising") {
     // Items: inventory round-trip + a full engine run with balls.
     st.addItem(.pokeBall, 3)
     st.addItem(.potion)
-    if let p2 = Battler(mon: st.active!), let w2 = Battler(wildDex: 16, level: 3) {
+    // Comparable levels so the wild survives into the 50% throw window.
+    if let p2 = Battler(wildDex: 7, level: 5), let w2 = Battler(wildDex: 16, level: 5) {
         let r = BattleEngine.run(player: p2, wild: w2, balls: [.pokeBall, .pokeBall, .pokeBall])
         let ballEvents = r.events.filter { $0.kind == .ball }
             .map { "\($0.shakes)s" + ($0.caught ? "O" : "X") }
