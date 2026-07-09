@@ -356,6 +356,9 @@ final class CharacterController {
     private var tickCounter = 0
     private var idleTicks = 0             // frames spent not moving (drives sleep)
     private var lastRow = 0
+    /// The follower dozed off (idle past the sleep delay). Raising mode reads
+    /// this for the faster resting regen; only update(mouseGlobal:) drives it.
+    private(set) var isSleeping = false
 
     private let slowRadius: CGFloat = 130
     private let accel: CGFloat = 0.55
@@ -532,6 +535,7 @@ final class CharacterController {
 
         // Idle long enough -> sleep.
         let sleeping = !moving && CGFloat(idleTicks) / fps >= AppSettings.shared.sleepDelay
+        isSleeping = sleeping
 
         let sheet: [[CGImage]]
         let shadow: [[ShadowAnchor]]
@@ -1545,8 +1549,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.controller.face(sc.wildPos, pose: sc.playerPose, poseTick: sc.playerPoseTick)
             }
             // Slow out-of-battle recovery: +1 HP to hurt members every ~30s.
+            // A follower asleep at the cursor rests properly — 4x the regen
+            // (one HP per ~7.5s) — but only while actually out and conscious;
+            // a recalled or fainted mon can't be napping (stale isSleeping).
             if AppSettings.shared.raisingMode && !self.battle.isBattling {
-                self.regenCounter += 1
+                let napping = !recalled && !fainted && !evolving && self.controller.isSleeping
+                self.regenCounter += napping ? 4 : 1
                 if self.regenCounter >= 30 * 60 {
                     self.regenCounter = 0
                     RaisingState.shared.regenTick()
