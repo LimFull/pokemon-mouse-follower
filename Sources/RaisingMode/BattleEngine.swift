@@ -162,6 +162,7 @@ struct BattleEvent {
         case miss            // a move was used but missed / had no effect
         case skip            // turn lost (asleep/frozen/... or charging/recharging)
         case selfHit         // hurt itself (confusion, recoil, crash, self-pay)
+        case item            // the trainer used a healing item on the follower
         case residual        // end-of-round chip damage (burn/poison/seed/trap/curse)
         case recover         // woke up / thawed / snapped out / HP restored
         case ball            // a ball was thrown at the wild (D11)
@@ -205,38 +206,58 @@ struct BattleResult {
     var wildFled: Bool = false     // the wild escaped — it leaves, no EXP
 }
 
-enum BattleEngine {
-    /// Simulate the whole battle. `player`/`wild` HP are mutated to the end
-    /// state. `balls` is the throwable stock (D11) — the player side throws
-    /// one instead of attacking when the wild looks catchable (hurt or
-    /// statused); capture ends the battle immediately.
-    static func run(player: Battler, wild: Battler,
-                    balls: [GameItem] = []) -> BattleResult {
-        var events: [BattleEvent] = []
-        var stock = balls
-        var used: [GameItem] = []
-        var captured = false
-        var playerFled = false, wildFled = false
-        var turn = 0
-        // Delayed effects: (resolveAtRoundEnd, damage>0 hit / damage<0 heal, target)
-        var pending: [(round: Int, amount: Int, targetIsPlayer: Bool, name: String)] = []
+/// A stepwise battle: one nextRound() call simulates one round, so playback
+/// can feed mid-battle decisions (healing items) in between rounds.
+/// BattleEngine.run wraps it for one-shot simulations.
+final class BattleSession {
+    let player: Battler
+    let wild: Battler
+    private var stock: [GameItem]
+    private(set) var used: [GameItem] = []
+    private(set) var captured = false
+    private(set) var playerFled = false
+    private(set) var wildFled = false
+    private(set) var turn = 0
+    private(set) var allEvents: [BattleEvent] = []
+    private var roundEvents: [BattleEvent] = []
+    // Delayed effects: (resolveAtRoundEnd, damage>0 hit / damage<0 heal, target)
+    private var pending: [(round: Int, amount: Int, targetIsPlayer: Bool, name: String)] = []
 
-        func battleOver() -> Bool {
-            player.isFainted || wild.isFainted || captured || playerFled || wildFled
-        }
+    init(player: Battler, wild: Battler, balls: [GameItem] = []) {
+        self.player = player
+        self.wild = wild
+        self.stock = balls
+    }
+
+    var isOver: Bool {
+        player.isFainted || wild.isFainted || captured || playerFled || wildFled || turn >= 200
+    }
+
+    func makeResult() -> BattleResult {
+        let playerWon = !player.isFainted && wild.isFainted
+        return BattleResult(
+            playerWon: playerWon, events: allEvents,
+            expGained: playerWon ? BattleEngine.expFor(defeated: wild) : 0,
+            playerEndStatus: player.status?.rawValue,
+            playerEndHP: player.currentHP, playerMaxHP: player.maxHP,
+            captured: captured, ballsUsed: used,
+            playerFled: playerFled, wildFled: wildFled)
+    }
 
         func emit(_ kind: BattleEvent.Kind, actorIsPlayer: Bool, move: MoveData? = nil,
                   reason: String = "", damage: Int = 0, eff: Double = 1,
                   targetIsPlayer: Bool? = nil, status: String? = nil, crit: Bool = false) {
             let tgtIsPlayer = targetIsPlayer ?? !actorIsPlayer
             let tgt = tgtIsPlayer ? player : wild
-            events.append(BattleEvent(
+            let ev = BattleEvent(
                 kind: kind, actorIsPlayer: actorIsPlayer,
                 moveId: move?.moveId ?? 0, moveName: move?.displayName ?? reason,
                 damage: damage, effectiveness: eff, targetIsPlayer: tgtIsPlayer,
                 targetHP: tgt.currentHP, targetMaxHP: tgt.maxHP, fainted: tgt.isFainted,
                 statusApplied: status, turn: turn, crit: crit,
-                playerAsleep: player.status == .sleep, wildAsleep: wild.status == .sleep))
+                playerAsleep: player.status == .sleep, wildAsleep: wild.status == .sleep)
+            roundEvents.append(ev)
+            allEvents.append(ev)
         }
 
         /// Type effectiveness with the identification/levitation overrides:
@@ -436,7 +457,7 @@ enum BattleEngine {
                 for _ in 0..<hits where !def.isFainted {
                     let crit = rollCrit(atk, def, m)
                     anyCrit = anyCrit || crit
-                    total += computeDamage(attacker: atk, defender: def, move: m,
+                    total += BattleEngine.computeDamage(attacker: atk, defender: def, move: m,
                                            eff: eff, powerOverride: per, crit: crit)
                 }
                 dealDamage(total, from: atk, to: def, physical: m.category == "Physical")
@@ -450,7 +471,7 @@ enum BattleEngine {
                     emit(.miss, actorIsPlayer: isPlayer, move: m); return
                 }
                 let crit = rollCrit(atk, def, m)
-                let dmg = computeDamage(attacker: atk, defender: def, move: m,
+                let dmg = BattleEngine.computeDamage(attacker: atk, defender: def, move: m,
                                         eff: eff, powerOverride: p, crit: crit)
                 dealDamage(dmg, from: atk, to: def, physical: m.category == "Physical")
                 emit(.attack, actorIsPlayer: isPlayer, move: m, damage: dmg, eff: eff, crit: crit)
@@ -481,7 +502,7 @@ enum BattleEngine {
                     return
                 }
                 let crit = rollCrit(atk, def, m)
-                let dmg = computeDamage(attacker: atk, defender: def, move: m,
+                let dmg = BattleEngine.computeDamage(attacker: atk, defender: def, move: m,
                                         eff: eff, powerOverride: nil, crit: crit)
                 dealDamage(dmg, from: atk, to: def, physical: true)
                 emit(.attack, actorIsPlayer: isPlayer, move: m, damage: dmg, eff: eff, crit: crit)
@@ -726,7 +747,7 @@ enum BattleEngine {
                      targetIsPlayer: victim === player, status: "drowsy")
 
             case .futureSight:
-                let dmg = computeDamage(attacker: atk, defender: def, move: m, eff: 1, powerOverride: 80)
+                let dmg = BattleEngine.computeDamage(attacker: atk, defender: def, move: m, eff: 1, powerOverride: 80)
                 pending.append((turn + 2, dmg, !isPlayer, m.displayName))
                 emit(.attack, actorIsPlayer: isPlayer, move: m, status: "foresaw an attack")
 
@@ -974,14 +995,14 @@ enum BattleEngine {
             var crit = false
             if m.effectivePower > 0 || powerOverride != nil {
                 crit = rollCrit(atk, def, m)
-                dmg = computeDamage(attacker: atk, defender: def, move: m,
+                dmg = BattleEngine.computeDamage(attacker: atk, defender: def, move: m,
                                     eff: eff, powerOverride: powerOverride, crit: crit)
                 dealDamage(dmg, from: atk, to: def, physical: m.category == "Physical")
             }
             // A pure status move bounces off a Magic Coat back onto its user.
             let bounced = dmg == 0 && def.magicCoatTurn == turn
-            let inflicted = bounced ? applyAilment(of: m, from: def, to: atk)
-                                    : applyAilment(of: m, from: atk, to: def)
+            let inflicted = bounced ? BattleEngine.applyAilment(of: m, from: def, to: atk)
+                                    : BattleEngine.applyAilment(of: m, from: atk, to: def)
             if dmg == 0 && inflicted == nil {
                 emit(.miss, actorIsPlayer: isPlayer, move: m)
                 return false
@@ -999,7 +1020,7 @@ enum BattleEngine {
         /// End-of-round upkeep: chips, seeds, delayed hits, perish, timers.
         func endOfRound() {
             for (b, isPlayer) in [(player, true), (wild, false)] {
-                guard !battleOver() else { return }
+                guard !isOver else { return }
                 guard !b.isFainted else { continue }
                 let other = isPlayer ? wild : player
                 // burn / poison
@@ -1105,57 +1126,87 @@ enum BattleEngine {
             }
         }
 
-        // ------------------------- the rounds -----------------------------
-        while !battleOver() && turn < 200 {
-            turn += 1
-            for b in [player, wild] {
-                b.physicalTakenThisRound = 0
-                b.specialTakenThisRound = 0
-                b.actedThisRound = false
-            }
-            let pPlan = plan(player, vs: wild)
-            let wPlan = plan(wild, vs: player)
-            let pFirst = pPlan.priority != wPlan.priority
-                ? pPlan.priority > wPlan.priority
-                : player.effectiveSpeed >= wild.effectiveSpeed
-            let order: [(Battler, Battler, Bool, Int?)] = pFirst
-                ? [(player, wild, true, pPlan.moveId), (wild, player, false, wPlan.moveId)]
-                : [(wild, player, false, wPlan.moveId), (player, wild, true, pPlan.moveId)]
+    // ------------------------- the rounds -----------------------------
 
-            for (atk, def, isPlayer, planned) in order {
-                guard !battleOver(), !atk.isFainted, !def.isFainted else { continue }
-                // Throw a ball instead of attacking when the wild is catchable:
-                // hurt to half or carrying a status (max 3 throws per battle).
-                if isPlayer, !stock.isEmpty, used.count < 3,
-                   wild.currentHP * 100 <= wild.maxHP * 50 || wild.status != nil {
-                    let ball = stock.removeFirst()
-                    used.append(ball)
-                    let (ok, shakes) = attemptCapture(wild: wild, ball: ball)
-                    captured = ok
-                    events.append(BattleEvent(
-                        kind: .ball, actorIsPlayer: true, moveId: 0,
-                        moveName: ball.displayName, damage: 0, effectiveness: 1,
-                        targetIsPlayer: false, targetHP: wild.currentHP,
-                        targetMaxHP: wild.maxHP, fainted: false, statusApplied: nil,
-                        turn: turn, shakes: shakes, caught: ok, ballId: ball.rawValue,
-                        playerAsleep: player.status == .sleep,
-                        wildAsleep: wild.status == .sleep))
-                    continue
-                }
-                act(atk, def, isPlayer: isPlayer, planned: planned)
-            }
-            guard !captured else { break }
-            endOfRound()
+    /// Simulate ONE round and return its events. `playerItem` replaces the
+    /// follower's action with a healing item (mainline: an item costs the
+    /// turn) and resolves before moves.
+    func nextRound(playerItem: GameItem? = nil) -> [BattleEvent] {
+        roundEvents = []
+        guard !isOver else { return [] }
+        turn += 1
+        for b in [player, wild] {
+            b.physicalTakenThisRound = 0
+            b.specialTakenThisRound = 0
+            b.actedThisRound = false
         }
+        let pPlan: (moveId: Int?, priority: Int) =
+            playerItem != nil ? (nil, 6) : BattleEngine.plan(player, vs: wild)
+        let wPlan = BattleEngine.plan(wild, vs: player)
+        let pFirst = pPlan.priority != wPlan.priority
+            ? pPlan.priority > wPlan.priority
+            : player.effectiveSpeed >= wild.effectiveSpeed
+        let order: [(Battler, Battler, Bool, Int?)] = pFirst
+            ? [(player, wild, true, pPlan.moveId), (wild, player, false, wPlan.moveId)]
+            : [(wild, player, false, wPlan.moveId), (player, wild, true, pPlan.moveId)]
 
-        let playerWon = !player.isFainted && wild.isFainted
-        return BattleResult(
-            playerWon: playerWon, events: events,
-            expGained: playerWon ? expFor(defeated: wild) : 0,
-            playerEndStatus: player.status?.rawValue,
-            playerEndHP: player.currentHP, playerMaxHP: player.maxHP,
-            captured: captured, ballsUsed: used,
-            playerFled: playerFled, wildFled: wildFled)
+        for (atk, def, isPlayer, planned) in order {
+            guard !isOver, !atk.isFainted, !def.isFainted else { continue }
+            if isPlayer, let item = playerItem {
+                useHealingItem(item)
+                continue
+            }
+            // Throw a ball instead of attacking when the wild is catchable:
+            // hurt to half or carrying a status (max 3 throws per battle).
+            if isPlayer, !stock.isEmpty, used.count < 3,
+               wild.currentHP * 100 <= wild.maxHP * 50 || wild.status != nil {
+                let ball = stock.removeFirst()
+                used.append(ball)
+                let (ok, shakes) = BattleEngine.attemptCapture(wild: wild, ball: ball)
+                captured = ok
+                let ev = BattleEvent(
+                    kind: .ball, actorIsPlayer: true, moveId: 0,
+                    moveName: ball.displayName, damage: 0, effectiveness: 1,
+                    targetIsPlayer: false, targetHP: wild.currentHP,
+                    targetMaxHP: wild.maxHP, fainted: false, statusApplied: nil,
+                    turn: turn, shakes: shakes, caught: ok, ballId: ball.rawValue,
+                    playerAsleep: player.status == .sleep,
+                    wildAsleep: wild.status == .sleep)
+                roundEvents.append(ev)
+                allEvents.append(ev)
+                continue
+            }
+            act(atk, def, isPlayer: isPlayer, planned: planned)
+        }
+        if !captured { endOfRound() }
+        return roundEvents
+    }
+
+    /// The follower's trainer uses a potion: heal, and the turn is spent.
+    private func useHealingItem(_ item: GameItem) {
+        player.actedThisRound = true
+        let heal = min(item.healAmount, player.maxHP - player.currentHP)
+        if heal > 0 { player.currentHP += heal }
+        var ev = BattleEvent(
+            kind: .item, actorIsPlayer: true, moveId: 0,
+            moveName: item.displayName, damage: 0, effectiveness: 1,
+            targetIsPlayer: true, targetHP: player.currentHP, targetMaxHP: player.maxHP,
+            fainted: false, statusApplied: nil, turn: turn,
+            playerAsleep: player.status == .sleep, wildAsleep: wild.status == .sleep)
+        ev.ballId = item.rawValue
+        roundEvents.append(ev)
+        allEvents.append(ev)
+    }
+}
+
+enum BattleEngine {
+    /// Simulate the whole battle in one shot (selftests, forced encounters).
+    /// `player`/`wild` HP are mutated to the end state.
+    static func run(player: Battler, wild: Battler,
+                    balls: [GameItem] = []) -> BattleResult {
+        let session = BattleSession(player: player, wild: wild, balls: balls)
+        while !session.isOver { _ = session.nextRound() }
+        return session.makeResult()
     }
 
     /// Pre-pick a battler's action so priority can order the round. Forced
@@ -1358,7 +1409,7 @@ enum BattleEngine {
     }
 
     /// Try to inflict `m`'s ailment on `def`; returns its name when applied.
-    private static func applyAilment(of m: MoveData, from atk: Battler, to def: Battler) -> String? {
+    fileprivate static func applyAilment(of m: MoveData, from atk: Battler, to def: Battler) -> String? {
         guard let name = m.ailment, !def.isFainted,
               Int.random(in: 1...100) <= m.effectiveAilmentChance else { return nil }
         switch name {

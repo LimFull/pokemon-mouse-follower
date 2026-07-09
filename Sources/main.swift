@@ -1840,6 +1840,15 @@ if CommandLine.arguments.contains("--selftest-raising") {
             let pick = BattleEngine.chooseMove(attacker: sm, defender: d)
             print("smeargle first pick: \(GameData.moves[pick]?.displayName ?? "?") (expect Struggle)")
         }
+        // Mid-battle potion: the item event fires as the follower's action and
+        // the heal lands before the wild replies (priority +6).
+        if let p = Battler(wildDex: 7, level: 12), let w = Battler(wildDex: 16, level: 10) {
+            p.currentHP = 5
+            let s = BattleSession(player: p, wild: w)
+            let evs = s.nextRound(playerItem: .potion)
+            let itemEv = evs.first { $0.kind == .item }
+            print("mid-battle potion: event=\(itemEv != nil) healedTo=\(itemEv?.targetHP ?? -1) icon=\(GameItem.potion.icon != nil) (expect true, 25, true)")
+        }
         if let a = Battler(wildDex: 19, level: 20), let b = Battler(wildDex: 19, level: 20),
            let tackle = GameData.moves.values.first(where: { $0.displayName == "Tackle" }) {
             let base = (0..<300).map { _ in BattleEngine.computeDamage(attacker: a, defender: b, move: tackle, eff: 1) }.reduce(0, +)

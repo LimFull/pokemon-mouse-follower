@@ -401,7 +401,15 @@ final class RaisingState {
     func canUseItem(_ item: GameItem, at index: Int) -> Bool {
         guard save.party.indices.contains(index), itemCount(item) > 0 else { return false }
         let mon = save.party[index]
-        if item.healAmount > 0 { return !mon.isFainted && mon.currentHP < mon.maxHP }
+        if item.healAmount > 0 {
+            // Mid-battle the panel's saved HP is stale — gate potions on the
+            // LIVE gauge, one queued item at a time (an item costs the turn).
+            if index == save.activeIndex, let bc = BattleController.current,
+               let gauge = bc.playerGaugeFraction {
+                return !bc.itemPending && gauge < 1.0
+            }
+            return !mon.isFainted && mon.currentHP < mon.maxHP
+        }
         if item == .revive { return mon.isFainted }
         if item.isEvolutionItem { return evolution(for: item, of: mon) != nil }
         return false
@@ -411,7 +419,16 @@ final class RaisingState {
     /// for evolution items (nil otherwise); false-y (nil + no change) if unusable.
     @discardableResult
     func useItem(_ item: GameItem, at index: Int) -> Int? {
-        guard canUseItem(item, at: index), consumeItem(item) else { return nil }
+        guard canUseItem(item, at: index) else { return nil }
+        // Mid-battle potion: queue it as the follower's next ACTION (mainline:
+        // the item spends the turn). The controller consumes it from the bag
+        // when the round simulates; the icon floats overhead during playback.
+        if item.healAmount > 0, index == save.activeIndex,
+           BattleController.current?.requestItem(item) == true {
+            notifyChanged()   // panels show the queued state
+            return nil
+        }
+        guard consumeItem(item) else { return nil }
         let fromDex = save.party[index].dex
         var evolvedTo: Int? = nil
         if item.healAmount > 0 {

@@ -78,6 +78,8 @@ final class BattleController {
     private var playerAlpha = 1.0
     private var wildAlpha = 1.0
     private var result: BattleResult?
+    private var session: BattleSession?  // stepwise sim: one round per batch
+    private var pendingItem: GameItem?   // healing item queued for the next round
     private var endTicks = 0
     private var endTotal = 1             // endTicks' starting value (tag timing)
     private var recallTurn: Int?         // flee after this simulated turn ends
@@ -110,6 +112,23 @@ final class BattleController {
 
     /// Drop a pending flee (e.g. the player sent out someone else instead).
     func cancelRecallRequest() { recallTurn = nil }
+
+    /// Queue a healing item as the follower's NEXT action — mainline rules:
+    /// using an item costs the turn, so it replaces the move when the next
+    /// round is simulated. Returns false when there's no battle to act in
+    /// (the caller should apply the item directly).
+    func requestItem(_ item: GameItem) -> Bool {
+        guard phase == .battling, item.healAmount > 0, pendingItem == nil,
+              session?.isOver == false else { return false }
+        pendingItem = item
+        return true
+    }
+
+    /// A healing item is queued and not yet spent (panels disable buttons).
+    var itemPending: Bool { pendingItem != nil }
+
+    /// The follower's live gauge fraction while a battle plays (panel gating).
+    var playerGaugeFraction: Double? { phase == .battling ? curPHP : nil }
 
     /// Debug: spawn a wild encounter immediately; `at` pins its position
     /// (used by the selftest to force a contact battle deterministically).
@@ -225,12 +244,17 @@ final class BattleController {
             balls += Array(repeating: .greatBall, count: min(3 - balls.count, st.itemCount(.greatBall)))
         }
         // Gauges start at the REAL current/max ratio (a hurt mon enters hurt;
-        // a rematched wild keeps its damage) — captured before run() mutates
-        // both battlers to their end state.
+        // a rematched wild keeps its damage) — captured before the first
+        // round mutates the battlers.
         let startPHP = frac(p.currentHP, p.maxHP)
         let startWHP = frac(w.currentHP, w.maxHP)
-        result = BattleEngine.run(player: p, wild: w, balls: balls)
-        events = result?.events ?? []
+        // Stepwise simulation: one round at a time, so mid-battle decisions
+        // (potions, flee) can be woven in between rounds as they play out.
+        let s = BattleSession(player: p, wild: w, balls: balls)
+        session = s
+        result = nil
+        pendingItem = nil
+        events = s.nextRound()
         curPStatus = mon.status
         evIdx = 0; evTick = 0; curPHP = startPHP; curWHP = startWHP
         wildAlpha = 1.0; playerAlpha = 1.0
@@ -240,6 +264,28 @@ final class BattleController {
 
     private func tickBattling() {
         guard evIdx < events.count else {
+            // The played round is over. Weave in queued decisions, then pull
+            // the next round from the session — or wrap up when it's done.
+            if let s = session, !s.isOver {
+                if recallTurn != nil {   // mainline flee: leaves at the boundary
+                    recallTurn = nil
+                    cancelBattle()
+                    RaisingState.shared.recall()
+                    return
+                }
+                var item: GameItem? = nil
+                if let queued = pendingItem {
+                    pendingItem = nil
+                    if RaisingState.shared.itemCount(queued) > 0 {
+                        RaisingState.shared.consumeItem(queued)
+                        item = queued
+                    }
+                }
+                events = s.nextRound(playerItem: item)
+                evIdx = 0; evTick = 0
+                return
+            }
+            result = session?.makeResult()
             wildMon?.faceStanding(toward: playerPos)
             finishBattle()
             return
@@ -281,6 +327,7 @@ final class BattleController {
         tickFloatText(e)
         tickScreenFX(e)
         if e.kind == .ball { tickBall(e) }
+        if e.kind == .item { tickItemUse(e) }
         if !effects.isEmpty {
             effects[0].advance()
             if effects[0].isDone { effects.removeFirst() }
@@ -374,6 +421,11 @@ final class BattleController {
             case "fled": text = "Fled!"; color = NSColor(srgbRed: 0.75, green: 0.78, blue: 0.85, alpha: 1)
             default: break
             }
+        case .item:
+            // Name tag under the rising icon: "Potion" in heal green.
+            overActor = true
+            text = e.moveName
+            color = NSColor(srgbRed: 0.35, green: 0.85, blue: 0.45, alpha: 1)
         case .attack where e.damage == 0:
             // Mechanic tags: stat stages ("DEF -1"), "transformed!", walls,
             // "nothing happened" — anything that isn't a persisted ailment.
@@ -487,6 +539,18 @@ final class BattleController {
             break
         }
         return (p, w)
+    }
+
+    /// Item-use beat: the used item's icon rises over the follower's head so
+    /// there's no doubt WHAT the turn was spent on.
+    private func tickItemUse(_ e: BattleEvent) {
+        guard let icon = GameItem(rawValue: e.ballId)?.icon else { return }
+        let scale = AppSettings.shared.scale
+        let anchor = e.targetIsPlayer ? playerPos : (wildMon?.pos ?? playerPos)
+        let t = min(1.0, Double(evTick) / Double(max(1, drainEnd)))
+        ballFrame = icon
+        ballPos = CGPoint(x: anchor.x,
+                          y: anchor.y + (34 + CGFloat(t) * 18) * scale)
     }
 
     /// Ball-throw beat (D11): the ball arcs player -> wild, the wild is pulled
@@ -636,6 +700,12 @@ final class BattleController {
             impactAt = 6; hitAt = 8
             drainEnd = hitAt + 22
             curTicks = drainEnd + 12
+        case .item:
+            // The trainer's potion: the item icon floats over the follower's
+            // head (tickItemUse) while the gauge fills.
+            impactAt = 8; hitAt = 14
+            drainEnd = hitAt + 24
+            curTicks = drainEnd + 18
         }
     }
 
@@ -729,6 +799,8 @@ final class BattleController {
                 hp: Int((curPHP * Double(mon.maxHP)).rounded()), status: curPStatus)
         }
         recallTurn = nil
+        session = nil
+        pendingItem = nil
         events = []; result = nil; effects = []; ballFrame = nil
         playerPose = (.stand, 0)
         playerDodge = .zero; wildDodge = .zero
@@ -741,6 +813,8 @@ final class BattleController {
 
     private func despawn() {
         recallTurn = nil
+        session = nil
+        pendingItem = nil
         levelUpTo = nil
         floatText = nil; floatAlpha = 0
         wild = nil; wildMon = nil; events = []; result = nil; effects = []; ballFrame = nil
