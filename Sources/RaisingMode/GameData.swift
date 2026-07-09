@@ -108,6 +108,10 @@ struct MoveData: Codable {
     }
     var displayName: String { names["e"] ?? "Move \(moveId)" }
 
+    /// "87%" for a real accuracy roll, "—" for moves that never miss
+    /// (mirrors the battle engine's 1...100 check).
+    var accuracyText: String { (1...100).contains(accuracy) ? "\(accuracy)%" : "—" }
+
     /// Effective % chance to inflict `ailment` on a hit (status moves: always).
     var effectiveAilmentChance: Int {
         guard ailment != nil else { return 0 }

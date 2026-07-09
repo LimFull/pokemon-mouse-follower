@@ -58,6 +58,7 @@ final class PromptCenter: NSObject {
         if let m = GameData.moves[moveId] {
             subtitle += "  ·  \(m.type ?? "—")  PP \(m.pp)"
             if m.power > 0 { subtitle += "  \(L("move.power")) \(m.power)" }
+            subtitle += "  \(L("move.accuracy")) \(m.accuracyText)"
         }
         var buttons: [(String, () -> Void)] = mon.moves.enumerated().map { (slot, id) in
             ("→ \(GameData.moves[id]?.displayName ?? "Move \(id)")", {

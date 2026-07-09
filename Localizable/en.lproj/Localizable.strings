@@ -56,3 +56,4 @@
 "prompt.full.title" = "Party is full!";
 "prompt.full.keep" = "Let the new one go";
 "prompt.caught.title" = "Caught";
+"move.accuracy" = "Acc.";

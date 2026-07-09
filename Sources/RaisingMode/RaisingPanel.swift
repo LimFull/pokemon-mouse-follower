@@ -370,6 +370,7 @@ final class RaisingPanelView: NSView {
         var info = m.category ?? ""
         info += "   PP \(m.pp)"
         if m.power > 0 { info += "   \(L("move.power")) \(m.power)" }
+        info += "   \(L("move.accuracy")) \(m.accuracyText)"
         meta.addArrangedSubview(monoLabel(info, 11, .medium))
         box.addArrangedSubview(meta)
 
@@ -400,6 +401,7 @@ final class RaisingPanelView: NSView {
             var info = m.category ?? ""
             info += "   PP \(m.pp)"
             if m.power > 0 { info += "   \(L("move.power")) \(m.power)" }
+            info += "   \(L("move.accuracy")) \(m.accuracyText)"
             meta.addArrangedSubview(monoLabel(info, 11, .medium))
             stack.addArrangedSubview(meta)
             if let d = m.desc, !d.isEmpty {

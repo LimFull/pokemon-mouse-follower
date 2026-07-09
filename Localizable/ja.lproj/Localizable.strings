@@ -308,3 +308,4 @@
 "prompt.full.title" = "手持ちがいっぱい！";
 "prompt.full.keep" = "新しいポケモンを逃がす";
 "prompt.caught.title" = "捕獲";
+"move.accuracy" = "命中";
