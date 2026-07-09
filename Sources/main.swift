@@ -473,6 +473,7 @@ final class CharacterController {
     // Advance one frame. `mouseGlobal` is already in global screen coordinates.
     func update(mouseGlobal: CGPoint) {
         guard loaded else { currentFrame = nil; return }
+        faintRotation = 0   // healed/awake — clear the fallback faint tilt
 
         let gap = AppSettings.shared.followGap
         let maxSpeed = AppSettings.shared.maxSpeed
@@ -548,6 +549,7 @@ final class CharacterController {
     /// once from `poseTick` and hold their last frame; stand cycles idle.
     func face(_ point: CGPoint, pose: BattlePose = .stand, poseTick: Int = 0) {
         guard loaded else { return }
+        faintRotation = 0   // healed/awake — clear the fallback faint tilt
         let dx = point.x - pos.x, dy = point.y - pos.y
         if abs(dx) > 0.01 || abs(dy) > 0.01 {
             var deg = atan2(dy, dx) * 180 / .pi
