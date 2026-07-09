@@ -318,6 +318,19 @@ final class RaisingState {
         return result
     }
 
+    /// A battle broken off mid-way (mid-battle recall/flee): the follower
+    /// keeps the HP and major ailment its gauge was showing — mirroring the
+    /// wild, which already keeps its gauge HP. Fleeing can't faint (min 1 HP)
+    /// and grants nothing else (no EXP, outcome discarded).
+    func applyFleeState(hp: Int, status: String?) {
+        let i = save.activeIndex
+        guard save.party.indices.contains(i) else { return }
+        save.party[i].currentHP = max(1, min(save.party[i].maxHP, hp))
+        save.party[i].status = status
+        persist()
+        notifyChanged()
+    }
+
     /// Resolve a queued move: replace the move at `slot` (0–3) with `moveId`,
     /// or pass slot = nil to decline learning it (#5). `index` targets a
     /// specific party member (default: the active one).

@@ -1963,6 +1963,40 @@ if CommandLine.arguments.contains("--selftest-raising") {
         print("deferred recall: pending=\(pendingSeen) playedOn=\(playedOn) activeAfter=\(RaisingState.shared.save.activeIndex) (expect true, >0, -1)")
         AppSettings.shared.raisingMode = hadRaising
     }
+    // Flee keeps the damage: recall AFTER the gauge visibly dropped — the mon
+    // must come back with the gauge HP, not its pre-battle full HP (the old
+    // free-heal bug: cancelBattle restored only the wild's gauge state).
+    do {
+        let hadRaising = AppSettings.shared.raisingMode
+        AppSettings.shared.raisingMode = true
+        var checked = false
+        for _ in 0..<8 where !checked {
+            st.setActive(0)
+            st.healMon(at: 0)
+            let full = st.party[0].maxHP
+            let bc = BattleController()
+            bc.forceSpawn(at: CGPoint(x: 520, y: 500))
+            var recalledNow = false, gauge = 1.0, seen = false
+            for _ in 0..<20_000 {
+                let sc = bc.update(playerGlobalPos: CGPoint(x: 500, y: 500))
+                if bc.isBattling, let sc {
+                    seen = true
+                    gauge = sc.playerHP
+                    if !recalledNow, sc.playerHP < 0.999 {
+                        RaisingState.shared.recall()
+                        recalledNow = true
+                    }
+                }
+                if seen, !bc.isBattling { break }
+            }
+            if recalledNow, st.save.activeIndex == -1, gauge < 0.999 {
+                checked = true
+                print("flee damage: gauge=\(String(format: "%.2f", gauge)) kept=\(st.party[0].currentHP)/\(full) (expect kept<\(full))")
+            }
+        }
+        if !checked { print("flee damage: no damaged-flee scenario arose in 8 battles") }
+        AppSettings.shared.raisingMode = hadRaising
+    }
     if let s7 = GameData.species[7] { _ = st.addToParty(st.makeMon(species: s7, level: 5)) }
     print("party=\(st.party.count) dailyHealNeededSameDay=\(st.dailyHealIfNeeded())")
     let savePath = (FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!)

@@ -82,6 +82,7 @@ final class BattleController {
     private var endTotal = 1             // endTicks' starting value (tag timing)
     private var recallTurn: Int?         // flee after this simulated turn ends
     private var levelUpTo: Int?          // show a level-up tag while ending
+    private var curPStatus: String?      // ailment the playback has shown on the follower
 
     init() {
         spawnCooldown = nextSpawnDelay()
@@ -230,6 +231,7 @@ final class BattleController {
         let startWHP = frac(w.currentHP, w.maxHP)
         result = BattleEngine.run(player: p, wild: w, balls: balls)
         events = result?.events ?? []
+        curPStatus = mon.status
         evIdx = 0; evTick = 0; curPHP = startPHP; curWHP = startWHP
         wildAlpha = 1.0; playerAlpha = 1.0
         flashP = false; flashW = false
@@ -475,6 +477,13 @@ final class BattleController {
         if e.targetIsPlayer { pFrom = curPHP; pTo = to }
         else { wFrom = curWHP; wTo = to }
 
+        // Track the major ailment the playback has shown on the follower so
+        // far — a flee (cancelBattle) takes it home along with the gauge HP.
+        // Volatiles (confusion/infatuation) don't persist, so they're skipped;
+        // "snapped out" is confusion recovering, not an ailment cure.
+        if e.targetIsPlayer, let s = e.statusApplied, Ailment(rawValue: s) != nil { curPStatus = s }
+        if e.kind == .recover, e.targetIsPlayer, e.moveName != "snapped out" { curPStatus = nil }
+
         effects = []
         ballFrame = nil
         switch e.kind {
@@ -630,10 +639,15 @@ final class BattleController {
     }
 
     /// Break off the current battle without applying its pre-simulated
-    /// outcome: the wild keeps the HP the gauge was showing and resumes
-    /// wandering; nothing is granted or consumed.
+    /// outcome: BOTH sides keep what their gauges were showing — the wild its
+    /// HP (resumes wandering), the follower its HP and shown ailment. No EXP,
+    /// nothing consumed; fleeing is never a free heal and never faints.
     private func cancelBattle() {
         if let w = wild { w.currentHP = max(1, Int(curWHP * Double(w.maxHP))) }
+        if let mon = RaisingState.shared.active {
+            RaisingState.shared.applyFleeState(
+                hp: Int((curPHP * Double(mon.maxHP)).rounded()), status: curPStatus)
+        }
         recallTurn = nil
         events = []; result = nil; effects = []; ballFrame = nil
         playerPose = (.stand, 0)
