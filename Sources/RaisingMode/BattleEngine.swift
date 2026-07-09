@@ -160,9 +160,10 @@ enum BattleEngine {
             for (atk, def, isPlayer) in order {
                 guard !atk.isFainted, !def.isFainted, !captured else { continue }
                 // Throw a ball instead of attacking when the wild is catchable:
-                // hurt below 40% or carrying a status (max 3 throws per battle).
+                // hurt to half or carrying a status (max 3 throws per battle —
+                // threshold sized so mainline-power hits don't skip the window).
                 if isPlayer, !stock.isEmpty, used.count < 3,
-                   wild.currentHP * 100 <= wild.maxHP * 40 || wild.status != nil {
+                   wild.currentHP * 100 <= wild.maxHP * 50 || wild.status != nil {
                     let ball = stock.removeFirst()
                     used.append(ball)
                     let (ok, shakes) = attemptCapture(wild: wild, ball: ball)
@@ -348,14 +349,14 @@ enum BattleEngine {
         return usable.randomElement() ?? attacker.moves.first ?? 154
     }
 
-    /// Simplified mainline damage: level/stat/power scaling × STAB × type × random.
-    /// Burn halves physical attack (D19).
+    /// Simplified mainline damage: level/stat/power scaling × STAB × type × random,
+    /// with mainline base powers (effectivePower). Burn halves physical attack (D19).
     static func computeDamage(attacker: Battler, defender: Battler, move m: MoveData, eff: Double) -> Int {
         let physical = m.category == "Physical"
         var a = Double(physical ? attacker.stats.atk : attacker.stats.spAtk)
         if physical && attacker.status == .burn { a /= 2 }
         let d = Double(max(1, physical ? defender.stats.def : defender.stats.spDef))
-        let base = ((2.0 * Double(attacker.level) / 5.0 + 2.0) * Double(m.power) * a / d) / 50.0 + 2.0
+        let base = ((2.0 * Double(attacker.level) / 5.0 + 2.0) * Double(m.effectivePower) * a / d) / 50.0 + 2.0
         let stab = (m.type == attacker.type1 || m.type == attacker.type2) ? 1.5 : 1.0
         let rand = Double.random(in: 0.85...1.0)
         return max(1, Int(base * stab * eff * rand))

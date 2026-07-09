@@ -31,6 +31,8 @@ struct BattleScene {
     var floatPos: CGPoint = .zero
     var floatAlpha: Double = 0
     var floatColor: CGColor = CGColor(gray: 1, alpha: 1)
+    var screenFlash: Double = 0           // full-screen effect veil 0...1 (Psychic & co)
+    var screenColor: CGColor = CGColor(gray: 1, alpha: 1)
 }
 
 final class BattleController {
@@ -63,6 +65,8 @@ final class BattleController {
     private var floatPos = CGPoint.zero
     private var floatAlpha = 0.0
     private var floatColor = CGColor(gray: 1, alpha: 1)
+    private var screenFlash = 0.0
+    private var screenColor = CGColor(gray: 1, alpha: 1)
     private var lastTracedWildPose = BattlePose.stand   // PMF_TRACE_BATTLE only
     private var curPHP = 1.0, curWHP = 1.0
     private var pFrom = 1.0, pTo = 1.0, wFrom = 1.0, wTo = 1.0
@@ -193,6 +197,7 @@ final class BattleController {
         tickDodge(e)
         tickLunge(e)
         tickFloatText(e)
+        tickScreenFX(e)
         if e.kind == .ball { tickBall(e) }
         if !effects.isEmpty {
             effects[0].advance()
@@ -251,12 +256,29 @@ final class BattleController {
         floatColor = color.cgColor
     }
 
+    /// Full-screen move (Psychic & co): a brief type-colored veil over the
+    /// whole screen plus a quake on both combatants around the impact.
+    private func tickScreenFX(_ e: BattleEvent) {
+        screenFlash = 0
+        guard e.kind == .attack || e.kind == .miss, EffectPlayer.isScreen(e.moveId),
+              evTick >= impactAt, evTick < impactAt + 20 else { return }
+        let t = Double(evTick - impactAt) / 20.0
+        screenFlash = sin(t * .pi)
+        screenColor = TypeStyle.color(GameData.moves[e.moveId]?.type).cgColor
+        let scale = AppSettings.shared.scale
+        let jitter = CGFloat(sin(Double(evTick) * 1.9)) * 3 * scale * CGFloat(1 - t)
+        playerDodge.x += jitter
+        wildDodge.x -= jitter
+    }
+
     /// Contact-move lunge: the attacker physically darts at the defender,
     /// peaking exactly at the impact tick, then springs back. Makes a Tackle
     /// read as a body blow on BOTH sides regardless of how animated the
-    /// species' Attack sheet is. Projectile moves stay put (they shoot).
+    /// species' Attack sheet is. Projectile moves stay put (they shoot);
+    /// full-screen moves neither lunge nor shoot.
     private func tickLunge(_ e: BattleEvent) {
         guard e.kind == .attack || e.kind == .miss, e.moveId > 0,
+              !EffectPlayer.isScreen(e.moveId),
               EffectPlayer.projectile(forMove: e.moveId) == nil else { return }
         let scale = AppSettings.shared.scale
         let attackerPos = e.actorIsPlayer ? playerPos : (wildMon?.pos ?? playerPos)
@@ -387,6 +409,7 @@ final class BattleController {
                 total += hitTicks
             }
             hitAt = max(impactAt, min(total, 72))
+            if EffectPlayer.isScreen(e.moveId) { hitAt = impactAt + 20 }   // flash duration
             let resolve = e.damage > 0 ? 26 : (e.kind == .miss ? 24 : 10)
             drainEnd = hitAt + resolve
             curTicks = drainEnd + (fast ? 8 : 16)   // beat gap before the reply
@@ -475,7 +498,8 @@ final class BattleController {
             wildLevel: wild?.level,
             playerDodge: playerDodge,
             floatText: floatText, floatPos: floatPos,
-            floatAlpha: floatAlpha, floatColor: floatColor)
+            floatAlpha: floatAlpha, floatColor: floatColor,
+            screenFlash: screenFlash, screenColor: screenColor)
     }
 
     // MARK: helpers

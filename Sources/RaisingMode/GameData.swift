@@ -101,12 +101,21 @@ struct MoveData: Codable {
     let desc: String?
     let ailment: String?        // mainline status it can inflict (D19-1), if any
     let ailmentChance: Int?     // %; 0 on a Status-category move = always
+    let powerMain: Int?         // mainline base power (nil: status/variable/EoS-only)
     enum CodingKeys: String, CodingKey {
         case moveId = "move_id", names, type, category, power, pp, accuracy, desc
         case ailment
         case ailmentChance = "ailment_chance"
+        case powerMain = "power_main"
     }
     var displayName: String { names["e"] ?? "Move \(moveId)" }
+
+    /// Base power on the mainline scale: real mainline power when known,
+    /// otherwise EoS power x5 (the median EoS->mainline ratio), capped.
+    var effectivePower: Int {
+        if let powerMain { return powerMain }
+        return power > 0 ? min(power * 5, 130) : 0
+    }
 
     /// "87%" for a real accuracy roll, "—" for moves that never miss
     /// (mirrors the battle engine's 1...100 check).

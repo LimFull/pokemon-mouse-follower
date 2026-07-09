@@ -91,14 +91,16 @@ def fetch_moves():
         d = get(url)
         meta = d.get("meta") or {}
         ail = (meta.get("ailment") or {}).get("name", "none")
-        return key, ail, meta.get("ailment_chance", 0)
+        return key, ail, meta.get("ailment_chance", 0), d.get("power")
 
     done = 0
     with ThreadPoolExecutor(max_workers=8) as ex:
-        for key, ail, chance in ex.map(one, targets):
+        for key, ail, chance, power in ex.map(one, targets):
             if ail and ail != "none":
                 moves[key]["ailment"] = ail
                 moves[key]["ailment_chance"] = chance
+            if power:                      # mainline base power (null = status/variable)
+                moves[key]["power_main"] = power
             done += 1
             if done % 100 == 0:
                 print(f"  moves ...{done}/{len(targets)}")

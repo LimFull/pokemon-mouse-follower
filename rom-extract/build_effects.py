@@ -106,8 +106,8 @@ def main():
             anim = pick_anim(os.path.join(OUT, "effects", f"effect_{eff:04d}"), g.get("unk2"))
             if anim is None:
                 return None
-        else:  # SCREEN / WBA — no sprite to bundle
-            return None
+        else:  # SCREEN / WBA — a full-screen effect; the app renders a
+            return {"screen": True}   # type-colored flash + quake instead
         rec = {"file": eff, "anim": anim, "loop": bool(g.get("loop")) if g else False}
         if particle:
             rec["particle"] = True
@@ -131,21 +131,22 @@ def main():
         hit_slot = cands[0] if cands else None
         rec = resolve(general[hit_slot] if hit_slot is not None else None)
         if rec is None:
-            skipped["screen" if hit_slot is not None else "none"] += 1
+            skipped["none"] += 1
             continue
         g = general[hit_slot] if hit_slot is not None else None
         rec["point"] = (g.get("point") if g and g.get("point") not in (None, "NONE") else None) \
             or entry.get("point") or "CENTER"
         # Projectile: the anim4 slot, when present and not already used as the hit.
         a4 = entry["anim4"]
-        if 0 < a4 < len(general) and a4 != hit_slot:
+        if not rec.get("screen") and 0 < a4 < len(general) and a4 != hit_slot:
             proj = resolve(general[a4])
-            if proj is not None:
+            if proj is not None and not proj.get("screen"):
                 rec["proj"] = proj
                 used_files.add(proj["file"])
                 n_proj += 1
         mapping[key] = rec
-        used_files.add(rec["file"])
+        if "file" in rec:
+            used_files.add(rec["file"])
 
     # Copy just the needed effect folders (frames + animations.json).
     eff_dest = os.path.join(DEST, "effects")

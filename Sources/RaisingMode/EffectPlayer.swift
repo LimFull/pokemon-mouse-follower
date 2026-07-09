@@ -23,12 +23,13 @@ struct MoveEffectRef: Codable {
         let particle: Bool?
         let tint: Bool?
     }
-    let file: Int
-    let anim: Int
-    let loop: Bool
-    let point: String       // HEAD / CENTER / ... — anchor on the target
+    let file: Int?          // nil for screen-type entries
+    let anim: Int?
+    let loop: Bool?
+    let point: String?      // HEAD / CENTER / ... — anchor on the target
     let particle: Bool?     // single-particle art: compose a burst of copies
     let tint: Bool?         // approximate palette: re-hue with the type color
+    let screen: Bool?       // full-screen effect: type-colored flash + quake
     let proj: Proj?         // travel effect flown attacker -> target first
 }
 
@@ -80,15 +81,21 @@ enum EffectPlayer {
     private static var clipCache: [Int: EffectClip?] = [:]   // hit clip per move id
     private static var projCache: [Int: EffectClip?] = [:]   // projectile per move id
 
+    /// Whether `moveId` is a full-screen effect (Psychic & co) — the overlay
+    /// renders a type-colored screen flash + quake instead of a sprite.
+    static func isScreen(_ moveId: Int) -> Bool {
+        MoveEffects.map[moveId]?.screen == true
+    }
+
     /// The on-target hit clip for `moveId` (fully corrected: cropped/centered,
     /// tinted, particle-composed), or nil when the move has no sprite effect.
     static func clip(forMove moveId: Int) -> EffectClip? {
         if let cached = clipCache[moveId] { return cached }
-        let ref = MoveEffects.map[moveId]
-        let built = ref.flatMap {
-            build(moveId: moveId, file: $0.file, anim: $0.anim, loop: $0.loop,
-                  particle: $0.particle == true, tint: $0.tint == true,
-                  headAnchored: $0.point == "HEAD")
+        var built: EffectClip?
+        if let ref = MoveEffects.map[moveId], let file = ref.file, let anim = ref.anim {
+            built = build(moveId: moveId, file: file, anim: anim, loop: ref.loop ?? false,
+                          particle: ref.particle == true, tint: ref.tint == true,
+                          headAnchored: ref.point == "HEAD")
         }
         clipCache[moveId] = built
         return built

@@ -397,7 +397,7 @@ final class RaisingPanelView: NSView {
         meta.spacing = 8
         box.addArrangedSubview(meta)
         var stats = ""
-        if m.power > 0 { stats += "\(L("move.power")) \(m.power)   " }
+        if m.effectivePower > 0 { stats += "\(L("move.power")) \(m.effectivePower)   " }
         stats += "\(L("move.accuracy")) \(m.accuracyText)"
         box.addArrangedSubview(monoLabel(stats, 11, .medium))
 
@@ -428,7 +428,7 @@ final class RaisingPanelView: NSView {
             meta.spacing = 8
             stack.addArrangedSubview(meta)
             var stats = ""
-            if m.power > 0 { stats += "\(L("move.power")) \(m.power)   " }
+            if m.effectivePower > 0 { stats += "\(L("move.power")) \(m.effectivePower)   " }
             stats += "\(L("move.accuracy")) \(m.accuracyText)"
             stack.addArrangedSubview(monoLabel(stats, 11, .medium))
             if let d = m.desc, !d.isEmpty {

@@ -621,6 +621,7 @@ final class SpriteView: NSView {
     private let wHPTrack = CALayer(); private let wHPFill = CALayer()
     private let levelLabel = CATextLayer()   // "Lv.n" above the wild's head
     private let floatLabel = CATextLayer()   // floating combat tag (Miss / effectiveness)
+    private let screenFlashLayer = CALayer() // full-screen veil (Psychic-class moves)
     // Evolution burst: radial white glow over the follower (design D8/#9).
     private let glowLayer = CAGradientLayer()
     var screenOrigin: CGPoint = .zero
@@ -666,6 +667,9 @@ final class SpriteView: NSView {
         levelLabel.isHidden = true
         layer?.addSublayer(levelLabel)
 
+        screenFlashLayer.isHidden = true
+        layer?.addSublayer(screenFlashLayer)
+
         floatLabel.alignmentMode = .center
         floatLabel.shadowColor = NSColor.black.cgColor
         floatLabel.shadowOpacity = 0.9
@@ -700,6 +704,7 @@ final class SpriteView: NSView {
             effectLayer.isHidden = true
             levelLabel.isHidden = true
             floatLabel.isHidden = true
+            screenFlashLayer.isHidden = true
             [pHPTrack, pHPFill, wHPTrack, wHPFill].forEach { $0.isHidden = true }
             spriteLayer.opacity = 1
             return
@@ -751,6 +756,16 @@ final class SpriteView: NSView {
             levelLabel.opacity = Float(scene.wildAlpha)
         } else {
             levelLabel.isHidden = true
+        }
+
+        // Full-screen veil for Psychic-class moves (type-colored, brief).
+        if scene.screenFlash > 0 {
+            screenFlashLayer.isHidden = false
+            screenFlashLayer.frame = bounds
+            screenFlashLayer.backgroundColor = scene.screenColor
+            screenFlashLayer.opacity = Float(scene.screenFlash * 0.22)
+        } else {
+            screenFlashLayer.isHidden = true
         }
 
         // Floating combat tag over the defender: Miss / Super Effective! / ...

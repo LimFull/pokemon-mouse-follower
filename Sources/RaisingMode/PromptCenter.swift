@@ -57,7 +57,7 @@ final class PromptCenter: NSObject {
         var subtitle = Characters.displayName(String(format: "%03d", mon.dex))
         if let m = GameData.moves[moveId] {
             subtitle += "  ·  \(m.type ?? "—")"
-            if m.power > 0 { subtitle += "  \(L("move.power")) \(m.power)" }
+            if m.effectivePower > 0 { subtitle += "  \(L("move.power")) \(m.effectivePower)" }
             subtitle += "  \(L("move.accuracy")) \(m.accuracyText)"
         }
         var buttons: [(String, () -> Void)] = mon.moves.enumerated().map { (slot, id) in
