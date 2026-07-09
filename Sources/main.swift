@@ -1438,9 +1438,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let heal = NSMenuItem(title: "파티 전체 회복", action: #selector(debugHealAll), keyEquivalent: "")
         heal.target = self
         dm.addItem(heal)
-        let exp = NSMenuItem(title: "활성 포켓몬 +300 EXP", action: #selector(debugGiveExp), keyEquivalent: "")
-        exp.target = self
-        dm.addItem(exp)
+        let lvl = NSMenuItem(title: "활성 포켓몬 +1 레벨", action: #selector(debugLevelUp), keyEquivalent: "")
+        lvl.target = self
+        dm.addItem(lvl)
+        let evo = NSMenuItem(title: "활성 포켓몬 진화 레벨까지", action: #selector(debugLevelToEvolution), keyEquivalent: "")
+        evo.target = self
+        dm.addItem(evo)
         let wander = NSMenuItem(title: "야생 스폰 (배회)", action: #selector(debugSpawn), keyEquivalent: "")
         wander.target = self
         dm.addItem(wander)
@@ -1567,14 +1570,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         RaisingState.shared.setStatusDebug(key.isEmpty ? nil : key)
     }
 
-    @objc private func debugGiveExp() {
+    /// Grant EXP through the real growth path (level-ups, move prompts,
+    /// evolution + burst) — exactly what a battle win would do.
+    private func debugGainExp(_ amount: Int) {
         let st = RaisingState.shared
-        guard st.hasActiveGame else { return }
-        let result = st.gainExp(300)
+        guard st.hasActiveGame, amount > 0 else { return }
         let idx = st.save.activeIndex
+        let result = st.gainExp(amount)
         for moveId in result.pendingMoves {
             PromptCenter.shared.enqueue(.learnMove(monIndex: idx, moveId: moveId))
         }
+    }
+
+    @objc private func debugLevelUp() {
+        guard let mon = RaisingState.shared.active else { return }
+        debugGainExp(mon.expToNext.remaining)
+    }
+
+    @objc private func debugLevelToEvolution() {
+        let st = RaisingState.shared
+        guard let mon = st.active, let s = mon.species, mon.level < 100 else { return }
+        // Jump to the nearest LEVEL-evolution threshold above the current
+        // level; species without one just gain a single level.
+        let target = s.evolutions
+            .filter { $0.method == "LEVEL" && $0.param1 > mon.level }
+            .map(\.param1)
+            .min()
+        guard let target, s.expCurve.indices.contains(target - 1) else {
+            debugLevelUp()
+            return
+        }
+        debugGainExp(s.expCurve[target - 1] - mon.exp)
     }
 
     @objc private func quit() {
