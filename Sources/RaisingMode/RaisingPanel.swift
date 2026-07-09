@@ -626,7 +626,7 @@ final class RaisingPanelView: NSView {
         stats += "\(L("move.accuracy")) \(m.accuracyText)"
         box.addArrangedSubview(monoLabel(stats, 11, .medium))
 
-        if let d = m.desc, !d.isEmpty {
+        if let d = m.localizedDesc, !d.isEmpty {
             let desc = NSTextField(wrappingLabelWithString: d)
             desc.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
             desc.textColor = Palette.label
@@ -656,7 +656,7 @@ final class RaisingPanelView: NSView {
             if m.effectivePower > 0 { stats += "\(L("move.power")) \(m.effectivePower)   " }
             stats += "\(L("move.accuracy")) \(m.accuracyText)"
             stack.addArrangedSubview(monoLabel(stats, 11, .medium))
-            if let d = m.desc, !d.isEmpty {
+            if let d = m.localizedDesc, !d.isEmpty {
                 let desc = NSTextField(wrappingLabelWithString: d)
                 desc.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
                 desc.textColor = Palette.label

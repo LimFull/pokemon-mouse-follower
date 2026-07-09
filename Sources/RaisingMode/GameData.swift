@@ -108,7 +108,21 @@ struct MoveData: Codable {
         case ailmentChance = "ailment_chance"
         case powerMain = "power_main"
     }
-    var displayName: String { names["e"] ?? "Move \(moveId)" }
+    /// Localized move name: `move.name.<id>` from *.strings, else the English JSON name.
+    var displayName: String {
+        let fallback = names["e"] ?? "Move \(moveId)"
+        let key = "move.name.\(moveId)"
+        let loc = L(key)
+        return loc == key ? fallback : loc
+    }
+
+    /// Localized move description: `move.desc.<id>` from *.strings, else the English JSON desc.
+    var localizedDesc: String? {
+        guard let fallback = desc, !fallback.isEmpty else { return desc }
+        let key = "move.desc.\(moveId)"
+        let loc = L(key)
+        return loc == key ? fallback : loc
+    }
 
     /// Base power on the mainline scale: real mainline power when known,
     /// otherwise EoS power x5 (the median EoS->mainline ratio), capped.
