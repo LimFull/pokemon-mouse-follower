@@ -13,6 +13,17 @@ final class RaisingPanelView: NSView {
     private var bagExpanded = false        // bag card disclosure state
     private var starterPopup: NSPopUpButton?
 
+    /// Called whenever a refresh may have changed the content height, so the
+    /// settings window can resize to fit.
+    var onContentChanged: (() -> Void)?
+
+    /// Height the current content actually needs (top offset + stack + margin).
+    var contentHeight: CGFloat {
+        guard let root = subviews.first as? NSStackView else { return 0 }
+        root.layoutSubtreeIfNeeded()
+        return root.fittingSize.height + 22 + 24
+    }
+
     private static let contentWidth: CGFloat = 300
 
     override init(frame: NSRect) {
@@ -66,6 +77,7 @@ final class RaisingPanelView: NSView {
         } else {
             buildList(root)
         }
+        onContentChanged?()
     }
 
     // MARK: empty state (starter picker)

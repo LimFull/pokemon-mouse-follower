@@ -1022,6 +1022,10 @@ final class SettingsWindowController: NSObject {
     private let raisingPanelWidth: CGFloat = 340
     private var grid: NSGridView!
     private var topStack: NSStackView!      // character preview area (normal mode only)
+    private var outer: NSStackView!
+    private var leftHeightC: NSLayoutConstraint!
+    private var dividerHeightC: NSLayoutConstraint!
+    private var panelHeightC: NSLayoutConstraint!
 
     init(controller: CharacterController) {
         self.controller = controller
@@ -1081,7 +1085,7 @@ final class SettingsWindowController: NSObject {
         topStack.alignment = .centerX
         topStack.spacing = 12
 
-        let outer = NSStackView(views: [topStack, grid])
+        outer = NSStackView(views: [topStack, grid])
         outer.orientation = .vertical
         outer.alignment = .centerX
         outer.spacing = 22
@@ -1108,34 +1112,38 @@ final class SettingsWindowController: NSObject {
 
         // NOTE: pin only tops + fixed heights (never subview.bottom == content.bottom),
         // otherwise NSWindow shrink-wraps its height to the Auto Layout fitting size
-        // and the window collapses to the title bar.
-        let contentH: CGFloat = 596   // fits the 9-row grid + preview (no encounter row)
+        // and the window collapses to the title bar. The height constants are
+        // retuned to the actual content by applyWindowSize().
+        leftHeightC = leftColumn.heightAnchor.constraint(equalToConstant: 596)
+        dividerHeightC = divider.heightAnchor.constraint(equalToConstant: 572)
+        panelHeightC = panel.heightAnchor.constraint(equalToConstant: 596)
         NSLayoutConstraint.activate([
             leftColumn.leadingAnchor.constraint(equalTo: content.leadingAnchor),
             leftColumn.topAnchor.constraint(equalTo: content.topAnchor),
             leftColumn.widthAnchor.constraint(equalToConstant: 400),
-            leftColumn.heightAnchor.constraint(equalToConstant: contentH),
+            leftHeightC,
             outer.centerXAnchor.constraint(equalTo: leftColumn.centerXAnchor),
             outer.topAnchor.constraint(equalTo: leftColumn.topAnchor, constant: 26),
 
             divider.leadingAnchor.constraint(equalTo: leftColumn.trailingAnchor),
             divider.topAnchor.constraint(equalTo: content.topAnchor, constant: 12),
-            divider.heightAnchor.constraint(equalToConstant: contentH - 24),
+            dividerHeightC,
             divider.widthAnchor.constraint(equalToConstant: 1),
 
             panel.leadingAnchor.constraint(equalTo: divider.trailingAnchor),
             panel.topAnchor.constraint(equalTo: content.topAnchor),
             panel.widthAnchor.constraint(equalToConstant: raisingPanelWidth),
-            panel.heightAnchor.constraint(equalToConstant: contentH),
+            panelHeightC,
         ])
 
         preview.setCharacter(AppSettings.shared.selectedCharacter)
         updateModeVisibility()
+        panel.onContentChanged = { [weak self] in self?.applyWindowSize(animate: false) }
 
         if AppSettings.shared.raisingMode {
-            applyRaisingWidth(expanded: true, animate: false)
             panel.refresh()
         }
+        applyWindowSize(animate: false)
     }
 
     /// In raising mode the follower IS the active raising mon, so the whole
@@ -1146,12 +1154,28 @@ final class SettingsWindowController: NSObject {
         grid.row(at: 0).isHidden = raising   // character dropdown row
     }
 
-    private func applyRaisingWidth(expanded: Bool, animate: Bool) {
-        let width: CGFloat = 400 + (expanded ? raisingPanelWidth + 1 : 0)   // +1 divider
+    /// Size the window to its actual content: the taller of the left column
+    /// and (in raising mode) the panel — no dead space below either.
+    private func applyWindowSize(animate: Bool) {
+        let raising = AppSettings.shared.raisingMode
+        outer.layoutSubtreeIfNeeded()
+        let leftH = outer.fittingSize.height + 26 + 20
+        var h = leftH
+        if raising, let panel = raisingPanel {
+            h = max(leftH, min(760, panel.contentHeight))
+        }
+        leftHeightC.constant = h
+        dividerHeightC.constant = h - 24
+        panelHeightC.constant = h
+        let width: CGFloat = 400 + (raising ? raisingPanelWidth + 1 : 0)
         var f = window.frame
+        let newH = h + (window.frame.height - (window.contentView?.frame.height ?? h))
+        f.origin.y += f.size.height - newH     // keep the top edge where it was
+        f.size.height = newH
         f.size.width = width
         window.setFrame(f, display: true, animate: animate)
     }
+
 
     private func makeStepButton(_ title: String, _ action: Selector) -> NSButton {
         let b = NSButton(title: "", target: self, action: action)
@@ -1233,9 +1257,9 @@ final class SettingsWindowController: NSObject {
     @objc private func raisingToggled(_ sender: NSButton) {
         let on = sender.state == .on
         AppSettings.shared.raisingMode = on
-        applyRaisingWidth(expanded: on, animate: true)
         updateModeVisibility()
         raisingPanel?.refresh()
+        applyWindowSize(animate: true)
         NotificationCenter.default.post(name: .raisingChanged, object: nil)   // switch follower
     }
 
