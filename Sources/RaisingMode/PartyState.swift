@@ -387,6 +387,16 @@ final class RaisingState {
         return evolvedTo
     }
 
+    /// Debug: force a major status on the active mon (nil clears). It carries
+    /// into the next battle, so skip/residual visuals are testable on demand.
+    func setStatusDebug(_ status: String?) {
+        let i = save.activeIndex
+        guard save.party.indices.contains(i), !save.party[i].isFainted else { return }
+        save.party[i].status = status
+        persist()
+        notifyChanged()
+    }
+
     // MARK: passive regen (out of battle)
 
     /// Slow out-of-battle recovery: +1 HP to every hurt, conscious member.

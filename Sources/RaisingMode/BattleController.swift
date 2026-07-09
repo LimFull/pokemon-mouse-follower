@@ -315,7 +315,7 @@ final class BattleController {
     private func tickLunge(_ e: BattleEvent) {
         guard e.kind == .attack || e.kind == .miss, e.moveId > 0,
               !EffectPlayer.isScreen(e.moveId),
-              EffectPlayer.projectile(forMove: e.moveId) == nil else { return }
+              !EffectPlayer.hasProjectile(e.moveId) else { return }
         let scale = AppSettings.shared.scale
         let attackerPos = e.actorIsPlayer ? playerPos : (wildMon?.pos ?? playerPos)
         let defenderPos = e.actorIsPlayer ? (wildMon?.pos ?? playerPos) : playerPos
@@ -339,11 +339,13 @@ final class BattleController {
     /// taking damage plays Hurt as the hit lands (a missed target dodges
     /// instead — tickDodge).
     private func poses(for e: BattleEvent) -> (player: (BattlePose, Int), wild: (BattlePose, Int)) {
-        var p: (BattlePose, Int) = (.stand, 0)
-        var w: (BattlePose, Int) = (.stand, 0)
+        // A sleeping side stays in its sleep pose through EVERYONE's beats —
+        // it only breaks pose to flinch when actually hit (overrides below).
+        var p: (BattlePose, Int) = e.playerAsleep ? (.sleep, evTick) : (.stand, 0)
+        var w: (BattlePose, Int) = e.wildAsleep ? (.sleep, evTick) : (.stand, 0)
         switch e.kind {
         case .attack, .miss:
-            let hasProj = EffectPlayer.projectile(forMove: e.moveId) != nil
+            let hasProj = EffectPlayer.hasProjectile(e.moveId)
             // Attack anim runs through the impact (holding its last frame just
             // past it), so a lunge isn't cut off mid-swing.
             if evTick < min(36, impactAt + 12) {
@@ -434,7 +436,15 @@ final class BattleController {
             let attacker = e.actorIsPlayer ? playerPos : wildPos
             let travel = 18, windup = 20
             var total = 0
-            let proj = e.moveId > 0 ? EffectPlayer.projectile(forMove: e.moveId) : nil
+            // Travel direction picks the projectile's facing (8-dir ROM sets).
+            var octant = 6
+            let ddx = target.x - attacker.x, ddy = target.y - attacker.y
+            if abs(ddx) > 0.01 || abs(ddy) > 0.01 {
+                var deg = atan2(ddy, ddx) * 180 / .pi
+                if deg < 0 { deg += 360 }
+                octant = Int((deg / 45).rounded()) % 8
+            }
+            let proj = e.moveId > 0 ? EffectPlayer.projectile(forMove: e.moveId, octant: octant) : nil
             if let proj {
                 effects.append(RunningEffect(clip: proj, from: attacker, to: target, maxTicks: travel))
                 total = travel

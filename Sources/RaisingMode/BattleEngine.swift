@@ -125,6 +125,10 @@ struct BattleEvent {
     var shakes: Int = 0         // .ball: how many of the 4 shake checks passed
     var caught: Bool = false    // .ball: capture succeeded
     var ballId: Int = 0         // .ball: GameItem raw value (for the icon)
+    // Sleep snapshots at this moment — the playback keeps a sleeping side in
+    // its sleep pose across everyone's beats (it only flinches when hit).
+    var playerAsleep: Bool = false
+    var wildAsleep: Bool = false
 }
 
 struct BattleResult {
@@ -173,7 +177,9 @@ enum BattleEngine {
                         moveName: ball.displayName, damage: 0, effectiveness: 1,
                         targetIsPlayer: false, targetHP: wild.currentHP,
                         targetMaxHP: wild.maxHP, fainted: false, statusApplied: nil,
-                        shakes: shakes, caught: ok, ballId: ball.rawValue))
+                        shakes: shakes, caught: ok, ballId: ball.rawValue,
+                        playerAsleep: player.status == .sleep,
+                        wildAsleep: wild.status == .sleep))
                     continue
                 }
                 act(attacker: atk, defender: def, actorIsPlayer: isPlayer, events: &events)
@@ -188,7 +194,9 @@ enum BattleEngine {
                     kind: .residual, actorIsPlayer: isPlayer, moveId: 0, moveName: s.rawValue,
                     damage: dmg, effectiveness: 1, targetIsPlayer: isPlayer,
                     targetHP: b.currentHP, targetMaxHP: b.maxHP, fainted: b.isFainted,
-                    statusApplied: nil))
+                    statusApplied: nil,
+                    playerAsleep: player.status == .sleep,
+                    wildAsleep: wild.status == .sleep))
             }
         }
         let playerWon = !player.isFainted && wild.isFainted
@@ -230,12 +238,15 @@ enum BattleEngine {
                   status: String? = nil) {
             let tgtIsPlayer = targetIsPlayer ?? !actorIsPlayer
             let tgt = tgtIsPlayer == actorIsPlayer ? attacker : defender
+            let player = actorIsPlayer ? attacker : defender
+            let wild = actorIsPlayer ? defender : attacker
             events.append(BattleEvent(
                 kind: kind, actorIsPlayer: actorIsPlayer,
                 moveId: move?.moveId ?? 0, moveName: move?.displayName ?? reason,
                 damage: damage, effectiveness: eff, targetIsPlayer: tgtIsPlayer,
                 targetHP: tgt.currentHP, targetMaxHP: tgt.maxHP, fainted: tgt.isFainted,
-                statusApplied: status))
+                statusApplied: status,
+                playerAsleep: player.status == .sleep, wildAsleep: wild.status == .sleep))
         }
 
         // --- major status action gates -------------------------------------

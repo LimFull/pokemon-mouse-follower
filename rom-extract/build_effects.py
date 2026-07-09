@@ -106,9 +106,26 @@ def main():
             anim = pick_anim(os.path.join(OUT, "effects", f"effect_{eff:04d}"), g.get("unk2"))
             if anim is None:
                 return None
+            # 8-direction sets: unk2 on a multiple of 8 with 8 consecutive
+            # non-empty sequences = one rotation per facing (projectiles).
+            if anim == g.get("unk2") and anim % 8 == 0:
+                try:
+                    anims = {a["anim_id"]: len(a.get("frames") or [])
+                             for a in load(os.path.join(OUT, "effects", f"effect_{eff:04d}",
+                                                        "animations.json"))["animations"]}
+                    if all(anims.get(anim + i, 0) > 0 for i in range(8)):
+                        rec_dirs = True
+                    else:
+                        rec_dirs = False
+                except (OSError, KeyError, ValueError):
+                    rec_dirs = False
+            else:
+                rec_dirs = False
         else:  # SCREEN / WBA — a full-screen effect; the app renders a
             return {"screen": True}   # type-colored flash + quake instead
         rec = {"file": eff, "anim": anim, "loop": bool(g.get("loop")) if g else False}
+        if t == "WAN_OTHER" and rec_dirs:
+            rec["dirs"] = True
         if particle:
             rec["particle"] = True
         if particle or palette.get(eff) == "approx_common":

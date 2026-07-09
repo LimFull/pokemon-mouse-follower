@@ -1442,6 +1442,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let wander = NSMenuItem(title: "야생 스폰 (배회)", action: #selector(debugSpawn), keyEquivalent: "")
         wander.target = self
         dm.addItem(wander)
+        dm.addItem(.separator())
+        // Force a status on the active mon — it carries into the next battle,
+        // so the skip/residual visuals are testable without RNG.
+        for (title, key) in [("내 포켓몬: 마비", "paralysis"), ("내 포켓몬: 화상", "burn"),
+                             ("내 포켓몬: 독", "poison"), ("내 포켓몬: 수면", "sleep"),
+                             ("내 포켓몬: 얼음", "freeze"), ("내 포켓몬: 상태 해제", "")] {
+            let it = NSMenuItem(title: title, action: #selector(debugSetStatus(_:)), keyEquivalent: "")
+            it.target = self
+            it.representedObject = key
+            dm.addItem(it)
+        }
         debug.submenu = dm
         menu.addItem(debug)
         menu.addItem(.separator())
@@ -1549,6 +1560,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for i in st.party.indices { st.healMon(at: i) }
     }
 
+    @objc private func debugSetStatus(_ sender: NSMenuItem) {
+        let key = sender.representedObject as? String ?? ""
+        RaisingState.shared.setStatusDebug(key.isEmpty ? nil : key)
+    }
+
     @objc private func debugGiveExp() {
         let st = RaisingState.shared
         guard st.hasActiveGame else { return }
@@ -1585,6 +1601,7 @@ if let i = CommandLine.arguments.firstIndex(of: "--dump-effect"),
     }
     dump(EffectPlayer.clip(forMove: moveId), "step")
     dump(EffectPlayer.projectile(forMove: moveId), "proj")
+    dump(EffectPlayer.projectile(forMove: moveId, octant: 0), "projE")   // flying east
     exit(0)
 }
 

@@ -22,6 +22,7 @@ struct MoveEffectRef: Codable {
         let loop: Bool
         let particle: Bool?
         let tint: Bool?
+        let dirs: Bool?      // anim..anim+7 are the 8 facings of this projectile
     }
     let file: Int?          // nil for screen-type entries
     let anim: Int?
@@ -58,6 +59,7 @@ struct EffectClip {
     let steps: [Step]
     let loop: Bool
     let headAnchored: Bool
+    var riseOffset: CGFloat = 0   // game-px lift so strike columns land ON the target
     var totalTicks: Int { steps.reduce(0) { $0 + $1.ticks } }
 }
 
@@ -79,7 +81,7 @@ enum EffectPlayer {
 
     private static var metaCache: [Int: FileMeta] = [:]
     private static var clipCache: [Int: EffectClip?] = [:]   // hit clip per move id
-    private static var projCache: [Int: EffectClip?] = [:]   // projectile per move id
+    private static var projCache: [Int: EffectClip?] = [:]   // key: moveId*8 + facing
 
     /// Whether `moveId` is a full-screen effect (Psychic & co) — the overlay
     /// renders a type-colored screen flash + quake instead of a sprite.
@@ -122,16 +124,23 @@ enum EffectPlayer {
         return built
     }
 
-    /// The projectile/travel clip for `moveId` (flown attacker -> target
-    /// before the hit clip plays), or nil when the move has none.
-    static func projectile(forMove moveId: Int) -> EffectClip? {
-        if let cached = projCache[moveId] { return cached }
-        let p = MoveEffects.map[moveId]?.proj
-        let built = p.flatMap {
-            build(moveId: moveId, file: $0.file, anim: $0.anim, loop: $0.loop,
-                  particle: $0.particle == true, tint: $0.tint == true, headAnchored: false)
-        }
-        projCache[moveId] = built
+    /// Whether the move has a projectile phase at all.
+    static func hasProjectile(_ moveId: Int) -> Bool {
+        MoveEffects.map[moveId]?.proj != nil
+    }
+
+    /// The projectile/travel clip for `moveId`, facing its travel direction.
+    /// `octant` is the travel angle octant (0=E, 1=NE, ... CCW); directional
+    /// sets (anim..anim+7, ROM order S,SW,W,NW,N,NE,E,SE) pick the matching
+    /// rotation, single-sequence projectiles ignore it.
+    static func projectile(forMove moveId: Int, octant: Int = 6) -> EffectClip? {
+        guard let p = MoveEffects.map[moveId]?.proj else { return nil }
+        let idx = p.dirs == true ? (6 - (octant & 7) + 8) % 8 : 0
+        let key = moveId * 8 + idx
+        if let cached = projCache[key] { return cached }
+        let built = build(moveId: moveId, file: p.file, anim: p.anim + idx, loop: p.loop,
+                          particle: p.particle == true, tint: p.tint == true, headAnchored: false)
+        projCache[key] = built
         return built
     }
 
@@ -155,6 +164,7 @@ enum EffectPlayer {
                                 ticks: $0.ticks, dx: $0.dx, dy: $0.dy)
             }
             steps = composeBurst(steps)
+            steps = capSize(steps, maxDim: 64)   // a hit spark ≈ the mon, not 2x it
         } else if doTint {
             // Drawn art with an approximate palette: re-hue, keep shading.
             let color = TypeStyle.color(type)
@@ -163,7 +173,17 @@ enum EffectPlayer {
                                 ticks: $0.ticks, dx: $0.dx, dy: $0.dy)
             }
         }
-        return EffectClip(steps: steps, loop: loop, headAnchored: headAnchored)
+        // Strike columns (Thunderbolt & co, much taller than wide): lift the
+        // clip so its bottom — the impact end — lands ON the target instead of
+        // the column's middle skewering it. (The ROM's true placement lives in
+        // engine code, not the extractable data; this is the readable heuristic.)
+        var rise: CGFloat = 0
+        let maxW = steps.map(\.image.width).max() ?? 0
+        let maxH = steps.map(\.image.height).max() ?? 0
+        if !particle, CGFloat(maxH) > 1.7 * CGFloat(maxW), maxH > 60 {
+            rise = CGFloat(maxH) / 2 - 12
+        }
+        return EffectClip(steps: steps, loop: loop, headAnchored: headAnchored, riseOffset: rise)
     }
 
     // MARK: raw frame loading
@@ -253,7 +273,7 @@ enum EffectPlayer {
     /// is sized to the full spread so edge particles never get sliced off.
     private static func composeBurst(_ steps: [EffectClip.Step]) -> [EffectClip.Step] {
         let maxPart = steps.map { max($0.image.width, $0.image.height) }.max() ?? 16
-        let canvas = 2 * 30 + maxPart + 8   // ring radius peaks at 30
+        let canvas = 2 * 16 + maxPart + 6   // ring radius peaks at 16
         let copies = 7
         let n = max(1, steps.count - 1)
         return steps.enumerated().map { (i, s) in
@@ -267,7 +287,7 @@ enum EffectPlayer {
             let c = CGFloat(canvas) / 2
             for j in 0..<copies {
                 let jitter = 0.65 + 0.35 * CGFloat((j * 37) % 10) / 9.0
-                let r = (4 + 26 * progress) * jitter
+                let r = (3 + 13 * progress) * jitter
                 let angle = CGFloat(j) * 2.399963        // golden angle
                 let x = c + cos(angle) * r - w / 2
                 let y = c + sin(angle) * r - h / 2
@@ -362,7 +382,8 @@ struct RunningEffect {
                 let f = travels ? CGFloat(tick) / CGFloat(maxTicks) : 0
                 let base = CGPoint(x: from.x + (to.x - from.x) * f,
                                    y: from.y + (to.y - from.y) * f)
-                let up: CGFloat = clip.headAnchored ? 10 : 0
+                let up: CGFloat = (clip.headAnchored ? 10 : 0)
+                    + (travels ? 0 : clip.riseOffset)   // strike columns land, not skewer
                 let pos = CGPoint(x: base.x + CGFloat(s.dx) * scale,
                                   y: base.y - CGFloat(s.dy) * scale + up * scale)
                 return (s.image, pos)
