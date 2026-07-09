@@ -1,11 +1,12 @@
 // Raising mode — auto turn-based battle engine (Phase 2, design D3/D4/D6/D19).
 //
 // Pure logic: given the player's active mon and a wild mon, it simulates a
-// spectator auto-battle (simple AI, simplified mainline damage + type chart +
-// STAB + accuracy) and returns a structured event log + EXP. Includes the full
-// status set (D19): sleep/paralysis/poison/burn/freeze plus the volatile
-// confusion/infatuation (gender-checked, D19-2). The on-overlay playback
-// (Phase 2d) consumes the event log.
+// spectator auto-battle and returns a structured event log + EXP. Implements
+// the full status set (D19), stat stages, priority brackets and the special
+// move mechanics table (MoveMechanics) — fixed damage, OHKO, counters, drains,
+// recoil, multi-hits, two-turn moves, heals, screens, seeds/traps, Transform,
+// Metronome and friends. A mon with no usable move Struggles, mainline-style.
+// The on-overlay playback (Phase 2d) consumes the event log.
 
 import Foundation
 
@@ -46,25 +47,62 @@ final class Battler {
     let dex: Int
     let name: String
     let level: Int
-    let type1: String
-    let type2: String?
-    let stats: Stats
+    var type1: String            // var: Transform copies the foe's typing
+    var type2: String?
+    var stats: Stats             // var: Transform copies everything but HP
     let gender: Gender
     let baseExp: Int
     var currentHP: Int
-    let moves: [Int]
+    var moves: [Int]             // var: Mimic/Sketch rewrite a slot battle-locally
 
     // Status state (D19). `status` persists across battles for the player's mon;
-    // the volatile pair below is battle-local.
+    // everything below it is battle-local.
     var status: Ailment?
     var sleepTurns = 0           // remaining turns asleep
     var confusionTurns = 0       // remaining turns confused (0 = not confused)
     var infatuated = false
 
+    // Battle-local mechanics state (the Battler itself is per-battle).
+    var stages: [BattleStat: Int] = [:]
+    var mustRecharge = false     // Hyper Beam family aftermath
+    var chargingMove: Int? = nil // two-turn move wound up last turn
+    var bideTurns = 0
+    var bideStored = 0
+    var physicalTakenThisRound = 0
+    var specialTakenThisRound = 0
+    var actedThisRound = false
+    var destinyBond = false
+    var safeguardRounds = 0
+    var mistRounds = 0
+    var reflectRounds = 0
+    var lightScreenRounds = 0
+    var seeded = false           // Leech Seed
+    var trapRounds = 0           // Wrap/Bind/Fire Spin chip
+    var ghostCursed = false
+    var nightmared = false
+    var yawnCounter = 0          // 2 → 1 → falls asleep
+    var perishCount = -1         // ≥0: faints when it hits 0
+    var lastMoveUsed: Int? = nil
+    var transformed = false
+
     var maxHP: Int { stats.hp }
     var isFainted: Bool { currentHP <= 0 }
-    /// Speed after status penalties (paralysis quarters it, gen-4 style).
-    var effectiveSpeed: Int { status == .paralysis ? stats.spe / 4 : stats.spe }
+
+    func stage(_ s: BattleStat) -> Int { stages[s] ?? 0 }
+    /// Clamped stage bump; returns the delta actually applied.
+    @discardableResult
+    func bump(_ s: BattleStat, _ delta: Int) -> Int {
+        let cur = stage(s)
+        let next = max(-6, min(6, cur + delta))
+        stages[s] = next
+        return next - cur
+    }
+
+    /// Speed after stages and status (paralysis quarters it, gen-4 style).
+    var effectiveSpeed: Int {
+        let s = Double(stats.spe) * MoveMechanics.stageMultiplier(stage(.spe))
+        return status == .paralysis ? Int(s) / 4 : Int(s)
+    }
 
     init(dex: Int, name: String, level: Int, type1: String, type2: String?,
          stats: Stats, gender: Gender, baseExp: Int, currentHP: Int, moves: [Int],
@@ -103,12 +141,12 @@ final class Battler {
 
 struct BattleEvent {
     enum Kind {
-        case attack          // a move connected (damage and/or status)
+        case attack          // a move connected (damage and/or status/stages)
         case miss            // a move was used but missed / had no effect
-        case skip            // turn lost (asleep / frozen / paralyzed / infatuated)
-        case selfHit         // hurt itself in confusion
-        case residual        // end-of-round burn/poison chip damage
-        case recover         // woke up / thawed / snapped out of confusion
+        case skip            // turn lost (asleep/frozen/... or charging/recharging)
+        case selfHit         // hurt itself (confusion, recoil, crash, self-pay)
+        case residual        // end-of-round chip damage (burn/poison/seed/trap/curse)
+        case recover         // woke up / thawed / snapped out / HP restored
         case ball            // a ball was thrown at the wild (D11)
     }
     let kind: Kind
@@ -121,12 +159,11 @@ struct BattleEvent {
     let targetHP: Int
     let targetMaxHP: Int
     let fainted: Bool
-    let statusApplied: String?  // ailment/volatile inflicted on the target, if any
+    let statusApplied: String?  // ailment inflicted, or a display tag ("DEF -1")
     // Which simulated round this event belongs to. Turn order is recomputed
-    // every round from effectiveSpeed (paralysis — and any future speed
-    // changes — can flip it), so playback must use this stamp, never guess
-    // boundaries from actor order. A mid-battle recall waits for the stamped
-    // turn to finish (mainline flee timing).
+    // every round (speed stages and priority can flip it), so playback must
+    // use this stamp, never guess boundaries from actor order. A mid-battle
+    // recall waits for the stamped turn to finish (mainline flee timing).
     var turn: Int = 0
     var shakes: Int = 0         // .ball: how many of the 4 shake checks passed
     var caught: Bool = false    // .ball: capture succeeded
@@ -146,6 +183,8 @@ struct BattleResult {
     let playerMaxHP: Int
     var captured: Bool = false     // wild was caught (D11)
     var ballsUsed: [GameItem] = []
+    var playerFled: Bool = false   // Teleport, or blown out by Roar/Whirlwind
+    var wildFled: Bool = false     // the wild escaped — it leaves, no EXP
 }
 
 enum BattleEngine {
@@ -159,19 +198,659 @@ enum BattleEngine {
         var stock = balls
         var used: [GameItem] = []
         var captured = false
+        var playerFled = false, wildFled = false
         var turn = 0
-        while !player.isFainted && !wild.isFainted && !captured && turn < 200 {
+        // Delayed effects: (resolveAtRoundEnd, damage>0 hit / damage<0 heal, target)
+        var pending: [(round: Int, amount: Int, targetIsPlayer: Bool, name: String)] = []
+
+        func battleOver() -> Bool {
+            player.isFainted || wild.isFainted || captured || playerFled || wildFled
+        }
+
+        func emit(_ kind: BattleEvent.Kind, actorIsPlayer: Bool, move: MoveData? = nil,
+                  reason: String = "", damage: Int = 0, eff: Double = 1,
+                  targetIsPlayer: Bool? = nil, status: String? = nil) {
+            let tgtIsPlayer = targetIsPlayer ?? !actorIsPlayer
+            let tgt = tgtIsPlayer ? player : wild
+            events.append(BattleEvent(
+                kind: kind, actorIsPlayer: actorIsPlayer,
+                moveId: move?.moveId ?? 0, moveName: move?.displayName ?? reason,
+                damage: damage, effectiveness: eff, targetIsPlayer: tgtIsPlayer,
+                targetHP: tgt.currentHP, targetMaxHP: tgt.maxHP, fainted: tgt.isFainted,
+                statusApplied: status, turn: turn,
+                playerAsleep: player.status == .sleep, wildAsleep: wild.status == .sleep))
+        }
+
+        /// Apply direct move damage: records counter/bide bookkeeping and
+        /// resolves Destiny Bond when the hit is fatal.
+        func dealDamage(_ dmg: Int, from atk: Battler, to def: Battler, physical: Bool) {
+            def.currentHP = max(0, def.currentHP - dmg)
+            if physical { def.physicalTakenThisRound += dmg }
+            else { def.specialTakenThisRound += dmg }
+            if def.bideTurns > 0 { def.bideStored += dmg }
+            if def.isFainted && def.destinyBond {
+                atk.currentHP = 0
+                emit(.selfHit, actorIsPlayer: atk === player, reason: "Destiny Bond",
+                     damage: atk.maxHP, targetIsPlayer: atk === player, status: "Destiny Bond!")
+            }
+        }
+
+        /// Accuracy roll with acc/eva stages (moves outside 1...100 always hit).
+        func rolls(_ m: MoveData, _ atk: Battler, _ def: Battler) -> Bool {
+            guard (1...100).contains(m.accuracy) else { return true }
+            let stage = max(-6, min(6, atk.stage(.acc) - def.stage(.eva)))
+            let chance = Double(m.accuracy) * MoveMechanics.accuracyMultiplier(stage)
+            return Double.random(in: 0..<100) < chance
+        }
+
+        func statTag(_ list: [(BattleStat, Int)]) -> String {
+            list.map { "\($0.0.label) \($0.1 > 0 ? "+" : "")\($0.1)" }.joined(separator: " ")
+        }
+
+        /// One battler's action for the round. `planned` is the pre-picked move
+        /// (nil = a forced non-move turn like recharging).
+        func act(_ atk: Battler, _ def: Battler, isPlayer: Bool, planned: Int?) {
+            atk.actedThisRound = true
+
+            // --- major status action gates -------------------------------
+            switch atk.status {
+            case .sleep:
+                atk.sleepTurns -= 1
+                if atk.sleepTurns > 0 {
+                    atk.chargingMove = nil; atk.bideTurns = 0
+                    emit(.skip, actorIsPlayer: isPlayer, reason: "asleep"); return
+                }
+                atk.status = nil
+                atk.nightmared = false
+                emit(.recover, actorIsPlayer: isPlayer, reason: "woke up", targetIsPlayer: isPlayer)
+            case .freeze:
+                if Int.random(in: 0..<100) < 20 {
+                    atk.status = nil
+                    emit(.recover, actorIsPlayer: isPlayer, reason: "thawed", targetIsPlayer: isPlayer)
+                } else {
+                    atk.chargingMove = nil; atk.bideTurns = 0
+                    emit(.skip, actorIsPlayer: isPlayer, reason: "frozen"); return
+                }
+            case .paralysis:
+                if Int.random(in: 0..<100) < 25 {
+                    atk.chargingMove = nil; atk.bideTurns = 0
+                    emit(.skip, actorIsPlayer: isPlayer, reason: "paralyzed"); return
+                }
+            default: break
+            }
+
+            // --- volatile gates -------------------------------------------
+            if atk.confusionTurns > 0 {
+                atk.confusionTurns -= 1
+                if atk.confusionTurns == 0 {
+                    emit(.recover, actorIsPlayer: isPlayer, reason: "snapped out", targetIsPlayer: isPlayer)
+                } else if Int.random(in: 0..<3) == 0 {
+                    let base = ((2.0 * Double(atk.level) / 5.0 + 2.0) * 40.0
+                                * Double(atk.stats.atk) / Double(max(1, atk.stats.def))) / 50.0 + 2.0
+                    let dmg = max(1, Int(base * Double.random(in: 0.85...1.0)))
+                    atk.currentHP = max(0, atk.currentHP - dmg)
+                    emit(.selfHit, actorIsPlayer: isPlayer, reason: "hurt itself",
+                         damage: dmg, targetIsPlayer: isPlayer)
+                    return
+                }
+            }
+            if atk.infatuated, Int.random(in: 0..<2) == 0 {
+                emit(.skip, actorIsPlayer: isPlayer, reason: "infatuated"); return
+            }
+
+            // --- forced turns ----------------------------------------------
+            if atk.mustRecharge {
+                atk.mustRecharge = false
+                emit(.skip, actorIsPlayer: isPlayer, reason: "recharging"); return
+            }
+            if atk.bideTurns > 0 {
+                atk.bideTurns -= 1
+                if atk.bideTurns > 0 {
+                    emit(.skip, actorIsPlayer: isPlayer, reason: "storing"); return
+                }
+                // release: double everything it soaked (typeless)
+                let dmg = max(1, atk.bideStored * 2)
+                atk.bideStored = 0
+                if let m = GameData.moves.first(where: { $0.value.displayName == "Bide" })?.value {
+                    dealDamage(dmg, from: atk, to: def, physical: true)
+                    emit(.attack, actorIsPlayer: isPlayer, move: m, damage: dmg)
+                }
+                return
+            }
+
+            // Charge release keeps the wound-up move regardless of `planned`.
+            let moveId = atk.chargingMove ?? planned ?? MoveMechanics.struggleId
+            guard let m = GameData.moves[moveId] else { return }
+            let releasing = atk.chargingMove != nil
+            atk.chargingMove = nil
+            atk.lastMoveUsed = moveId
+
+            execute(m, atk, def, isPlayer: isPlayer, releasing: releasing)
+        }
+
+        /// Resolve one selected move, mechanics table first.
+        func execute(_ m: MoveData, _ atk: Battler, _ def: Battler,
+                     isPlayer: Bool, releasing: Bool) {
+            atk.destinyBond = false   // the bond lasts until the next action
+            let eff = TypeChart.multiplier(m.type, vs: def.type1, def.type2)
+            guard let mech = MoveMechanics.mechanic(for: m.moveId) else {
+                executePlain(m, atk, def, isPlayer: isPlayer, eff: eff, powerOverride: nil)
+                return
+            }
+
+            // Two-turn moves wind up first (unless this IS the release turn).
+            if case .charge = mech, !releasing {
+                atk.chargingMove = m.moveId
+                emit(.skip, actorIsPlayer: isPlayer, reason: "charging")
+                return
+            }
+
+            switch mech {
+            case .plain(let p):
+                executePlain(m, atk, def, isPlayer: isPlayer, eff: eff, powerOverride: p)
+
+            case .trap(let p):
+                let landed = executePlain(m, atk, def, isPlayer: isPlayer, eff: eff, powerOverride: p)
+                if landed, !def.isFainted, def.trapRounds == 0 {
+                    def.trapRounds = Int.random(in: 2...5)
+                }
+
+            case .charge:   // release turn
+                executePlain(m, atk, def, isPlayer: isPlayer, eff: eff, powerOverride: nil)
+
+            case .recharge:
+                let landed = executePlain(m, atk, def, isPlayer: isPlayer, eff: eff, powerOverride: nil)
+                if landed { atk.mustRecharge = true }
+
+            case .multiHit(let lo, let hi, let per):
+                guard eff > 0 else { emit(.miss, actorIsPlayer: isPlayer, move: m, eff: 0); return }
+                guard rolls(m, atk, def) else { emit(.miss, actorIsPlayer: isPlayer, move: m); return }
+                let hits = Int.random(in: lo...hi)
+                var total = 0
+                for _ in 0..<hits where !def.isFainted {
+                    total += computeDamage(attacker: atk, defender: def, move: m,
+                                           eff: eff, powerOverride: per)
+                }
+                dealDamage(total, from: atk, to: def, physical: m.category == "Physical")
+                emit(.attack, actorIsPlayer: isPlayer, move: m, damage: total, eff: eff,
+                     status: "\(hits) hits!")
+
+            case .drain(let frac, let p):
+                guard eff > 0 else { emit(.miss, actorIsPlayer: isPlayer, move: m, eff: 0); return }
+                guard rolls(m, atk, def) else { emit(.miss, actorIsPlayer: isPlayer, move: m); return }
+                if m.displayName == "Dream Eater", def.status != .sleep {
+                    emit(.miss, actorIsPlayer: isPlayer, move: m); return
+                }
+                let dmg = computeDamage(attacker: atk, defender: def, move: m, eff: eff, powerOverride: p)
+                dealDamage(dmg, from: atk, to: def, physical: m.category == "Physical")
+                emit(.attack, actorIsPlayer: isPlayer, move: m, damage: dmg, eff: eff)
+                let heal = min(max(1, Int(Double(dmg) * frac)), atk.maxHP - atk.currentHP)
+                if heal > 0 {
+                    atk.currentHP += heal
+                    emit(.recover, actorIsPlayer: isPlayer, reason: "drained", targetIsPlayer: isPlayer)
+                }
+
+            case .recoil(let frac, let power):
+                let before = def.currentHP
+                let landed = executePlain(m, atk, def, isPlayer: isPlayer, eff: eff, powerOverride: power)
+                let dealt = before - def.currentHP
+                if landed, dealt > 0 {
+                    let recoil = max(1, Int(Double(dealt) * frac))
+                    atk.currentHP = max(0, atk.currentHP - recoil)
+                    emit(.selfHit, actorIsPlayer: isPlayer, reason: "recoil",
+                         damage: recoil, targetIsPlayer: isPlayer)
+                }
+
+            case .crashOnMiss:
+                guard eff > 0, rolls(m, atk, def) else {
+                    emit(.miss, actorIsPlayer: isPlayer, move: m, eff: eff > 0 ? 1 : 0)
+                    let crash = max(1, atk.maxHP / 4)
+                    atk.currentHP = max(0, atk.currentHP - crash)
+                    emit(.selfHit, actorIsPlayer: isPlayer, reason: "crashed",
+                         damage: crash, targetIsPlayer: isPlayer)
+                    return
+                }
+                let dmg = computeDamage(attacker: atk, defender: def, move: m, eff: eff, powerOverride: nil)
+                dealDamage(dmg, from: atk, to: def, physical: true)
+                emit(.attack, actorIsPlayer: isPlayer, move: m, damage: dmg, eff: eff)
+
+            case .fixedDamage(let n):
+                guard eff > 0 else { emit(.miss, actorIsPlayer: isPlayer, move: m, eff: 0); return }
+                guard rolls(m, atk, def) else { emit(.miss, actorIsPlayer: isPlayer, move: m); return }
+                dealDamage(n, from: atk, to: def, physical: m.category == "Physical")
+                emit(.attack, actorIsPlayer: isPlayer, move: m, damage: n)
+
+            case .levelDamage:
+                guard eff > 0 else { emit(.miss, actorIsPlayer: isPlayer, move: m, eff: 0); return }
+                guard rolls(m, atk, def) else { emit(.miss, actorIsPlayer: isPlayer, move: m); return }
+                dealDamage(atk.level, from: atk, to: def, physical: m.category == "Physical")
+                emit(.attack, actorIsPlayer: isPlayer, move: m, damage: atk.level)
+
+            case .psywave:
+                guard eff > 0 else { emit(.miss, actorIsPlayer: isPlayer, move: m, eff: 0); return }
+                guard rolls(m, atk, def) else { emit(.miss, actorIsPlayer: isPlayer, move: m); return }
+                let dmg = max(1, Int(Double(atk.level) * Double.random(in: 0.5...1.5)))
+                dealDamage(dmg, from: atk, to: def, physical: false)
+                emit(.attack, actorIsPlayer: isPlayer, move: m, damage: dmg)
+
+            case .superFang:
+                guard eff > 0 else { emit(.miss, actorIsPlayer: isPlayer, move: m, eff: 0); return }
+                guard rolls(m, atk, def) else { emit(.miss, actorIsPlayer: isPlayer, move: m); return }
+                let dmg = max(1, def.currentHP / 2)
+                dealDamage(dmg, from: atk, to: def, physical: true)
+                emit(.attack, actorIsPlayer: isPlayer, move: m, damage: dmg)
+
+            case .endeavor:
+                guard def.currentHP > atk.currentHP, rolls(m, atk, def) else {
+                    emit(.miss, actorIsPlayer: isPlayer, move: m); return
+                }
+                let dmg = def.currentHP - atk.currentHP
+                dealDamage(dmg, from: atk, to: def, physical: true)
+                emit(.attack, actorIsPlayer: isPlayer, move: m, damage: dmg)
+
+            case .ohko:
+                guard eff > 0, def.level <= atk.level else {
+                    emit(.miss, actorIsPlayer: isPlayer, move: m, eff: eff > 0 ? 1 : 0); return
+                }
+                let chance = 30 + (atk.level - def.level)
+                guard Int.random(in: 0..<100) < chance else {
+                    emit(.miss, actorIsPlayer: isPlayer, move: m); return
+                }
+                let dmg = def.currentHP
+                dealDamage(dmg, from: atk, to: def, physical: m.category == "Physical")
+                emit(.attack, actorIsPlayer: isPlayer, move: m, damage: dmg, status: "One-hit KO!")
+
+            case .explosion(let p):
+                let landed = executePlain(m, atk, def, isPlayer: isPlayer, eff: eff, powerOverride: p)
+                _ = landed
+                let pay = atk.currentHP
+                atk.currentHP = 0
+                emit(.selfHit, actorIsPlayer: isPlayer, reason: "fainted from the blast",
+                     damage: pay, targetIsPlayer: isPlayer)
+
+            case .counterPhysical:
+                guard atk.physicalTakenThisRound > 0 else {
+                    emit(.miss, actorIsPlayer: isPlayer, move: m); return
+                }
+                let dmg = atk.physicalTakenThisRound * 2
+                dealDamage(dmg, from: atk, to: def, physical: true)
+                emit(.attack, actorIsPlayer: isPlayer, move: m, damage: dmg)
+
+            case .counterSpecial:
+                guard atk.specialTakenThisRound > 0 else {
+                    emit(.miss, actorIsPlayer: isPlayer, move: m); return
+                }
+                let dmg = atk.specialTakenThisRound * 2
+                dealDamage(dmg, from: atk, to: def, physical: false)
+                emit(.attack, actorIsPlayer: isPlayer, move: m, damage: dmg)
+
+            case .bide:
+                atk.bideTurns = 2
+                atk.bideStored = 0
+                emit(.skip, actorIsPlayer: isPlayer, reason: "storing")
+
+            case .payback:
+                let doubled = def.actedThisRound
+                executePlainScaled(m, atk, def, isPlayer: isPlayer, eff: eff,
+                                   power: doubled ? 100 : 50)
+
+            case .revenge:
+                let doubled = atk.physicalTakenThisRound + atk.specialTakenThisRound > 0
+                executePlainScaled(m, atk, def, isPlayer: isPlayer, eff: eff,
+                                   power: doubled ? 120 : 60)
+
+            case .magnitude:
+                let table = [(10, 5), (30, 10), (50, 20), (70, 30), (90, 20), (110, 10), (150, 5)]
+                var roll = Int.random(in: 0..<100), power = 70
+                for (p, w) in table { if roll < w { power = p; break }; roll -= w }
+                executePlainScaled(m, atk, def, isPlayer: isPlayer, eff: eff, power: power)
+
+            case .present:
+                guard rolls(m, atk, def) else { emit(.miss, actorIsPlayer: isPlayer, move: m); return }
+                let roll = Int.random(in: 0..<100)
+                if roll < 20 {   // a gift: heals the target a quarter
+                    let heal = min(max(1, def.maxHP / 4), def.maxHP - def.currentHP)
+                    def.currentHP += heal
+                    emit(.recover, actorIsPlayer: isPlayer, move: m, targetIsPlayer: !isPlayer)
+                } else {
+                    let power = roll < 60 ? 40 : (roll < 90 ? 80 : 120)
+                    executePlainScaled(m, atk, def, isPlayer: isPlayer, eff: eff, power: power)
+                }
+
+            case .memento:
+                if def.mistRounds == 0 {
+                    def.bump(.atk, -2); def.bump(.spa, -2)
+                    emit(.attack, actorIsPlayer: isPlayer, move: m, status: "ATK -2 SP.ATK -2")
+                } else {
+                    emit(.miss, actorIsPlayer: isPlayer, move: m)
+                }
+                let pay = atk.currentHP
+                atk.currentHP = 0
+                emit(.selfHit, actorIsPlayer: isPlayer, reason: "gave everything",
+                     damage: pay, targetIsPlayer: isPlayer)
+
+            case .painSplit:
+                guard def.currentHP > atk.currentHP else { emit(.miss, actorIsPlayer: isPlayer, move: m); return }
+                let avg = (def.currentHP + atk.currentHP) / 2
+                let dmg = def.currentHP - avg
+                def.currentHP = avg
+                emit(.attack, actorIsPlayer: isPlayer, move: m, damage: dmg)
+                atk.currentHP = min(atk.maxHP, avg)
+                emit(.recover, actorIsPlayer: isPlayer, reason: "shared the pain", targetIsPlayer: isPlayer)
+
+            case .healSelf(let frac):
+                let heal = min(max(1, Int(Double(atk.maxHP) * frac)), atk.maxHP - atk.currentHP)
+                guard heal > 0 else { emit(.miss, actorIsPlayer: isPlayer, move: m); return }
+                atk.currentHP += heal
+                emit(.recover, actorIsPlayer: isPlayer, move: m, targetIsPlayer: isPlayer)
+
+            case .rest:
+                guard atk.currentHP < atk.maxHP || (atk.status != nil && atk.status != .sleep) else {
+                    emit(.miss, actorIsPlayer: isPlayer, move: m); return
+                }
+                atk.currentHP = atk.maxHP
+                atk.status = .sleep
+                atk.sleepTurns = 2
+                emit(.recover, actorIsPlayer: isPlayer, move: m, targetIsPlayer: isPlayer, status: "sleep")
+
+            case .wish:
+                pending.append((turn + 1, -max(1, atk.maxHP / 2), isPlayer, m.displayName))
+                emit(.attack, actorIsPlayer: isPlayer, move: m, status: "made a wish")
+
+            case .cureStatus:
+                guard atk.status != nil else { emit(.miss, actorIsPlayer: isPlayer, move: m); return }
+                atk.status = nil
+                emit(.recover, actorIsPlayer: isPlayer, move: m, targetIsPlayer: isPlayer)
+
+            case .statSelf(let list):
+                var applied: [(BattleStat, Int)] = []
+                for (s, d) in list { let got = atk.bump(s, d); if got != 0 { applied.append((s, got)) } }
+                guard !applied.isEmpty else { emit(.miss, actorIsPlayer: isPlayer, move: m); return }
+                emit(.attack, actorIsPlayer: isPlayer, move: m,
+                     targetIsPlayer: isPlayer, status: statTag(applied))
+
+            case .statFoe(let list):
+                guard eff > 0 else { emit(.miss, actorIsPlayer: isPlayer, move: m, eff: 0); return }
+                guard def.mistRounds == 0, rolls(m, atk, def) else {
+                    emit(.miss, actorIsPlayer: isPlayer, move: m); return
+                }
+                var applied: [(BattleStat, Int)] = []
+                for (s, d) in list { let got = def.bump(s, d); if got != 0 { applied.append((s, got)) } }
+                guard !applied.isEmpty else { emit(.miss, actorIsPlayer: isPlayer, move: m); return }
+                emit(.attack, actorIsPlayer: isPlayer, move: m, status: statTag(applied))
+
+            case .bellyDrum:
+                guard atk.currentHP * 2 > atk.maxHP, atk.stage(.atk) < 6 else {
+                    emit(.miss, actorIsPlayer: isPlayer, move: m); return
+                }
+                let pay = atk.maxHP / 2
+                atk.currentHP -= pay
+                emit(.selfHit, actorIsPlayer: isPlayer, reason: "drummed", damage: pay, targetIsPlayer: isPlayer)
+                atk.stages[.atk] = 6
+                emit(.attack, actorIsPlayer: isPlayer, move: m, targetIsPlayer: isPlayer, status: "ATK maxed!")
+
+            case .haze:
+                atk.stages = [:]; def.stages = [:]
+                emit(.attack, actorIsPlayer: isPlayer, move: m, status: "stats reset")
+
+            case .screen(let physical):
+                if physical { atk.reflectRounds = 5 } else { atk.lightScreenRounds = 5 }
+                emit(.attack, actorIsPlayer: isPlayer, move: m, targetIsPlayer: isPlayer,
+                     status: physical ? "DEF wall up" : "SP.DEF wall up")
+
+            case .safeguard:
+                atk.safeguardRounds = 5
+                emit(.attack, actorIsPlayer: isPlayer, move: m, targetIsPlayer: isPlayer, status: "protected")
+
+            case .mist:
+                atk.mistRounds = 5
+                emit(.attack, actorIsPlayer: isPlayer, move: m, targetIsPlayer: isPlayer, status: "shrouded in mist")
+
+            case .leechSeed:
+                guard def.type1 != "Grass", def.type2 != "Grass", !def.seeded, rolls(m, atk, def) else {
+                    emit(.miss, actorIsPlayer: isPlayer, move: m); return
+                }
+                def.seeded = true
+                emit(.attack, actorIsPlayer: isPlayer, move: m, status: "seeded")
+
+            case .curse:
+                if atk.type1 == "Ghost" || atk.type2 == "Ghost" {
+                    guard !def.ghostCursed else { emit(.miss, actorIsPlayer: isPlayer, move: m); return }
+                    let pay = max(1, atk.maxHP / 2)
+                    atk.currentHP = max(0, atk.currentHP - pay)
+                    emit(.selfHit, actorIsPlayer: isPlayer, reason: "cut its own HP",
+                         damage: pay, targetIsPlayer: isPlayer)
+                    def.ghostCursed = true
+                    emit(.attack, actorIsPlayer: isPlayer, move: m, status: "cursed")
+                } else {
+                    atk.bump(.atk, 1); atk.bump(.def, 1); atk.bump(.spe, -1)
+                    emit(.attack, actorIsPlayer: isPlayer, move: m,
+                         targetIsPlayer: isPlayer, status: "ATK +1 DEF +1 SPEED -1")
+                }
+
+            case .nightmare:
+                guard def.status == .sleep, !def.nightmared else {
+                    emit(.miss, actorIsPlayer: isPlayer, move: m); return
+                }
+                def.nightmared = true
+                emit(.attack, actorIsPlayer: isPlayer, move: m, status: "trapped in a nightmare")
+
+            case .yawn:
+                guard def.status == nil, def.yawnCounter == 0, def.safeguardRounds == 0 else {
+                    emit(.miss, actorIsPlayer: isPlayer, move: m); return
+                }
+                def.yawnCounter = 2
+                emit(.attack, actorIsPlayer: isPlayer, move: m, status: "drowsy")
+
+            case .futureSight:
+                let dmg = computeDamage(attacker: atk, defender: def, move: m, eff: 1, powerOverride: 80)
+                pending.append((turn + 2, dmg, !isPlayer, m.displayName))
+                emit(.attack, actorIsPlayer: isPlayer, move: m, status: "foresaw an attack")
+
+            case .perishSong:
+                guard atk.perishCount < 0, def.perishCount < 0 else {
+                    emit(.miss, actorIsPlayer: isPlayer, move: m); return
+                }
+                atk.perishCount = 3; def.perishCount = 3
+                emit(.attack, actorIsPlayer: isPlayer, move: m, status: "perish in 3")
+
+            case .destinyBond:
+                atk.destinyBond = true
+                emit(.attack, actorIsPlayer: isPlayer, move: m, targetIsPlayer: isPlayer,
+                     status: "bonded fates")
+
+            case .transform:
+                guard !atk.transformed else { emit(.miss, actorIsPlayer: isPlayer, move: m); return }
+                atk.stats = Stats(hp: atk.stats.hp, atk: def.stats.atk, def: def.stats.def,
+                                  spAtk: def.stats.spAtk, spDef: def.stats.spDef, spe: def.stats.spe)
+                atk.type1 = def.type1; atk.type2 = def.type2
+                atk.moves = def.moves
+                atk.stages = def.stages
+                atk.transformed = true
+                emit(.attack, actorIsPlayer: isPlayer, move: m, status: "transformed!")
+
+            case .metronome:
+                let pool = GameData.moves.values.filter {
+                    $0.effectivePower > 0 && MoveMechanics.mechanic(for: $0.moveId) == nil
+                }
+                guard let pick = pool.randomElement() else {
+                    emit(.miss, actorIsPlayer: isPlayer, move: m); return
+                }
+                executePlain(pick, atk, def, isPlayer: isPlayer,
+                             eff: TypeChart.multiplier(pick.type, vs: def.type1, def.type2),
+                             powerOverride: nil)
+
+            case .mirrorMove:
+                guard let lastId = def.lastMoveUsed, let last = GameData.moves[lastId],
+                      last.effectivePower > 0 else {
+                    emit(.miss, actorIsPlayer: isPlayer, move: m); return
+                }
+                executePlain(last, atk, def, isPlayer: isPlayer,
+                             eff: TypeChart.multiplier(last.type, vs: def.type1, def.type2),
+                             powerOverride: nil)
+
+            case .mimic:
+                guard let lastId = def.lastMoveUsed,
+                      let slot = atk.moves.firstIndex(of: m.moveId) else {
+                    emit(.miss, actorIsPlayer: isPlayer, move: m); return
+                }
+                atk.moves[slot] = lastId
+                emit(.attack, actorIsPlayer: isPlayer, move: m,
+                     status: "copied \(GameData.moves[lastId]?.displayName ?? "a move")")
+
+            case .fleeSelf:
+                emit(.skip, actorIsPlayer: isPlayer, reason: "fled")
+                if isPlayer { playerFled = true } else { wildFled = true }
+
+            case .fleeFoe:
+                emit(.skip, actorIsPlayer: isPlayer, reason: "fled")
+                if isPlayer { wildFled = true } else { playerFled = true }
+
+            case .splash:
+                emit(.attack, actorIsPlayer: isPlayer, move: m, status: "nothing happened")
+            }
+        }
+
+        /// The plain damaging path (accuracy, damage, secondary ailment) shared
+        /// by unmapped power moves and by mechanics that ride on it.
+        /// Returns true when the move connected.
+        @discardableResult
+        func executePlain(_ m: MoveData, _ atk: Battler, _ def: Battler,
+                          isPlayer: Bool, eff: Double, powerOverride: Int?) -> Bool {
+            guard rolls(m, atk, def) else { emit(.miss, actorIsPlayer: isPlayer, move: m); return false }
+            if eff == 0 { emit(.miss, actorIsPlayer: isPlayer, move: m, eff: 0); return false }
+            var dmg = 0
+            if m.effectivePower > 0 || powerOverride != nil {
+                dmg = computeDamage(attacker: atk, defender: def, move: m,
+                                    eff: eff, powerOverride: powerOverride)
+                dealDamage(dmg, from: atk, to: def, physical: m.category == "Physical")
+            }
+            let inflicted = applyAilment(of: m, from: atk, to: def)
+            if dmg == 0 && inflicted == nil {
+                emit(.miss, actorIsPlayer: isPlayer, move: m)
+                return false
+            }
+            emit(.attack, actorIsPlayer: isPlayer, move: m, damage: dmg, eff: eff, status: inflicted)
+            return true
+        }
+
+        func executePlainScaled(_ m: MoveData, _ atk: Battler, _ def: Battler,
+                                isPlayer: Bool, eff: Double, power: Int) {
+            executePlain(m, atk, def, isPlayer: isPlayer, eff: eff, powerOverride: power)
+        }
+
+        /// End-of-round upkeep: chips, seeds, delayed hits, perish, timers.
+        func endOfRound() {
+            for (b, isPlayer) in [(player, true), (wild, false)] {
+                guard !battleOver() else { return }
+                guard !b.isFainted else { continue }
+                let other = isPlayer ? wild : player
+                // burn / poison
+                if let s = b.status, s == .burn || s == .poison {
+                    let dmg = max(1, b.maxHP / (s == .burn ? 16 : 8))
+                    b.currentHP = max(0, b.currentHP - dmg)
+                    emit(.residual, actorIsPlayer: isPlayer, reason: s.rawValue,
+                         damage: dmg, targetIsPlayer: isPlayer)
+                }
+                // leech seed drains toward the other side
+                if b.seeded, !b.isFainted {
+                    let dmg = max(1, b.maxHP / 8)
+                    b.currentHP = max(0, b.currentHP - dmg)
+                    emit(.residual, actorIsPlayer: isPlayer, reason: "leech seed",
+                         damage: dmg, targetIsPlayer: isPlayer)
+                    if !other.isFainted, other.currentHP < other.maxHP {
+                        other.currentHP = min(other.maxHP, other.currentHP + dmg)
+                        emit(.recover, actorIsPlayer: !isPlayer, reason: "sapped", targetIsPlayer: !isPlayer)
+                    }
+                }
+                // trap chip (Wrap and friends)
+                if b.trapRounds > 0, !b.isFainted {
+                    b.trapRounds -= 1
+                    let dmg = max(1, b.maxHP / 16)
+                    b.currentHP = max(0, b.currentHP - dmg)
+                    emit(.residual, actorIsPlayer: isPlayer, reason: "trap",
+                         damage: dmg, targetIsPlayer: isPlayer)
+                }
+                // ghost curse
+                if b.ghostCursed, !b.isFainted {
+                    let dmg = max(1, b.maxHP / 4)
+                    b.currentHP = max(0, b.currentHP - dmg)
+                    emit(.residual, actorIsPlayer: isPlayer, reason: "curse",
+                         damage: dmg, targetIsPlayer: isPlayer)
+                }
+                // nightmare (only while it stays asleep)
+                if b.nightmared {
+                    if b.status == .sleep, !b.isFainted {
+                        let dmg = max(1, b.maxHP / 4)
+                        b.currentHP = max(0, b.currentHP - dmg)
+                        emit(.residual, actorIsPlayer: isPlayer, reason: "nightmare",
+                             damage: dmg, targetIsPlayer: isPlayer)
+                    } else { b.nightmared = false }
+                }
+                // yawn resolves into sleep
+                if b.yawnCounter > 0 {
+                    b.yawnCounter -= 1
+                    if b.yawnCounter == 0, b.status == nil {
+                        b.status = .sleep
+                        b.sleepTurns = Int.random(in: 1...3)
+                        emit(.residual, actorIsPlayer: isPlayer, reason: "asleep",
+                             targetIsPlayer: isPlayer, status: "sleep")
+                    }
+                }
+                // perish count
+                if b.perishCount >= 0 {
+                    b.perishCount -= 1
+                    if b.perishCount < 0, !b.isFainted {
+                        let dmg = b.currentHP
+                        b.currentHP = 0
+                        emit(.residual, actorIsPlayer: isPlayer, reason: "perish song",
+                             damage: dmg, targetIsPlayer: isPlayer)
+                    }
+                }
+                // field timers
+                if b.safeguardRounds > 0 { b.safeguardRounds -= 1 }
+                if b.mistRounds > 0 { b.mistRounds -= 1 }
+                if b.reflectRounds > 0 { b.reflectRounds -= 1 }
+                if b.lightScreenRounds > 0 { b.lightScreenRounds -= 1 }
+            }
+            // delayed hits/heals (Future Sight / Wish)
+            for (i, p) in pending.enumerated().reversed() where p.round == turn {
+                pending.remove(at: i)
+                let tgt = p.targetIsPlayer ? player : wild
+                guard !tgt.isFainted else { continue }
+                if p.amount >= 0 {
+                    tgt.currentHP = max(0, tgt.currentHP - p.amount)
+                    emit(.residual, actorIsPlayer: !p.targetIsPlayer, reason: p.name,
+                         damage: p.amount, targetIsPlayer: p.targetIsPlayer)
+                } else {
+                    tgt.currentHP = min(tgt.maxHP, tgt.currentHP - p.amount)
+                    emit(.recover, actorIsPlayer: p.targetIsPlayer, reason: p.name,
+                         targetIsPlayer: p.targetIsPlayer)
+                }
+            }
+        }
+
+        // ------------------------- the rounds -----------------------------
+        while !battleOver() && turn < 200 {
             turn += 1
-            // Faster mon acts first (paralysis-adjusted; ties: player).
-            let playerFirst = player.effectiveSpeed >= wild.effectiveSpeed
-            let order: [(Battler, Battler, Bool)] = playerFirst
-                ? [(player, wild, true), (wild, player, false)]
-                : [(wild, player, false), (player, wild, true)]
-            for (atk, def, isPlayer) in order {
-                guard !atk.isFainted, !def.isFainted, !captured else { continue }
+            for b in [player, wild] {
+                b.physicalTakenThisRound = 0
+                b.specialTakenThisRound = 0
+                b.actedThisRound = false
+            }
+            let pPlan = plan(player, vs: wild)
+            let wPlan = plan(wild, vs: player)
+            let pFirst = pPlan.priority != wPlan.priority
+                ? pPlan.priority > wPlan.priority
+                : player.effectiveSpeed >= wild.effectiveSpeed
+            let order: [(Battler, Battler, Bool, Int?)] = pFirst
+                ? [(player, wild, true, pPlan.moveId), (wild, player, false, wPlan.moveId)]
+                : [(wild, player, false, wPlan.moveId), (player, wild, true, pPlan.moveId)]
+
+            for (atk, def, isPlayer, planned) in order {
+                guard !battleOver(), !atk.isFainted, !def.isFainted else { continue }
                 // Throw a ball instead of attacking when the wild is catchable:
-                // hurt to half or carrying a status (max 3 throws per battle —
-                // threshold sized so mainline-power hits don't skip the window).
+                // hurt to half or carrying a status (max 3 throws per battle).
                 if isPlayer, !stock.isEmpty, used.count < 3,
                    wild.currentHP * 100 <= wild.maxHP * 50 || wild.status != nil {
                     let ball = stock.removeFirst()
@@ -188,31 +867,30 @@ enum BattleEngine {
                         wildAsleep: wild.status == .sleep))
                     continue
                 }
-                act(attacker: atk, defender: def, actorIsPlayer: isPlayer,
-                    turn: turn, events: &events)
+                act(atk, def, isPlayer: isPlayer, planned: planned)
             }
             guard !captured else { break }
-            // End-of-round chip damage (burn 1/16, poison 1/8).
-            for (b, isPlayer) in [(player, true), (wild, false)] {
-                guard !b.isFainted, let s = b.status, s == .burn || s == .poison else { continue }
-                let dmg = max(1, b.maxHP / (s == .burn ? 16 : 8))
-                b.currentHP = max(0, b.currentHP - dmg)
-                events.append(BattleEvent(
-                    kind: .residual, actorIsPlayer: isPlayer, moveId: 0, moveName: s.rawValue,
-                    damage: dmg, effectiveness: 1, targetIsPlayer: isPlayer,
-                    targetHP: b.currentHP, targetMaxHP: b.maxHP, fainted: b.isFainted,
-                    statusApplied: nil, turn: turn,
-                    playerAsleep: player.status == .sleep,
-                    wildAsleep: wild.status == .sleep))
-            }
+            endOfRound()
         }
+
         let playerWon = !player.isFainted && wild.isFainted
         return BattleResult(
             playerWon: playerWon, events: events,
             expGained: playerWon ? expFor(defeated: wild) : 0,
             playerEndStatus: player.status?.rawValue,
             playerEndHP: player.currentHP, playerMaxHP: player.maxHP,
-            captured: captured, ballsUsed: used)
+            captured: captured, ballsUsed: used,
+            playerFled: playerFled, wildFled: wildFled)
+    }
+
+    /// Pre-pick a battler's action so priority can order the round. Forced
+    /// turns (recharge, charging release, bide) carry their own priority.
+    static func plan(_ atk: Battler, vs def: Battler) -> (moveId: Int?, priority: Int) {
+        if atk.mustRecharge { return (nil, 0) }
+        if let charging = atk.chargingMove { return (charging, MoveMechanics.priority(of: charging)) }
+        if atk.bideTurns > 0 { return (nil, 1) }   // Bide releases at +1 (Gen 1/2)
+        let id = chooseMove(attacker: atk, defender: def)
+        return (id, MoveMechanics.priority(of: id))
     }
 
     /// One ball throw, mainline Gen-3/4 formula: modified rate from HP, catch
@@ -224,97 +902,112 @@ enum BattleEngine {
         var a = (3 * m - 2 * h) * rate * ball.ballBonus / (3 * m)
         switch wild.status {
         case .sleep, .freeze: a *= 2.0
-        case .paralysis, .poison, .burn: a *= 1.5
-        case nil: break
+        case .burn, .poison, .paralysis: a *= 1.5
+        default: break
         }
         if a >= 255 { return (true, 4) }
-        let b = 1048560.0 / (16711680.0 / max(1, a)).squareRoot().squareRoot()
+        let b = 1_048_560.0 / (16_711_680.0 / a).squareRoot().squareRoot()
         var shakes = 0
-        for _ in 0..<4 {
-            guard Double(Int.random(in: 0..<65536)) < b else { break }
+        while shakes < 4, Double.random(in: 0..<65_536) < b {
             shakes += 1
         }
         return (shakes == 4, shakes)
     }
 
-    /// One battler's action for the round: status gates, accuracy, damage, ailment.
-    private static func act(attacker: Battler, defender: Battler,
-                            actorIsPlayer: Bool, turn: Int, events: inout [BattleEvent]) {
-        func emit(_ kind: BattleEvent.Kind, move: MoveData? = nil, reason: String = "",
-                  damage: Int = 0, eff: Double = 1, targetIsPlayer: Bool? = nil,
-                  status: String? = nil) {
-            let tgtIsPlayer = targetIsPlayer ?? !actorIsPlayer
-            let tgt = tgtIsPlayer == actorIsPlayer ? attacker : defender
-            let player = actorIsPlayer ? attacker : defender
-            let wild = actorIsPlayer ? defender : attacker
-            events.append(BattleEvent(
-                kind: kind, actorIsPlayer: actorIsPlayer,
-                moveId: move?.moveId ?? 0, moveName: move?.displayName ?? reason,
-                damage: damage, effectiveness: eff, targetIsPlayer: tgtIsPlayer,
-                targetHP: tgt.currentHP, targetMaxHP: tgt.maxHP, fainted: tgt.isFainted,
-                statusApplied: status, turn: turn,
-                playerAsleep: player.status == .sleep, wildAsleep: wild.status == .sleep))
-        }
-
-        // --- major status action gates -------------------------------------
-        switch attacker.status {
-        case .sleep:
-            attacker.sleepTurns -= 1
-            if attacker.sleepTurns > 0 { emit(.skip, reason: "asleep"); return }
-            attacker.status = nil
-            emit(.recover, reason: "woke up", targetIsPlayer: actorIsPlayer)
-        case .freeze:
-            if Int.random(in: 0..<100) < 20 {
-                attacker.status = nil
-                emit(.recover, reason: "thawed", targetIsPlayer: actorIsPlayer)
-            } else { emit(.skip, reason: "frozen"); return }
-        case .paralysis:
-            if Int.random(in: 0..<100) < 25 { emit(.skip, reason: "paralyzed"); return }
-        default: break
-        }
-
-        // --- volatile gates -------------------------------------------------
-        if attacker.confusionTurns > 0 {
-            attacker.confusionTurns -= 1
-            if attacker.confusionTurns == 0 {
-                emit(.recover, reason: "snapped out", targetIsPlayer: actorIsPlayer)
-            } else if Int.random(in: 0..<3) == 0 {
-                // Hurt itself: typeless physical, power on the EoS scale (~40 mainline).
-                let base = ((2.0 * Double(attacker.level) / 5.0 + 2.0) * 8.0
-                            * Double(attacker.stats.atk) / Double(max(1, attacker.stats.def))) / 50.0 + 2.0
-                let dmg = max(1, Int(base * Double.random(in: 0.85...1.0)))
-                attacker.currentHP = max(0, attacker.currentHP - dmg)
-                emit(.selfHit, reason: "hurt itself", damage: dmg, targetIsPlayer: actorIsPlayer)
-                return
+    /// Whether `id` can DO something right now — mechanics-aware (D19 + this
+    /// change: the mechanics table makes most formerly-dead moves selectable).
+    static func usable(_ id: Int, attacker: Battler, defender: Battler) -> Bool {
+        guard let m = GameData.moves[id] else { return false }
+        if let mech = MoveMechanics.mechanic(for: id) {
+            switch mech {
+            case .plain, .fixedDamage, .levelDamage, .psywave, .multiHit,
+                 .recoil, .crashOnMiss, .recharge, .charge, .explosion,
+                 .magnitude, .present, .payback, .revenge, .bide, .memento,
+                 .metronome, .splash, .fleeSelf, .fleeFoe, .futureSight, .trap:
+                return true
+            case .counterPhysical, .counterSpecial:
+                return true   // gambles on being hit first, like the games
+            case .superFang: return defender.currentHP > 1
+            case .ohko: return attacker.level >= defender.level
+            case .endeavor: return defender.currentHP > attacker.currentHP
+            case .drain:
+                return m.displayName != "Dream Eater" || defender.status == .sleep
+            case .healSelf, .wish:
+                return attacker.currentHP * 3 <= attacker.maxHP * 2
+            case .rest:
+                return attacker.currentHP * 2 <= attacker.maxHP
+                    || (attacker.status != nil && attacker.status != .sleep)
+            case .cureStatus:
+                return attacker.status != nil && attacker.status != .sleep
+            case .statSelf(let list):
+                return list.contains { $0.1 > 0 ? attacker.stage($0.0) < 6 : attacker.stage($0.0) > -6 }
+            case .statFoe(let list):
+                return defender.mistRounds == 0 && list.contains { defender.stage($0.0) > -6 }
+            case .bellyDrum:
+                return attacker.stage(.atk) < 6 && attacker.currentHP * 2 > attacker.maxHP
+            case .haze:
+                return attacker.stages.values.contains { $0 != 0 }
+                    || defender.stages.values.contains { $0 != 0 }
+            case .screen(let physical):
+                return physical ? attacker.reflectRounds == 0 : attacker.lightScreenRounds == 0
+            case .safeguard: return attacker.safeguardRounds == 0
+            case .mist: return attacker.mistRounds == 0
+            case .leechSeed:
+                return !defender.seeded && defender.type1 != "Grass" && defender.type2 != "Grass"
+            case .curse:
+                let ghost = attacker.type1 == "Ghost" || attacker.type2 == "Ghost"
+                return ghost ? !defender.ghostCursed
+                             : (attacker.stage(.atk) < 6 || attacker.stage(.def) < 6)
+            case .nightmare: return defender.status == .sleep && !defender.nightmared
+            case .yawn:
+                return defender.status == nil && defender.yawnCounter == 0
+                    && defender.safeguardRounds == 0
+            case .perishSong: return attacker.perishCount < 0 && defender.perishCount < 0
+            case .destinyBond: return !attacker.destinyBond
+            case .painSplit: return defender.currentHP > attacker.currentHP
+            case .mirrorMove:
+                return (defender.lastMoveUsed.flatMap { GameData.moves[$0]?.effectivePower } ?? 0) > 0
+            case .mimic: return defender.lastMoveUsed != nil
+            case .transform: return !attacker.transformed
             }
         }
-        if attacker.infatuated, Int.random(in: 0..<2) == 0 {
-            emit(.skip, reason: "infatuated"); return
+        if m.power > 0 { return true }
+        switch m.ailment {
+        case "confusion":
+            return defender.confusionTurns == 0 && defender.safeguardRounds == 0
+        case "infatuation":
+            return !defender.infatuated
+        case .some(let a) where Ailment(rawValue: a) != nil:
+            return defender.status == nil && defender.safeguardRounds == 0
+        default:
+            return false
         }
+    }
 
-        // --- pick + resolve the move ----------------------------------------
-        let moveId = chooseMove(attacker: attacker, defender: defender)
-        guard let m = GameData.moves[moveId] else { return }
-        let eff = TypeChart.multiplier(m.type, vs: defender.type1, defender.type2)
+    /// Mainline wild behavior: a uniformly random pick from the usable moves
+    /// (no PP, by design). Nothing usable → Struggle, exactly like the games.
+    static func chooseMove(attacker: Battler, defender: Battler) -> Int {
+        let pool = attacker.moves.filter { usable($0, attacker: attacker, defender: defender) }
+        return pool.randomElement() ?? MoveMechanics.struggleId
+    }
 
-        // Accuracy roll (EoS accuracy; values outside 1...100 always hit).
-        if (1...100).contains(m.accuracy), Int.random(in: 1...100) > m.accuracy {
-            emit(.miss, move: m); return
-        }
-        // Type immunity blocks damage and status alike (e.g. Thunder Wave on Ground).
-        if eff == 0 { emit(.miss, move: m, eff: 0); return }
-
-        var dmg = 0
-        if m.power > 0 {
-            dmg = computeDamage(attacker: attacker, defender: defender, move: m, eff: eff)
-            defender.currentHP = max(0, defender.currentHP - dmg)
-        }
-        let inflicted = applyAilment(of: m, from: attacker, to: defender)
-        if m.power <= 0 && inflicted == nil {
-            // A status move that changed nothing (already statused / gender fail).
-            emit(.miss, move: m); return
-        }
-        emit(.attack, move: m, damage: dmg, eff: eff, status: inflicted)
+    /// Simplified mainline damage: level/stat/power scaling × STAB × type ×
+    /// random, with stat stages and Reflect/Light Screen. Burn halves physical
+    /// attack (D19). `powerOverride` is on the mainline power scale.
+    static func computeDamage(attacker: Battler, defender: Battler, move m: MoveData,
+                              eff: Double, powerOverride: Int? = nil) -> Int {
+        let physical = m.category == "Physical"
+        var a = Double(physical ? attacker.stats.atk : attacker.stats.spAtk)
+        a *= MoveMechanics.stageMultiplier(attacker.stage(physical ? .atk : .spa))
+        if physical && attacker.status == .burn { a /= 2 }
+        var d = Double(max(1, physical ? defender.stats.def : defender.stats.spDef))
+        d *= MoveMechanics.stageMultiplier(defender.stage(physical ? .def : .spd))
+        let power = Double(powerOverride ?? m.effectivePower)
+        var base = ((2.0 * Double(attacker.level) / 5.0 + 2.0) * power * a / d) / 50.0 + 2.0
+        if physical ? defender.reflectRounds > 0 : defender.lightScreenRounds > 0 { base /= 2 }
+        let stab = (m.type == attacker.type1 || m.type == attacker.type2) ? 1.5 : 1.0
+        let rand = Double.random(in: 0.85...1.0)
+        return max(1, Int(base * stab * eff * rand))
     }
 
     /// Try to inflict `m`'s ailment on `def`; returns its name when applied.
@@ -323,7 +1016,7 @@ enum BattleEngine {
               Int.random(in: 1...100) <= m.effectiveAilmentChance else { return nil }
         switch name {
         case "confusion":
-            guard def.confusionTurns == 0 else { return nil }
+            guard def.confusionTurns == 0, def.safeguardRounds == 0 else { return nil }
             def.confusionTurns = Int.random(in: 2...5)
             return name
         case "infatuation":
@@ -334,7 +1027,8 @@ enum BattleEngine {
             def.infatuated = true
             return name
         default:
-            guard let ail = Ailment(rawValue: name), def.status == nil else { return nil }
+            guard let ail = Ailment(rawValue: name), def.status == nil,
+                  def.safeguardRounds == 0 else { return nil }
             // Type-based immunities: Fire can't burn, Electric can't be paralyzed
             // by electric moves is a gen-6 rule — keep just the classic pair.
             if ail == .burn, def.type1 == "Fire" || def.type2 == "Fire" { return nil }
@@ -345,39 +1039,6 @@ enum BattleEngine {
             if ail == .sleep { def.sleepTurns = Int.random(in: 1...3) }
             return name
         }
-    }
-
-    /// Mainline wild-Pokémon behavior: no AI, a uniformly random pick from the
-    /// known moves (no PP — moves are usable without limit, by design). Only
-    /// moves that can DO something in this engine are candidates — damaging
-    /// moves always; a status move only while its (supported) ailment could
-    /// still land (unimplemented stat-stage moves like Tail Whip would just
-    /// burn the turn, so they're excluded).
-    static func chooseMove(attacker: Battler, defender: Battler) -> Int {
-        let usable = attacker.moves.filter { id in
-            guard let m = GameData.moves[id] else { return false }
-            if m.power > 0 { return true }
-            switch m.ailment {
-            case "confusion": return defender.confusionTurns == 0
-            case "infatuation": return !defender.infatuated
-            case .some(let a) where Ailment(rawValue: a) != nil: return defender.status == nil
-            default: return false
-            }
-        }
-        return usable.randomElement() ?? attacker.moves.first ?? 154
-    }
-
-    /// Simplified mainline damage: level/stat/power scaling × STAB × type × random,
-    /// with mainline base powers (effectivePower). Burn halves physical attack (D19).
-    static func computeDamage(attacker: Battler, defender: Battler, move m: MoveData, eff: Double) -> Int {
-        let physical = m.category == "Physical"
-        var a = Double(physical ? attacker.stats.atk : attacker.stats.spAtk)
-        if physical && attacker.status == .burn { a /= 2 }
-        let d = Double(max(1, physical ? defender.stats.def : defender.stats.spDef))
-        let base = ((2.0 * Double(attacker.level) / 5.0 + 2.0) * Double(m.effectivePower) * a / d) / 50.0 + 2.0
-        let stab = (m.type == attacker.type1 || m.type == attacker.type2) ? 1.5 : 1.0
-        let rand = Double.random(in: 0.85...1.0)
-        return max(1, Int(base * stab * eff * rand))
     }
 
     /// EXP for a win: the mainline formula, base experience × level / 7 (D6-1).

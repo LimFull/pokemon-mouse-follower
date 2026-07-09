@@ -332,7 +332,21 @@ final class BattleController {
             case "frozen": text = "Frozen!"; color = NSColor(srgbRed: 0.55, green: 0.85, blue: 0.95, alpha: 1)
             case "paralyzed": text = "Paralyzed!"; color = NSColor(srgbRed: 0.98, green: 0.85, blue: 0.25, alpha: 1)
             case "infatuated": text = "In love!"; color = NSColor(srgbRed: 0.98, green: 0.55, blue: 0.72, alpha: 1)
+            case "charging": text = "Charging.."; color = NSColor(srgbRed: 0.98, green: 0.80, blue: 0.35, alpha: 1)
+            case "recharging": text = "Recharging.."; color = NSColor(srgbRed: 0.75, green: 0.78, blue: 0.85, alpha: 1)
+            case "storing": text = "Storing energy.."; color = NSColor(srgbRed: 0.75, green: 0.78, blue: 0.85, alpha: 1)
+            case "fled": text = "Fled!"; color = NSColor(srgbRed: 0.75, green: 0.78, blue: 0.85, alpha: 1)
             default: break
+            }
+        case .attack where e.damage == 0:
+            // Mechanic tags: stat stages ("DEF -1"), "transformed!", walls,
+            // "nothing happened" — anything that isn't a persisted ailment.
+            if let tag = e.statusApplied, Ailment(rawValue: tag) == nil,
+               !["confusion", "infatuation"].contains(tag) {
+                overActor = e.targetIsPlayer == e.actorIsPlayer
+                text = tag
+                color = tag.contains("-") ? NSColor(srgbRed: 0.55, green: 0.65, blue: 0.95, alpha: 1)
+                                          : NSColor(srgbRed: 0.98, green: 0.72, blue: 0.30, alpha: 1)
             }
         default:
             return
@@ -479,10 +493,14 @@ final class BattleController {
 
         // Track the major ailment the playback has shown on the follower so
         // far — a flee (cancelBattle) takes it home along with the gauge HP.
-        // Volatiles (confusion/infatuation) don't persist, so they're skipped;
-        // "snapped out" is confusion recovering, not an ailment cure.
+        // Volatiles (confusion/infatuation) don't persist, so they're skipped.
+        // Only genuine cures clear it: HP-restoring recovers (drains, Recover,
+        // Wish) and confusion's "snapped out" leave the ailment alone.
         if e.targetIsPlayer, let s = e.statusApplied, Ailment(rawValue: s) != nil { curPStatus = s }
-        if e.kind == .recover, e.targetIsPlayer, e.moveName != "snapped out" { curPStatus = nil }
+        if e.kind == .recover, e.targetIsPlayer,
+           ["woke up", "thawed", "Refresh", "Heal Bell", "Aromatherapy"].contains(e.moveName) {
+            curPStatus = nil
+        }
 
         effects = []
         ballFrame = nil
@@ -561,8 +579,12 @@ final class BattleController {
             }
             if e.moveName == "asleep" { curTicks = 46 }   // let the sleep pose breathe
         case .recover:
-            impactAt = 0; hitAt = 0; drainEnd = 0
-            curTicks = 28
+            // HP restores (drain heals, Recover, Wish, ...) animate the gauge
+            // back up — the lerp is direction-agnostic. Pure cures ("woke up")
+            // carry an unchanged snapshot and stay flat.
+            impactAt = 6; hitAt = 8
+            drainEnd = hitAt + 22
+            curTicks = drainEnd + 12
         }
     }
 
@@ -601,6 +623,13 @@ final class BattleController {
             endTicks = levelUpTo != nil ? (fast ? 60 : 130) : (fast ? 40 : 90)
             endTotal = endTicks
             phase = .ending                 // the beaten wild fades away
+        } else if result?.wildFled == true {
+            // The wild teleported / was roared away: it slips off with no
+            // spoils — fade it out like a win, minus the EXP.
+            ballFrame = nil
+            endTicks = fast ? 30 : 60
+            endTotal = endTicks
+            phase = .ending
         } else {
             ballFrame = nil
             // My mon fainted (it now stays down where it fell). The wild is NOT

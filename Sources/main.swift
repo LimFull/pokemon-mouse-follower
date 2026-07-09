@@ -1825,6 +1825,60 @@ if CommandLine.arguments.contains("--selftest-raising") {
         let kinds = Set(r.events.map { "\($0.kind)" })
         print("status battle: Pikachu vs Pidgey → statuses=\(statuses) kinds=\(kinds.sorted())")
     }
+    // Special move mechanics (MoveMechanics): the table resolves, Transform
+    // fires and copies the foe, empty movesets Struggle, stat stages bend the
+    // damage math, and random matchups never hang the 200-round cap logic.
+    do {
+        let mapped = GameData.moves.keys.filter { MoveMechanics.mechanic(for: $0) != nil }.count
+        print("mechanics: \(mapped) moves mapped, struggle=\(GameData.moves[MoveMechanics.struggleId]?.displayName ?? "?")")
+        if let ditto = Battler(wildDex: 132, level: 20), let bird = Battler(wildDex: 16, level: 18) {
+            let r = BattleEngine.run(player: ditto, wild: bird)
+            let transformed = r.events.contains { $0.statusApplied == "transformed!" }
+            print("ditto: transformed=\(transformed) in \(r.events.count) events (expect true)")
+        }
+        if let sm = Battler(wildDex: 235, level: 10), let d = Battler(wildDex: 16, level: 10) {
+            let pick = BattleEngine.chooseMove(attacker: sm, defender: d)
+            print("smeargle first pick: \(GameData.moves[pick]?.displayName ?? "?") (expect Struggle)")
+        }
+        if let a = Battler(wildDex: 19, level: 20), let b = Battler(wildDex: 19, level: 20),
+           let tackle = GameData.moves.values.first(where: { $0.displayName == "Tackle" }) {
+            let base = (0..<300).map { _ in BattleEngine.computeDamage(attacker: a, defender: b, move: tackle, eff: 1) }.reduce(0, +)
+            b.stages[.def] = -6
+            let lowered = (0..<300).map { _ in BattleEngine.computeDamage(attacker: a, defender: b, move: tackle, eff: 1) }.reduce(0, +)
+            print("stages: -6 DEF -> x\(String(format: "%.1f", Double(lowered) / Double(max(1, base)))) damage (expect ~4.0)")
+        }
+        // Zero-usable movesets after the table: only "copy the foe's move
+        // first" sets and pure field-sport sets should remain — they Struggle,
+        // mainline-style, instead of whiffing forever.
+        var dead = Set<Int>()
+        if let dummy = Battler(wildDex: 16, level: 20) {
+            for (dex, s) in GameData.species {
+                for L in stride(from: 2, through: 100, by: 3) {
+                    let ms = Array(s.levelUpMoves.filter { $0.level <= L }.map { $0.moveId }.suffix(4))
+                    guard !ms.isEmpty, let me = Battler(wildDex: dex, level: L) else { continue }
+                    if !ms.contains(where: { BattleEngine.usable($0, attacker: me, defender: dummy) }) {
+                        dead.insert(dex)
+                    }
+                }
+            }
+        }
+        print("zero-usable windows remain: \(dead.sorted()) (Struggle covers them)")
+        var fuzzEvents = 0, fuzzBattles = 0
+        for _ in 0..<40 {
+            let l = Int.random(in: 3...60)
+            guard let x = Battler(wildDex: GameData.species.keys.randomElement()!, level: l),
+                  let y = Battler(wildDex: GameData.species.keys.randomElement()!, level: max(2, l + Int.random(in: -5...5)))
+            else { continue }
+            let r = BattleEngine.run(player: x, wild: y)
+            fuzzBattles += 1
+            fuzzEvents += r.events.count
+            let turns = r.events.map(\.turn)
+            if zip(turns, turns.dropFirst()).contains(where: { $0 > $1 }) {
+                print("FUZZ FAILURE: non-monotonic turn stamps")
+            }
+        }
+        print("fuzz: \(fuzzBattles) random battles, \(fuzzEvents) events, all terminated")
+    }
     // Move-effect sprites (D22): mapping + frames load from the bundle.
     print("move effects mapped=\(MoveEffects.map.count)")
     for (label, id) in [("Tackle", 154), ("Ember", 262), ("Thunderbolt", 129)] {
