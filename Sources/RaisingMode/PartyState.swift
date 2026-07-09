@@ -33,7 +33,6 @@ struct OwnedPokemon: Codable {
     var exp: Int              // total accumulated experience
     var currentHP: Int
     var moves: [Int]          // up to 4 move ids
-    var pp: [Int]?            // current PP per slot (nil in pre-PP saves)
     var gender: Gender
     var status: String?       // volatile/major status (nil = healthy); detailed in Phase 2
 
@@ -42,24 +41,19 @@ struct OwnedPokemon: Codable {
     var maxHP: Int { stats?.hp ?? max(currentHP, 1) }
     var isFainted: Bool { currentHP <= 0 }
 
-    /// Max PP per move slot, from the move data.
-    var maxPP: [Int] { moves.map { GameData.moves[$0]?.pp ?? 0 } }
-
-    /// Current PP per slot, safe against pre-PP saves and moveset edits.
-    var currentPP: [Int] {
-        let mx = maxPP
-        guard let pp, pp.count == moves.count else { return mx }
-        return zip(pp, mx).map { min(max(0, $0), $1) }
-    }
-
-    /// Repair the PP array after load/moveset changes (missing -> full).
-    mutating func normalizePP() { pp = currentPP }
-
-    /// Fully restore HP, PP (D23 daily heal includes PP) and clear status.
+    /// Fully restore HP and clear status.
     mutating func heal() {
         currentHP = maxHP
-        pp = maxPP
         status = nil
+    }
+
+    /// "3h 12m" until the next daily heal (local midnight, D23) revives this
+    /// mon — shown for fainted members so a reset isn't tempting.
+    static var timeUntilDailyHeal: String {
+        let cal = Calendar.current
+        let midnight = cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: Date())) ?? Date()
+        let mins = max(0, Int(midnight.timeIntervalSince(Date())) / 60)
+        return mins >= 60 ? "\(mins / 60)h \(mins % 60)m" : "\(mins)m"
     }
 
     /// Progress toward the next level: EXP still needed and the 0...1 fill of
@@ -92,7 +86,6 @@ final class RaisingState {
 
     private init() {
         save = RaisingState.loadFromDisk() ?? RaisingSave()
-        for i in save.party.indices { save.party[i].normalizePP() }   // pre-PP saves
     }
 
     var party: [OwnedPokemon] { save.party }
@@ -139,17 +132,14 @@ final class RaisingState {
     /// gender-locked species come out right via the species' gender_rate).
     func makeMon(species s: SpeciesData, level: Int) -> OwnedPokemon {
         let hp = GameData.stats(s, level: level).hp
-        var mon = OwnedPokemon(
+        return OwnedPokemon(
             dex: s.dex,
             level: level,
             exp: s.expCurve.indices.contains(level - 1) ? s.expCurve[level - 1] : 0,
             currentHP: hp,
             moves: s.initialMoves(atLevel: level),
-            pp: nil,
             gender: Gender.random(genderRate: s.genderRate),
             status: nil)
-        mon.normalizePP()
-        return mon
     }
 
     // MARK: party ops (D14)
@@ -170,17 +160,14 @@ final class RaisingState {
     /// status, like the mainline games (D11).
     func capturedMon(from wild: Battler) -> OwnedPokemon? {
         guard let s = GameData.species[wild.dex] else { return nil }
-        var mon = OwnedPokemon(
+        return OwnedPokemon(
             dex: wild.dex,
             level: wild.level,
             exp: s.expCurve.indices.contains(wild.level - 1) ? s.expCurve[wild.level - 1] : 0,
             currentHP: max(1, wild.currentHP),
             moves: wild.moves,
-            pp: wild.pp,                    // keeps its spent PP, like mainline
             gender: wild.gender,
             status: wild.status?.rawValue)
-        mon.normalizePP()
-        return mon
     }
 
     /// Add a wild mon caught in battle (party must have room).
@@ -265,7 +252,6 @@ final class RaisingState {
             for m in s.levelUpMoves where m.level == next && !save.party[i].moves.contains(m.moveId) {
                 if save.party[i].moves.count < 4 {
                     save.party[i].moves.append(m.moveId)
-                    save.party[i].pp = save.party[i].currentPP + [GameData.moves[m.moveId]?.pp ?? 0]
                     r.learnedMoves.append(m.moveId)
                 } else {
                     r.pendingMoves.append(m.moveId)
@@ -293,14 +279,12 @@ final class RaisingState {
     /// evolution via gainExp), and switch to the next non-fainted party member
     /// if it fainted (D10).
     @discardableResult
-    func applyBattleOutcome(playerHP: Int, status: String?, pp: [Int]? = nil,
-                            won: Bool, expGained: Int) -> GrowthResult {
+    func applyBattleOutcome(playerHP: Int, status: String?, won: Bool, expGained: Int) -> GrowthResult {
         var result = GrowthResult()
         let i = save.activeIndex
         guard save.party.indices.contains(i) else { return result }
         save.party[i].currentHP = max(0, min(save.party[i].maxHP, playerHP))
         save.party[i].status = save.party[i].isFainted ? nil : status
-        if let pp, pp.count == save.party[i].moves.count { save.party[i].pp = pp }
         if won && expGained > 0 { result = gainExp(expGained) }   // persists + may evolve/notify
         if save.party[i].isFainted, let next = save.party.indices.first(where: { !save.party[$0].isFainted }) {
             save.activeIndex = next
@@ -318,9 +302,6 @@ final class RaisingState {
         guard save.party.indices.contains(i) else { return }
         if let slot, save.party[i].moves.indices.contains(slot) {
             save.party[i].moves[slot] = moveId
-            var pp = save.party[i].currentPP
-            pp[slot] = GameData.moves[moveId]?.pp ?? 0   // a fresh move starts full
-            save.party[i].pp = pp
             persist()
             notifyChanged()
         }

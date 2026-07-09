@@ -27,8 +27,10 @@ struct BattleScene {
     var playerPoseTick: Int = 0
     var wildLevel: Int?                   // shown above the wild's head
     var playerDodge: CGPoint = .zero      // sidestep offset while evading a miss
-    var missPos: CGPoint?                 // floating "Miss" text position
-    var missAlpha: Double = 0
+    var floatText: String?                // floating combat tag ("Miss", "Super Effective!", ...)
+    var floatPos: CGPoint = .zero
+    var floatAlpha: Double = 0
+    var floatColor: CGColor = CGColor(gray: 1, alpha: 1)
 }
 
 final class BattleController {
@@ -57,8 +59,10 @@ final class BattleController {
     private var playerPose: (BattlePose, Int) = (.stand, 0)   // pose + its tick
     private var playerDodge = CGPoint.zero
     private var wildDodge = CGPoint.zero
-    private var missPos: CGPoint?
-    private var missAlpha = 0.0
+    private var floatText: String?
+    private var floatPos = CGPoint.zero
+    private var floatAlpha = 0.0
+    private var floatColor = CGColor(gray: 1, alpha: 1)
     private var lastTracedWildPose = BattlePose.stand   // PMF_TRACE_BATTLE only
     private var curPHP = 1.0, curWHP = 1.0
     private var pFrom = 1.0, pTo = 1.0, wFrom = 1.0, wTo = 1.0
@@ -185,6 +189,7 @@ final class BattleController {
         flashW = flashing && !e.targetIsPlayer
         tickDodge(e)
         tickLunge(e)
+        tickFloatText(e)
         if e.kind == .ball { tickBall(e) }
         if !effects.isEmpty {
             effects[0].advance()
@@ -194,10 +199,10 @@ final class BattleController {
         if evTick >= curTicks { evTick = 0; evIdx += 1 }
     }
 
-    /// Miss handling (#10): the defender sidesteps (out and back, perpendicular
-    /// to the attack line) while a "Miss" tag floats up over its head.
+    /// Miss handling (#10): the defender sidesteps out and back, perpendicular
+    /// to the attack line.
     private func tickDodge(_ e: BattleEvent) {
-        playerDodge = .zero; wildDodge = .zero; missPos = nil; missAlpha = 0
+        playerDodge = .zero; wildDodge = .zero
         guard e.kind == .miss, e.moveId > 0 else { return }
         let scale = AppSettings.shared.scale
         let defenderPos = e.targetIsPlayer ? playerPos : (wildMon?.pos ?? playerPos)
@@ -211,13 +216,36 @@ final class BattleController {
             let off = CGPoint(x: -dy * amp, y: dx * amp)
             if e.targetIsPlayer { playerDodge = off } else { wildDodge = off }
         }
-        let textSpan = 40
-        if evTick >= impactAt, evTick < impactAt + textSpan {
-            let t = Double(evTick - impactAt) / Double(textSpan)
-            missPos = CGPoint(x: defenderPos.x,
-                              y: defenderPos.y + (26 + CGFloat(t) * 14) * scale)
-            missAlpha = 1.0 - t * 0.8
+    }
+
+    /// Floating combat tag over the defender at impact: "Miss"/"No Effect" on
+    /// a whiff, "Super Effective!"/"Not Very Effective.." by type matchup.
+    private func tickFloatText(_ e: BattleEvent) {
+        floatText = nil; floatAlpha = 0
+        var text: String?
+        var color = NSColor(srgbRed: 1.0, green: 0.85, blue: 0.3, alpha: 1)   // miss yellow
+        switch e.kind {
+        case .miss where e.moveId > 0:
+            text = e.effectiveness == 0 ? "No Effect" : "Miss"
+        case .attack where e.damage > 0 && e.effectiveness > 1:
+            text = "Super Effective!"
+            color = NSColor(srgbRed: 1.0, green: 0.45, blue: 0.25, alpha: 1)
+        case .attack where e.damage > 0 && e.effectiveness > 0 && e.effectiveness < 1:
+            text = "Not Very Effective.."
+            color = NSColor(srgbRed: 0.75, green: 0.78, blue: 0.85, alpha: 1)
+        default:
+            return
         }
+        let span = 44
+        guard let text, evTick >= impactAt, evTick < impactAt + span else { return }
+        let scale = AppSettings.shared.scale
+        let defenderPos = e.targetIsPlayer ? playerPos : (wildMon?.pos ?? playerPos)
+        let t = Double(evTick - impactAt) / Double(span)
+        floatText = text
+        floatPos = CGPoint(x: defenderPos.x,
+                           y: defenderPos.y + (26 + CGFloat(t) * 14) * scale)
+        floatAlpha = 1.0 - t * 0.8
+        floatColor = color.cgColor
     }
 
     /// Contact-move lunge: the attacker physically darts at the defender,
@@ -378,7 +406,6 @@ final class BattleController {
             for b in r.ballsUsed { st.consumeItem(b) }
             let expIdx = st.save.activeIndex        // who fought (before faint swap)
             let growth = st.applyBattleOutcome(playerHP: r.playerEndHP, status: r.playerEndStatus,
-                                               pp: r.playerEndPP,
                                                won: r.playerWon, expGained: r.expGained)
             // A 5th move needs a replace decision — on-overlay prompt (C1/#5).
             for moveId in growth.pendingMoves {
@@ -444,7 +471,8 @@ final class BattleController {
             playerPoseTick: playerPose.1,
             wildLevel: wild?.level,
             playerDodge: playerDodge,
-            missPos: missPos, missAlpha: missAlpha)
+            floatText: floatText, floatPos: floatPos,
+            floatAlpha: floatAlpha, floatColor: floatColor)
     }
 
     // MARK: helpers

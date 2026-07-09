@@ -56,7 +56,7 @@ final class PromptCenter: NSObject {
         let newName = GameData.moves[moveId]?.displayName ?? "Move \(moveId)"
         var subtitle = Characters.displayName(String(format: "%03d", mon.dex))
         if let m = GameData.moves[moveId] {
-            subtitle += "  ·  \(m.type ?? "—")  PP \(m.pp)"
+            subtitle += "  ·  \(m.type ?? "—")"
             if m.power > 0 { subtitle += "  \(L("move.power")) \(m.power)" }
             subtitle += "  \(L("move.accuracy")) \(m.accuracyText)"
         }

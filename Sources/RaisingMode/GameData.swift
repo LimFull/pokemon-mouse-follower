@@ -136,10 +136,6 @@ enum GameData {
         .filter { $0.isBaseForm }
         .sorted { $0.dex < $1.dex }
 
-    /// Struggle — the no-PP-left fallback move (mainline behavior).
-    static let struggleId: Int =
-        moves.first { $0.value.names["e"] == "Struggle" }?.key ?? 154
-
     /// Lowest level a wild of `dex` may appear at: an evolved form can't show
     /// up below the LEVEL-evolution thresholds along its pre-evo chain
     /// (no Lv5 Butterfree — design D1-3 refined). Item/trade stages add none.

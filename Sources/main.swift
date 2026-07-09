@@ -620,7 +620,7 @@ final class SpriteView: NSView {
     private let pHPTrack = CALayer(); private let pHPFill = CALayer()
     private let wHPTrack = CALayer(); private let wHPFill = CALayer()
     private let levelLabel = CATextLayer()   // "Lv.n" above the wild's head
-    private let missLabel = CATextLayer()    // floating "Miss" tag on a dodge
+    private let floatLabel = CATextLayer()   // floating combat tag (Miss / effectiveness)
     // Evolution burst: radial white glow over the follower (design D8/#9).
     private let glowLayer = CAGradientLayer()
     var screenOrigin: CGPoint = .zero
@@ -666,15 +666,13 @@ final class SpriteView: NSView {
         levelLabel.isHidden = true
         layer?.addSublayer(levelLabel)
 
-        missLabel.alignmentMode = .center
-        missLabel.string = "Miss"
-        missLabel.foregroundColor = NSColor(srgbRed: 1.0, green: 0.85, blue: 0.3, alpha: 1).cgColor
-        missLabel.shadowColor = NSColor.black.cgColor
-        missLabel.shadowOpacity = 0.9
-        missLabel.shadowRadius = 1.5
-        missLabel.shadowOffset = CGSize(width: 0, height: -1)
-        missLabel.isHidden = true
-        layer?.addSublayer(missLabel)
+        floatLabel.alignmentMode = .center
+        floatLabel.shadowColor = NSColor.black.cgColor
+        floatLabel.shadowOpacity = 0.9
+        floatLabel.shadowRadius = 1.5
+        floatLabel.shadowOffset = CGSize(width: 0, height: -1)
+        floatLabel.isHidden = true
+        layer?.addSublayer(floatLabel)
 
         glowLayer.type = .radial
         glowLayer.colors = [CGColor(gray: 1, alpha: 0.95),
@@ -701,7 +699,7 @@ final class SpriteView: NSView {
             wildLayer.isHidden = true
             effectLayer.isHidden = true
             levelLabel.isHidden = true
-            missLabel.isHidden = true
+            floatLabel.isHidden = true
             [pHPTrack, pHPFill, wHPTrack, wHPFill].forEach { $0.isHidden = true }
             spriteLayer.opacity = 1
             return
@@ -755,18 +753,23 @@ final class SpriteView: NSView {
             levelLabel.isHidden = true
         }
 
-        // Floating "Miss" tag over a dodging defender (#10).
-        if let mp = scene.missPos {
-            let fs = min(20, max(11, 8 * s))
-            missLabel.isHidden = false
-            missLabel.contentsScale = bs
-            missLabel.font = NSFont.rounded(fs, .heavy)
-            missLabel.fontSize = fs
-            missLabel.bounds = CGRect(x: 0, y: 0, width: fs * 3.2, height: fs + 4)
-            missLabel.position = CGPoint(x: mp.x - screenOrigin.x, y: mp.y - screenOrigin.y)
-            missLabel.opacity = Float(scene.missAlpha)
+        // Floating combat tag over the defender: Miss / Super Effective! / ...
+        if let text = scene.floatText {
+            let fs = min(18, max(10, 7 * s))
+            floatLabel.isHidden = false
+            floatLabel.contentsScale = bs
+            floatLabel.font = NSFont.rounded(fs, .heavy)
+            floatLabel.fontSize = fs
+            floatLabel.string = text
+            floatLabel.foregroundColor = scene.floatColor
+            floatLabel.bounds = CGRect(x: 0, y: 0,
+                                       width: CGFloat(text.count) * fs * 0.62 + 12,
+                                       height: fs + 4)
+            floatLabel.position = CGPoint(x: scene.floatPos.x - screenOrigin.x,
+                                          y: scene.floatPos.y - screenOrigin.y)
+            floatLabel.opacity = Float(scene.floatAlpha)
         } else {
-            missLabel.isHidden = true
+            floatLabel.isHidden = true
         }
         CATransaction.commit()
     }
@@ -1599,18 +1602,8 @@ if CommandLine.arguments.contains("--selftest-raising") {
         let hurtDistinct = wm.currentFrame !== idleFrame
         print("wild pose sheets: attack distinct=\(atkDistinct) hurt distinct=\(hurtDistinct) (expect true true)")
     }
-    // PP (#4/#5/#6): battles consume it, empty moves unusable -> Struggle, heal restores.
-    if let p4 = Battler(wildDex: 25, level: 12), let w4 = Battler(wildDex: 16, level: 10) {
-        let before = p4.pp
-        _ = BattleEngine.run(player: p4, wild: w4)
-        print("pp consume: \(before) -> \(p4.pp) (expect some decrease)")
-        p4.pp = p4.pp.map { _ in 0 }
-        print("no-pp fallback: chooseMove=\(BattleEngine.chooseMove(attacker: p4, defender: w4)) (expect Struggle \(GameData.struggleId))")
-    }
-    var caterpie = st.makeMon(species: GameData.species[10]!, level: 20)
-    caterpie.heal()
-    print("heal restores pp: \(caterpie.currentPP) == max \(caterpie.maxPP)")
     // Over-leveled capture evolves on the next level (#11): Lv20 Caterpie -> Metapod at 21.
+    let caterpie = st.makeMon(species: GameData.species[10]!, level: 20)
     _ = st.addToParty(caterpie)
     st.setActive(st.party.count - 1)
     let need = (GameData.species[10]!.expCurve[20]) - caterpie.exp

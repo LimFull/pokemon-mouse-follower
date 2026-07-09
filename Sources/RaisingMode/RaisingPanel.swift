@@ -28,6 +28,21 @@ final class RaisingPanelView: NSView {
         if window != nil { refresh() }
     }
 
+    /// Keep fainted members' revive countdown fresh while the panel is open.
+    private var countdownTimer: Timer?
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        countdownTimer?.invalidate()
+        countdownTimer = nil
+        guard window != nil else { return }
+        let t = Timer(timeInterval: 60, repeats: true) { [weak self] _ in
+            guard let self, self.window != nil else { return }
+            if RaisingState.shared.party.contains(where: { $0.isFainted }) { self.refresh() }
+        }
+        RunLoop.main.add(t, forMode: .common)
+        countdownTimer = t
+    }
+
     func refresh() {
         RaisingState.shared.dailyHealIfNeeded()
         subviews.forEach { $0.removeFromSuperview() }
@@ -214,6 +229,12 @@ final class RaisingPanelView: NSView {
         if let badge = StatusBadge(mon: mon) { hpRow.addArrangedSubview(badge) }
         inner.addArrangedSubview(hpRow)
         inner.addArrangedSubview(HPBarView(current: mon.currentHP, max: mon.maxHP, width: Self.contentWidth - 28))
+        if mon.isFainted {
+            // Countdown to the daily heal (D23) that will revive it.
+            let l = monoLabel("\(L("detail.revive.in"))  \(OwnedPokemon.timeUntilDailyHeal)", 11, .semibold)
+            l.textColor = .systemRed
+            inner.addArrangedSubview(l)
+        }
 
         // Stats block (EoS model: no Speed stat).
         let st = GameData.stats(s, level: mon.level)
@@ -235,9 +256,8 @@ final class RaisingPanelView: NSView {
         // Moves (click a row to expand/collapse its type + description inline).
         inner.addArrangedSubview(divider())
         inner.addArrangedSubview(monoLabel("▶ \(L("detail.moves"))", 12, .bold))
-        let ppNow = mon.currentPP
-        for (slot, id) in mon.moves.enumerated() {
-            inner.addArrangedSubview(moveRow(id, currentPP: ppNow.indices.contains(slot) ? ppNow[slot] : 0))
+        for id in mon.moves {
+            inner.addArrangedSubview(moveRow(id))
             if expandedMove == id { inner.addArrangedSubview(moveDetailInline(id)) }
         }
 
@@ -339,22 +359,18 @@ final class RaisingPanelView: NSView {
         RaisingState.shared.learnMove(moveId, replacing: slot < mon.moves.count ? slot : nil)
     }
 
-    // A clickable move line (monospace, retro) that expands/collapses its
-    // detail. Shows current/max PP (#5); an empty move renders dimmed red.
-    private func moveRow(_ id: Int, currentPP: Int) -> NSButton {
+    // A clickable move line (monospace, retro) that expands/collapses its detail.
+    private func moveRow(_ id: Int) -> NSButton {
         let m = GameData.moves[id]
-        let name = (m?.displayName ?? "Move \(id)").padding(toLength: 14, withPad: " ", startingAt: 0)
+        let name = m?.displayName ?? "Move \(id)"
         let arrow = expandedMove == id ? "▾" : "▸"
         let b = NSButton(title: "", target: self, action: #selector(moveTapped(_:)))
         b.isBordered = false
         b.tag = id
         b.alignment = .left
-        b.attributedTitle = NSAttributedString(
-            string: "\(arrow) \(name) PP \(currentPP)/\(m?.pp ?? 0)",
-            attributes: [
-                .font: NSFont.monospacedSystemFont(ofSize: 12, weight: .regular),
-                .foregroundColor: currentPP == 0 ? NSColor.systemRed : Palette.label,
-            ])
+        b.attributedTitle = NSAttributedString(string: "\(arrow) \(name)", attributes: [
+            .font: NSFont.monospacedSystemFont(ofSize: 12, weight: .regular),
+            .foregroundColor: Palette.label])
         return b
     }
 
@@ -372,10 +388,10 @@ final class RaisingPanelView: NSView {
         box.edgeInsets = NSEdgeInsets(top: 0, left: 18, bottom: 6, right: 0)
         guard let m = GameData.moves[id] else { return box }
 
-        // Line 1: type badge + category/PP. Line 2: power/accuracy — kept on
+        // Line 1: type badge + category. Line 2: power/accuracy — kept on
         // its own row so it never overflows the card width and gets clipped.
         let meta = NSStackView(views: [TypeBadge(m.type ?? "Neutral"),
-                                       monoLabel("\(m.category ?? "")   PP \(m.pp)", 11, .medium)])
+                                       monoLabel(m.category ?? "", 11, .medium)])
         meta.orientation = .horizontal
         meta.alignment = .centerY
         meta.spacing = 8
@@ -406,7 +422,7 @@ final class RaisingPanelView: NSView {
         stack.translatesAutoresizingMaskIntoConstraints = false
         if let m = GameData.moves[id] {
             let meta = NSStackView(views: [TypeBadge(m.type ?? "Neutral"),
-                                           monoLabel("\(m.category ?? "")   PP \(m.pp)", 11, .medium)])
+                                           monoLabel(m.category ?? "", 11, .medium)])
             meta.orientation = .horizontal
             meta.alignment = .centerY
             meta.spacing = 8
@@ -579,10 +595,13 @@ final class PartyRowView: NSView {
         bar.frame = NSRect(x: 54, y: 30, width: 170, height: 8)
         addSubview(bar)
 
-        let hp = NSTextField(labelWithString: "\(mon.currentHP)/\(mon.maxHP)")
-        hp.font = .monospacedSystemFont(ofSize: 11, weight: .medium)
-        hp.textColor = Palette.label
-        hp.frame = NSRect(x: 230, y: 27, width: 66, height: 14)
+        let hp = NSTextField(labelWithString: mon.isFainted
+            ? "\(L("detail.revive.in")) \(OwnedPokemon.timeUntilDailyHeal)"
+            : "\(mon.currentHP)/\(mon.maxHP)")
+        hp.font = .monospacedSystemFont(ofSize: 10, weight: .medium)
+        hp.textColor = mon.isFainted ? .systemRed : Palette.label
+        hp.alignment = .right
+        hp.frame = NSRect(x: 180, y: 27, width: 116, height: 14)
         addSubview(hp)
 
         if let badge = StatusBadge(mon: mon) {

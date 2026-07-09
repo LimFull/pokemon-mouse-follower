@@ -53,7 +53,6 @@ final class Battler {
     let baseExp: Int
     var currentHP: Int
     let moves: [Int]
-    var pp: [Int]             // current PP per move slot
 
     // Status state (D19). `status` persists across battles for the player's mon;
     // the volatile pair below is battle-local.
@@ -69,13 +68,11 @@ final class Battler {
 
     init(dex: Int, name: String, level: Int, type1: String, type2: String?,
          stats: Stats, gender: Gender, baseExp: Int, currentHP: Int, moves: [Int],
-         pp: [Int]? = nil, status: Ailment? = nil) {
+         status: Ailment? = nil) {
         self.dex = dex; self.name = name; self.level = level
         self.type1 = type1; self.type2 = type2; self.stats = stats
         self.gender = gender; self.baseExp = baseExp
         self.currentHP = currentHP; self.moves = moves.isEmpty ? [154] : moves
-        let mx = self.moves.map { GameData.moves[$0]?.pp ?? 5 }
-        self.pp = (pp?.count == self.moves.count) ? zip(pp!, mx).map { min(max(0, $0), $1) } : mx
         self.status = status
         if status == .sleep { sleepTurns = Int.random(in: 1...3) }
     }
@@ -85,7 +82,7 @@ final class Battler {
         self.init(dex: mon.dex, name: Characters.displayName(s.id), level: mon.level,
                   type1: s.type1, type2: s.type2, stats: GameData.stats(s, level: mon.level),
                   gender: mon.gender, baseExp: s.baseExp ?? 60,
-                  currentHP: mon.currentHP, moves: mon.moves, pp: mon.currentPP,
+                  currentHP: mon.currentHP, moves: mon.moves,
                   status: mon.status.flatMap(Ailment.init(rawValue:)))
     }
 
@@ -137,7 +134,6 @@ struct BattleResult {
     let playerEndStatus: String?   // major ailment the player's mon carries out
     let playerEndHP: Int
     let playerMaxHP: Int
-    let playerEndPP: [Int]         // remaining PP per slot, persisted after battle
     var captured: Bool = false     // wild was caught (D11)
     var ballsUsed: [GameItem] = []
 }
@@ -200,7 +196,6 @@ enum BattleEngine {
             expGained: playerWon ? expFor(defeated: wild) : 0,
             playerEndStatus: player.status?.rawValue,
             playerEndHP: player.currentHP, playerMaxHP: player.maxHP,
-            playerEndPP: player.pp,
             captured: captured, ballsUsed: used)
     }
 
@@ -278,11 +273,8 @@ enum BattleEngine {
             emit(.skip, reason: "infatuated"); return
         }
 
-        // --- pick + resolve the move (consumes 1 PP; Struggle is free) ------
+        // --- pick + resolve the move ----------------------------------------
         let moveId = chooseMove(attacker: attacker, defender: defender)
-        if let slot = attacker.moves.firstIndex(of: moveId), attacker.pp[slot] > 0 {
-            attacker.pp[slot] -= 1
-        }
         guard let m = GameData.moves[moveId] else { return }
         let eff = TypeChart.multiplier(m.type, vs: defender.type1, defender.type2)
 
@@ -337,15 +329,14 @@ enum BattleEngine {
     }
 
     /// Mainline wild-Pokémon behavior: no AI, a uniformly random pick from the
-    /// known moves. Only moves that can DO something in this engine are
-    /// candidates — damaging moves always; a status move only while its
-    /// (supported) ailment could still land (unimplemented stat-stage moves
-    /// like Tail Whip would just burn the turn, so they're excluded).
-    /// Out-of-PP moves are unusable (#6); with nothing left, Struggle.
+    /// known moves (no PP — moves are usable without limit, by design). Only
+    /// moves that can DO something in this engine are candidates — damaging
+    /// moves always; a status move only while its (supported) ailment could
+    /// still land (unimplemented stat-stage moves like Tail Whip would just
+    /// burn the turn, so they're excluded).
     static func chooseMove(attacker: Battler, defender: Battler) -> Int {
-        let usable = attacker.moves.enumerated().filter { (slot, id) in
-            guard attacker.pp.indices.contains(slot), attacker.pp[slot] > 0,
-                  let m = GameData.moves[id] else { return false }
+        let usable = attacker.moves.filter { id in
+            guard let m = GameData.moves[id] else { return false }
             if m.power > 0 { return true }
             switch m.ailment {
             case "confusion": return defender.confusionTurns == 0
@@ -353,8 +344,8 @@ enum BattleEngine {
             case .some(let a) where Ailment(rawValue: a) != nil: return defender.status == nil
             default: return false
             }
-        }.map { $0.element }
-        return usable.randomElement() ?? GameData.struggleId
+        }
+        return usable.randomElement() ?? attacker.moves.first ?? 154
     }
 
     /// Simplified mainline damage: level/stat/power scaling × STAB × type × random.
