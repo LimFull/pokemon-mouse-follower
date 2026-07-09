@@ -75,7 +75,7 @@ struct RaisingSave: Codable {
     var activeIndex: Int = 0
     var items: [Int: Int] = [:]        // itemId -> count
     var lastHealDay: String? = nil     // local yyyy-MM-dd of last daily heal (D23)
-    var ballsEnabled: Bool? = nil      // throw balls in battle (nil = on)
+    var ballsEnabled: Bool? = nil      // throw balls in battle (nil = off)
 }
 
 /// Owns the raising-mode save: load/persist, starter setup, party ops, daily heal.
@@ -310,7 +310,7 @@ final class RaisingState {
 
     // MARK: capture toggle (balls only fly when the player wants a catch)
 
-    var captureEnabled: Bool { save.ballsEnabled ?? true }
+    var captureEnabled: Bool { save.ballsEnabled ?? false }
 
     func setCaptureEnabled(_ on: Bool) {
         save.ballsEnabled = on
