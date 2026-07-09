@@ -363,16 +363,18 @@ final class RaisingPanelView: NSView {
         box.edgeInsets = NSEdgeInsets(top: 0, left: 18, bottom: 6, right: 0)
         guard let m = GameData.moves[id] else { return box }
 
-        let meta = NSStackView(views: [TypeBadge(m.type ?? "Neutral")])
+        // Line 1: type badge + category/PP. Line 2: power/accuracy — kept on
+        // its own row so it never overflows the card width and gets clipped.
+        let meta = NSStackView(views: [TypeBadge(m.type ?? "Neutral"),
+                                       monoLabel("\(m.category ?? "")   PP \(m.pp)", 11, .medium)])
         meta.orientation = .horizontal
         meta.alignment = .centerY
         meta.spacing = 8
-        var info = m.category ?? ""
-        info += "   PP \(m.pp)"
-        if m.power > 0 { info += "   \(L("move.power")) \(m.power)" }
-        info += "   \(L("move.accuracy")) \(m.accuracyText)"
-        meta.addArrangedSubview(monoLabel(info, 11, .medium))
         box.addArrangedSubview(meta)
+        var stats = ""
+        if m.power > 0 { stats += "\(L("move.power")) \(m.power)   " }
+        stats += "\(L("move.accuracy")) \(m.accuracyText)"
+        box.addArrangedSubview(monoLabel(stats, 11, .medium))
 
         if let d = m.desc, !d.isEmpty {
             let desc = NSTextField(wrappingLabelWithString: d)
@@ -394,16 +396,16 @@ final class RaisingPanelView: NSView {
         stack.spacing = 6
         stack.translatesAutoresizingMaskIntoConstraints = false
         if let m = GameData.moves[id] {
-            let meta = NSStackView(views: [TypeBadge(m.type ?? "Neutral")])
+            let meta = NSStackView(views: [TypeBadge(m.type ?? "Neutral"),
+                                           monoLabel("\(m.category ?? "")   PP \(m.pp)", 11, .medium)])
             meta.orientation = .horizontal
             meta.alignment = .centerY
             meta.spacing = 8
-            var info = m.category ?? ""
-            info += "   PP \(m.pp)"
-            if m.power > 0 { info += "   \(L("move.power")) \(m.power)" }
-            info += "   \(L("move.accuracy")) \(m.accuracyText)"
-            meta.addArrangedSubview(monoLabel(info, 11, .medium))
             stack.addArrangedSubview(meta)
+            var stats = ""
+            if m.power > 0 { stats += "\(L("move.power")) \(m.power)   " }
+            stats += "\(L("move.accuracy")) \(m.accuracyText)"
+            stack.addArrangedSubview(monoLabel(stats, 11, .medium))
             if let d = m.desc, !d.isEmpty {
                 let desc = NSTextField(wrappingLabelWithString: d)
                 desc.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
