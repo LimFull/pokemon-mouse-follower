@@ -527,11 +527,6 @@ final class BattleController {
                     PromptCenter.shared.enqueue(.fullParty(captured: mon))
                 }
             }
-            // Fainted with several healthy teammates: the player picks (#4).
-            if st.active?.isFainted == true,
-               st.party.filter({ !$0.isFainted }).count >= 2 {
-                PromptCenter.shared.enqueue(.switchMon)
-            }
         }
         if captured {
             // The wild is inside the ball (already hidden); linger briefly.

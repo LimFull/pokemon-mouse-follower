@@ -287,12 +287,8 @@ final class RaisingState {
         save.party[i].currentHP = max(0, min(save.party[i].maxHP, playerHP))
         save.party[i].status = save.party[i].isFainted ? nil : status
         if won && expGained > 0 { result = gainExp(expGained) }   // persists + may evolve/notify
-        // On a faint: auto-switch only when there's exactly one choice — with
-        // several healthy members the caller prompts the player instead.
-        if save.party[i].isFainted {
-            let healthy = save.party.indices.filter { !save.party[$0].isFainted }
-            if healthy.count == 1 { save.activeIndex = healthy[0] }
-        }
+        // A fainted mon stays out where it fell — no auto-switch. The player
+        // sends out a replacement from the party panel when they want to.
         persist()
         notifyChanged()
         return result
