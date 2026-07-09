@@ -162,9 +162,15 @@ final class BattleController {
         let st = RaisingState.shared
         var balls = Array(repeating: GameItem.pokeBall, count: min(3, st.itemCount(.pokeBall)))
         balls += Array(repeating: .greatBall, count: min(3 - balls.count, st.itemCount(.greatBall)))
+        // Gauges start at the REAL current/max ratio (a hurt mon enters hurt;
+        // a rematched wild keeps its damage) — captured before run() mutates
+        // both battlers to their end state.
+        let startPHP = frac(p.currentHP, p.maxHP)
+        let startWHP = frac(w.currentHP, w.maxHP)
         result = BattleEngine.run(player: p, wild: w, balls: balls)
         events = result?.events ?? []
-        evIdx = 0; evTick = 0; curPHP = 1.0; curWHP = 1.0; wildAlpha = 1.0; playerAlpha = 1.0
+        evIdx = 0; evTick = 0; curPHP = startPHP; curWHP = startWHP
+        wildAlpha = 1.0; playerAlpha = 1.0
         flashP = false; flashW = false
         phase = .battling
     }
