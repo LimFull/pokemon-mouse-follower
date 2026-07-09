@@ -75,6 +75,7 @@ struct RaisingSave: Codable {
     var activeIndex: Int = 0
     var items: [Int: Int] = [:]        // itemId -> count
     var lastHealDay: String? = nil     // local yyyy-MM-dd of last daily heal (D23)
+    var ballsEnabled: Bool? = nil      // throw balls in battle (nil = on)
 }
 
 /// Owns the raising-mode save: load/persist, starter setup, party ops, daily heal.
@@ -286,8 +287,11 @@ final class RaisingState {
         save.party[i].currentHP = max(0, min(save.party[i].maxHP, playerHP))
         save.party[i].status = save.party[i].isFainted ? nil : status
         if won && expGained > 0 { result = gainExp(expGained) }   // persists + may evolve/notify
-        if save.party[i].isFainted, let next = save.party.indices.first(where: { !save.party[$0].isFainted }) {
-            save.activeIndex = next
+        // On a faint: auto-switch only when there's exactly one choice — with
+        // several healthy members the caller prompts the player instead.
+        if save.party[i].isFainted {
+            let healthy = save.party.indices.filter { !save.party[$0].isFainted }
+            if healthy.count == 1 { save.activeIndex = healthy[0] }
         }
         persist()
         notifyChanged()
@@ -305,6 +309,16 @@ final class RaisingState {
             persist()
             notifyChanged()
         }
+    }
+
+    // MARK: capture toggle (balls only fly when the player wants a catch)
+
+    var captureEnabled: Bool { save.ballsEnabled ?? true }
+
+    func setCaptureEnabled(_ on: Bool) {
+        save.ballsEnabled = on
+        persist()
+        notifyChanged()
     }
 
     // MARK: inventory (D12)

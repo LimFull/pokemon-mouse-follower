@@ -10,6 +10,7 @@ import AppKit
 final class RaisingPanelView: NSView {
     private var detailIndex: Int?          // nil = list/empty mode
     private var expandedMove: Int?         // move id whose description is expanded
+    private var bagExpanded = false        // bag card disclosure state
     private var starterPopup: NSPopUpButton?
 
     private static let contentWidth: CGFloat = 300
@@ -105,23 +106,25 @@ final class RaisingPanelView: NSView {
         let party = RaisingState.shared.party
         root.addArrangedSubview(sectionLabel("\(L("detail.party"))  \(party.count)/\(RaisingState.maxParty)"))
 
+        let activeIdx = RaisingState.shared.save.activeIndex
         for (i, mon) in party.enumerated() {
-            let row = PartyRowView(mon: mon) { [weak self] in
-                self?.detailIndex = i
-                self?.refresh()
-            }
+            let row = PartyRowView(mon: mon, isActive: i == activeIdx,
+                                   onClick: { [weak self] in
+                                       self?.detailIndex = i
+                                       self?.refresh()
+                                   },
+                                   onSendOut: mon.isFainted || i == activeIdx ? nil : {
+                                       RaisingState.shared.setActive(i)
+                                   })
             root.addArrangedSubview(row)
         }
 
-        // Bag (D12): everything picked up off the overlay, with counts.
-        let bag = GameItem.allCases.filter { RaisingState.shared.itemCount($0) > 0 }
-        if !bag.isEmpty {
-            root.setCustomSpacing(16, after: root.arrangedSubviews.last ?? root)
-            root.addArrangedSubview(sectionLabel(L("detail.bag")))
-            for item in bag {
-                root.addArrangedSubview(bagRow(item, count: RaisingState.shared.itemCount(item)))
-            }
-        }
+        // Bag (D12): a collapsible, game-styled card. Header always visible;
+        // expanding reveals a scrollable item list so a stuffed bag never
+        // pushes the reset button off-panel.
+        root.setCustomSpacing(16, after: root.arrangedSubviews.last ?? root)
+        root.addArrangedSubview(bagHeader())
+        if bagExpanded { root.addArrangedSubview(bagCard()) }
 
         root.setCustomSpacing(18, after: root.arrangedSubviews.last ?? root)
         let reset = NSButton(title: L("detail.reset"), target: self, action: #selector(resetTapped))
@@ -129,7 +132,103 @@ final class RaisingPanelView: NSView {
         root.addArrangedSubview(reset)
     }
 
-    /// One bag line: pixel icon + "name ×count".
+    // MARK: bag UI
+
+    private func bagHeader() -> NSButton {
+        let total = GameItem.allCases.reduce(0) { $0 + RaisingState.shared.itemCount($1) }
+        let b = NSButton(title: "", target: self, action: #selector(bagToggled))
+        b.isBordered = false
+        b.alignment = .left
+        b.attributedTitle = NSAttributedString(
+            string: "\(bagExpanded ? "▾" : "▸") 🎒 \(L("detail.bag"))  ·  \(total)",
+            attributes: [.font: NSFont.rounded(13, .bold), .foregroundColor: Palette.accent])
+        return b
+    }
+
+    @objc private func bagToggled() {
+        bagExpanded.toggle()
+        refresh()
+    }
+
+    /// The opened bag: capture toggle on top, then a scrollable item list.
+    private func bagCard() -> NSView {
+        let card = NSView()
+        card.translatesAutoresizingMaskIntoConstraints = false
+        card.wantsLayer = true
+        card.layer?.cornerRadius = 10
+        card.layer?.borderWidth = 1.5
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            card.layer?.backgroundColor = Palette.cardBottom.cgColor
+            card.layer?.borderColor = Palette.accent.withAlphaComponent(0.45).cgColor
+        }
+
+        // Capture toggle (#2): balls only fly in battle while this is on.
+        let toggle = NSButton(checkboxWithTitle: L("bag.capture"), target: self,
+                              action: #selector(captureToggled(_:)))
+        toggle.state = RaisingState.shared.captureEnabled ? .on : .off
+        toggle.font = .rounded(12, .semibold)
+        toggle.translatesAutoresizingMaskIntoConstraints = false
+        card.addSubview(toggle)
+
+        let divider = NSBox()
+        divider.boxType = .separator
+        divider.translatesAutoresizingMaskIntoConstraints = false
+        card.addSubview(divider)
+
+        // Scrollable item list.
+        let stack = NSStackView()
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 7
+        stack.edgeInsets = NSEdgeInsets(top: 6, left: 10, bottom: 6, right: 10)
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        let bag = GameItem.allCases.filter { RaisingState.shared.itemCount($0) > 0 }
+        if bag.isEmpty {
+            stack.addArrangedSubview(monoLabel("—", 12, .regular))
+        }
+        for item in bag {
+            stack.addArrangedSubview(bagRow(item, count: RaisingState.shared.itemCount(item)))
+        }
+        let doc = FlippedView()
+        doc.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.topAnchor.constraint(equalTo: doc.topAnchor),
+            stack.leadingAnchor.constraint(equalTo: doc.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: doc.trailingAnchor),
+        ])
+        doc.layoutSubtreeIfNeeded()
+        let contentH = stack.fittingSize.height
+        doc.frame = NSRect(x: 0, y: 0, width: Self.contentWidth - 8, height: contentH)
+
+        let scroll = NSScrollView()
+        scroll.translatesAutoresizingMaskIntoConstraints = false
+        scroll.hasVerticalScroller = true
+        scroll.drawsBackground = false
+        scroll.documentView = doc
+        card.addSubview(scroll)
+
+        let listH = min(150, contentH)
+        NSLayoutConstraint.activate([
+            card.widthAnchor.constraint(equalToConstant: Self.contentWidth),
+            toggle.topAnchor.constraint(equalTo: card.topAnchor, constant: 9),
+            toggle.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 12),
+            divider.topAnchor.constraint(equalTo: toggle.bottomAnchor, constant: 8),
+            divider.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 10),
+            divider.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -10),
+            scroll.topAnchor.constraint(equalTo: divider.bottomAnchor, constant: 2),
+            scroll.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 4),
+            scroll.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -4),
+            scroll.heightAnchor.constraint(equalToConstant: listH),
+            scroll.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -8),
+        ])
+        return card
+    }
+
+    @objc private func captureToggled(_ sender: NSButton) {
+        RaisingState.shared.setCaptureEnabled(sender.state == .on)
+    }
+
+    /// One bag line: pixel icon + name, count right-aligned like a game menu.
     private func bagRow(_ item: GameItem, count: Int) -> NSView {
         let icon = NSImageView()
         if let cg = item.icon {
@@ -139,10 +238,15 @@ final class RaisingPanelView: NSView {
         icon.translatesAutoresizingMaskIntoConstraints = false
         icon.widthAnchor.constraint(equalToConstant: 18).isActive = true
         icon.heightAnchor.constraint(equalToConstant: 18).isActive = true
-        let row = NSStackView(views: [icon, monoLabel("\(item.displayName)  ×\(count)", 12, .medium)])
+        let name = monoLabel(item.displayName, 12, .medium)
+        let qty = monoLabel("×\(count)", 12, .semibold)
+        qty.textColor = Palette.accent
+        let row = NSStackView(views: [icon, name, NSView(), qty])
         row.orientation = .horizontal
         row.alignment = .centerY
         row.spacing = 8
+        row.translatesAutoresizingMaskIntoConstraints = false
+        row.widthAnchor.constraint(equalToConstant: Self.contentWidth - 44).isActive = true
         return row
     }
 
@@ -293,11 +397,23 @@ final class RaisingPanelView: NSView {
             train.bezelStyle = .rounded
             actions.addArrangedSubview(train)
         }
+        if idx != RaisingState.shared.save.activeIndex, !mon.isFainted {
+            let out = NSButton(title: L("detail.sendout"), target: self, action: #selector(sendOutTapped))
+            out.bezelStyle = .rounded
+            out.contentTintColor = Palette.accent
+            actions.addArrangedSubview(out)
+        }
         let release = NSButton(title: L("detail.release"), target: self, action: #selector(releaseTapped))
         release.bezelStyle = .rounded
         release.contentTintColor = .systemRed
         actions.addArrangedSubview(release)
         root.addArrangedSubview(actions)
+    }
+
+    @objc private func sendOutTapped() {
+        guard let i = detailIndex else { return }
+        RaisingState.shared.setActive(i)
+        refresh()
     }
 
     @objc private func useItemTapped(_ sender: NSButton) {
@@ -564,12 +680,22 @@ final class HPBarView: NSView {
 
 // MARK: - Party row (sprite + name + Lv + HP bar), clickable
 
+/// Frame-based container whose y grows downward (rows lay out top-down).
+final class FlippedView: NSView {
+    override var isFlipped: Bool { true }
+}
+
 final class PartyRowView: NSView {
     private let onClick: () -> Void
+    private let onSendOut: (() -> Void)?
     override var isFlipped: Bool { true }
 
-    init(mon: OwnedPokemon, onClick: @escaping () -> Void) {
+    /// `isActive` marks the mon currently out on the desktop; `onSendOut`
+    /// (when non-nil) shows the swap button that makes this one the follower.
+    init(mon: OwnedPokemon, isActive: Bool,
+         onClick: @escaping () -> Void, onSendOut: (() -> Void)?) {
         self.onClick = onClick
+        self.onSendOut = onSendOut
         super.init(frame: NSRect(x: 0, y: 0, width: 300, height: 50))
         translatesAutoresizingMaskIntoConstraints = false
         widthAnchor.constraint(equalToConstant: 300).isActive = true
@@ -577,8 +703,8 @@ final class PartyRowView: NSView {
         wantsLayer = true
         layer?.cornerRadius = 10
         layer?.backgroundColor = Palette.cardTop.cgColor
-        layer?.borderWidth = 1
-        layer?.borderColor = Palette.cardBorder.cgColor
+        layer?.borderWidth = isActive ? 2 : 1
+        layer?.borderColor = isActive ? Palette.accent.cgColor : Palette.cardBorder.cgColor
 
         let folder = String(format: "%03d", mon.dex)
 
@@ -587,34 +713,54 @@ final class PartyRowView: NSView {
         sprite.imageScaling = .scaleProportionallyUpOrDown
         addSubview(sprite)
 
-        let name = NSTextField(labelWithString: "\(Characters.displayName(folder))   \(L("detail.level"))\(mon.level)")
+        var title = "\(Characters.displayName(folder))   \(L("detail.level"))\(mon.level)"
+        if isActive { title = "▶ " + title }
+        let name = NSTextField(labelWithString: title)
         name.font = .rounded(13, .semibold)
-        name.textColor = mon.isFainted ? .systemRed : Palette.label
-        name.frame = NSRect(x: 54, y: 6, width: 240, height: 18)
+        name.textColor = mon.isFainted ? .systemRed : (isActive ? Palette.accent : Palette.label)
+        name.frame = NSRect(x: 54, y: 6, width: 210, height: 18)
         addSubview(name)
 
-        let bar = HPBarView(current: mon.currentHP, max: mon.maxHP, width: 170)
-        bar.frame = NSRect(x: 54, y: 30, width: 170, height: 8)
+        let bar = HPBarView(current: mon.currentHP, max: mon.maxHP, width: 150)
+        bar.frame = NSRect(x: 54, y: 30, width: 150, height: 8)
         addSubview(bar)
 
         let hp = NSTextField(labelWithString: mon.isFainted
             ? "\(L("detail.revive.in")) \(OwnedPokemon.timeUntilDailyHeal)"
             : "\(mon.currentHP)/\(mon.maxHP)")
-        hp.font = .monospacedSystemFont(ofSize: 10, weight: .medium)
+        hp.font = .monospacedSystemFont(ofSize: 9, weight: .medium)
         hp.textColor = mon.isFainted ? .systemRed : Palette.label
         hp.alignment = .right
-        hp.frame = NSRect(x: 180, y: 27, width: 116, height: 14)
+        hp.frame = NSRect(x: 152, y: 27, width: 108, height: 14)
         addSubview(hp)
 
         if let badge = StatusBadge(mon: mon) {
             addSubview(badge)
             NSLayoutConstraint.activate([
-                badge.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+                badge.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -36),
                 badge.topAnchor.constraint(equalTo: topAnchor, constant: 7),
             ])
         }
+
+        if onSendOut != nil {
+            let b = NSButton(title: "", target: self, action: #selector(sendOutTapped))
+            b.isBordered = false
+            if let img = NSImage(systemSymbolName: "arrowshape.right.circle.fill",
+                                 accessibilityDescription: "send out")?
+                .withSymbolConfiguration(.init(pointSize: 19, weight: .semibold)) {
+                b.image = img
+                b.contentTintColor = Palette.accent
+            } else {
+                b.title = "▶"
+            }
+            b.frame = NSRect(x: 268, y: 13, width: 26, height: 24)
+            b.toolTip = L("detail.sendout")
+            addSubview(b)
+        }
     }
     required init?(coder: NSCoder) { fatalError("not used") }
+
+    @objc private func sendOutTapped() { onSendOut?() }
 
     override func mouseDown(with event: NSEvent) { onClick() }
 }

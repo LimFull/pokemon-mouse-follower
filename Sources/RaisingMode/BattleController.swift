@@ -175,11 +175,15 @@ final class BattleController {
             wm.setPos(CGPoint(x: playerPos.x + dx * minGap, y: playerPos.y + dy * minGap))
         }
         wm.faceStanding(toward: playerPos)
-        // Balls to throw (D11); a full party still catches — the release-or-
-        // abandon prompt (D14) resolves it afterwards. Cheap balls go first.
+        // Balls to throw (D11) — only when the bag's capture toggle is on; a
+        // full party still catches (the release-or-abandon prompt resolves it
+        // afterwards). Cheap balls go first.
         let st = RaisingState.shared
-        var balls = Array(repeating: GameItem.pokeBall, count: min(3, st.itemCount(.pokeBall)))
-        balls += Array(repeating: .greatBall, count: min(3 - balls.count, st.itemCount(.greatBall)))
+        var balls: [GameItem] = []
+        if st.captureEnabled {
+            balls = Array(repeating: GameItem.pokeBall, count: min(3, st.itemCount(.pokeBall)))
+            balls += Array(repeating: .greatBall, count: min(3 - balls.count, st.itemCount(.greatBall)))
+        }
         // Gauges start at the REAL current/max ratio (a hurt mon enters hurt;
         // a rematched wild keeps its damage) — captured before run() mutates
         // both battlers to their end state.
@@ -522,6 +526,11 @@ final class BattleController {
                     // Full party: release someone or let the catch go (D14/#14).
                     PromptCenter.shared.enqueue(.fullParty(captured: mon))
                 }
+            }
+            // Fainted with several healthy teammates: the player picks (#4).
+            if st.active?.isFainted == true,
+               st.party.filter({ !$0.isFainted }).count >= 2 {
+                PromptCenter.shared.enqueue(.switchMon)
             }
         }
         if captured {

@@ -59,3 +59,6 @@
 "move.accuracy" = "Acc.";
 "detail.exp.next" = "To next Lv.";
 "detail.revive.in" = "Revives in";
+"detail.sendout" = "Send out";
+"bag.capture" = "Try to catch (throw Poké Balls)";
+"prompt.next.title" = "Choose your next Pokémon";

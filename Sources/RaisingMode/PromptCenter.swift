@@ -15,6 +15,7 @@ import AppKit
 enum OverlayPrompt {
     case learnMove(monIndex: Int, moveId: Int)
     case fullParty(captured: OwnedPokemon)
+    case switchMon                       // pick who to send out after a faint
 }
 
 final class PromptCenter: NSObject {
@@ -39,7 +40,23 @@ final class PromptCenter: NSObject {
         switch p {
         case .learnMove(let monIndex, let moveId): showLearnMove(monIndex: monIndex, moveId: moveId)
         case .fullParty(let mon): showFullParty(captured: mon)
+        case .switchMon: showSwitchMon()
         }
+    }
+
+    /// After a faint with several healthy members: who goes out next (#4)?
+    private func showSwitchMon() {
+        let st = RaisingState.shared
+        let healthy = st.party.indices.filter { !st.party[$0].isFainted }
+        guard healthy.count >= 2, st.active?.isFainted == true else { dismiss(); return }
+        let buttons: [(String, () -> Void)] = healthy.map { i in
+            let m = st.party[i]
+            let name = Characters.displayName(String(format: "%03d", m.dex))
+            return ("\(name)  Lv\(m.level)  HP \(m.currentHP)/\(m.maxHP)", {
+                RaisingState.shared.setActive(i)
+            })
+        }
+        present(title: L("prompt.next.title"), subtitle: "", buttons: buttons)
     }
 
     private func dismiss() {
