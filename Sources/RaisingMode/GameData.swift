@@ -140,10 +140,11 @@ enum GameData {
     static let species: [Int: SpeciesData] = load("species")
     static let moves: [Int: MoveData] = loadMoves()
 
-    /// Base-form species (valid starters), sorted by dex — design D1-2 / #3.
-    static let starters: [SpeciesData] = species.values
-        .filter { $0.isBaseForm }
-        .sorted { $0.dex < $1.dex }
+    /// The classic Gen 1/2 starter trios — the only picks for a new game
+    /// (D1-2 revised 2026-07-09: was every base form).
+    static let starterDexes = [1, 4, 7, 152, 155, 158]   // 이상해씨 파이리 꼬부기 치코리타 브케인 리아코
+
+    static let starters: [SpeciesData] = starterDexes.compactMap { species[$0] }
 
     /// Lowest level a wild of `dex` may appear at: an evolved form can't show
     /// up below the LEVEL-evolution thresholds along its pre-evo chain

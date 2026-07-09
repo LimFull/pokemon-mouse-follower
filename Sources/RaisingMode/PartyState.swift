@@ -112,9 +112,9 @@ final class RaisingState {
 
     // MARK: starter / reset
 
-    /// Begin a new game with a base-form starter at level 5 (D17, #2/#3).
+    /// Begin a new game with one of the classic starters at level 5 (D17, #2/#3).
     func startNewGame(dex: Int) {
-        guard let s = GameData.species[dex], s.isBaseForm else { return }
+        guard GameData.starterDexes.contains(dex), let s = GameData.species[dex] else { return }
         let mon = makeMon(species: s, level: 5)
         save = RaisingSave(party: [mon], activeIndex: 0, items: [:], lastHealDay: RaisingState.today())
         persist()
