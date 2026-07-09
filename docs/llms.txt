@@ -12,6 +12,7 @@
 - Behavior: walk → idle → sleep; wakes and follows when the cursor moves.
 - No Dock icon (menu-bar only); transparent click-through overlay; multi-monitor.
 - Customizable: character, distance from cursor, max speed, size, sleep delay, alt color, ground shadow, launch at login. Live character preview with previous/next arrows and a random button.
+- Raising mode (v1.1): the follower becomes a Pokémon you raise — wild Pokémon spawn on the desktop, auto battles play on the overlay (type match-ups, move effects, status conditions), wins grant EXP/evolution, wilds can be caught with Poké Balls, and you manage a party of up to six plus a bag of items. Progress auto-saves; the party fully heals at midnight.
 - Localized in English, Korean, and Japanese (UI and Pokémon names).
 
 ## Install

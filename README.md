@@ -19,6 +19,7 @@ A macOS menu-bar app: a Pokémon character wanders your screen and follows the m
 - 🧭 **8-direction animation** — the sprite turns to face its movement direction
 - 😴 **Idle → sleep** — falls asleep after staying still, wakes and follows when the cursor moves
 - 🐱 **251 Pokémon (Gen 1 & 2)** — pick one in the GUI
+- 🎮 **Raising mode** — starters, wild encounters, on-screen auto battles, EXP/evolution, catching, a six-mon party and a bag
 - 🎨 **Alt-color variants** — alternate palettes for the 124 Pokémon that have them
 - 🌏 **Localized** — English / Korean / Japanese (UI + Pokémon names)
 - 🖥️ **Click-through transparent overlay** — never blocks the apps underneath
@@ -80,6 +81,24 @@ The top of the window shows a live preview of the selected character (down-facin
 | Alt color | on/off | off | Use the alternate-color sprite (only the 124 Pokémon that have one) |
 | Shadow | on/off | off | Draw a ground-shadow ellipse under the character (size from each Pokémon's `ShadowSize`) |
 | Launch at login | on/off | off | Start automatically at login |
+
+## Raising mode
+
+Turn the follower into a Pokémon you actually raise. Flip **Raising mode** on in Settings, pick one of the six classic starters, and a party panel appears beside the settings.
+
+<p align="center">
+  <img src="docs/assets/raising.png" width="741" alt="The Settings window with the raising-mode party panel: four party members with HP bars, send-out and recall buttons, a bag and raising settings">
+</p>
+
+- 🌱 **Starters** — begin with one of the six classic Gen 1/2 starters
+- ⚔️ **Wild encounters** — wild Pokémon spawn on your desktop and wander; walk into one and an auto battle plays out on the overlay with type match-ups, move effects and status conditions (sleep, burn, paralysis, freeze, confusion, …)
+- ✨ **EXP → levels → evolution** — wins grant EXP; a "Level Up!" tag floats over the follower, new moves are learned (with a replace prompt at four), and evolutions play the classic white-out scene
+- 🔴 **Catching** — enable capture in the bag and balls fly automatically when a weakened or statused wild looks catchable; party of up to six, swap who follows the cursor
+- 🎒 **Bag & items** — items drop on the desktop and are picked up by walking over them; potions, balls and evolution items are used from the panel
+- 💤 **Rest & recovery** — hurt members recover slowly out of battle, four times faster while the follower naps at your idle cursor, and the whole party fully heals at midnight (fainted members revive then)
+- 🏃 **Mainline flee timing** — recalling mid-battle waits for the current turn to finish, and the mon keeps the damage (and ailment) it took
+
+Progress is saved to `~/Library/Application Support/PokemonMouseFollower/raising.json`.
 
 ## Behavior
 

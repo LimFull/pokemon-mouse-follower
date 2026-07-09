@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Pokémon Mouse Follower — カーソルを追いかけるポケモンの macOS アプリ</title>
-<meta name="description" content="無料・オープンソースの macOS メニューバーアプリ。ドット絵のポケモンが画面を歩き回り、マウスカーソルを追いかけます。ポケモン251匹、色違い、影などに対応。">
+<meta name="description" content="無料・オープンソースの macOS メニューバーアプリ。ドット絵のポケモンが画面を歩き回り、マウスカーソルを追いかけます。ポケモン251匹 — 育成モードで野生との遭遇・バトル・捕獲・進化も。">
 <link rel="canonical" href="https://limfull.github.io/pokemon-mouse-follower/ja/">
 <meta name="theme-color" content="#5b61f0">
 <link rel="icon" href="../assets/icon.png">
@@ -41,7 +41,7 @@
   "url": "https://limfull.github.io/pokemon-mouse-follower/ja/",
   "image": "https://limfull.github.io/pokemon-mouse-follower/assets/og.png",
   "downloadUrl": "https://github.com/LimFull/pokemon-mouse-follower/releases/latest/download/PokemonMouseFollower.dmg",
-  "softwareVersion": "1.0.5",
+  "softwareVersion": "1.1.0",
   "author": { "@type": "Person", "name": "GADEUK LIM" },
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
 }
@@ -62,6 +62,8 @@
       "acceptedAnswer": { "@type": "Answer", "text": "いいえ。キャラは透明でクリックを透過するオーバーレイに描画されるため、下のアプリの操作を妨げません。Dock アイコンもなく、メニューバーにアイコンが出るだけです。" } },
     { "@type": "Question", "name": "ポケモンは何匹から選べますか？",
       "acceptedAnswer": { "@type": "Answer", "text": "第1・2世代のポケモン251匹に加え、色違い（altColor）がある124匹の別カラースプライトから選べます。" } },
+    { "@type": "Question", "name": "育成モードとは？",
+      "acceptedAnswer": { "@type": "Answer", "text": "フォロワーを自分で育てるポケモンに変えるオプションモードです。野生ポケモンがデスクトップに出現し、タイプ相性や状態異常が反映されたオートバトルがオーバーレイ上で展開されます。勝つと経験値と進化を獲得し、モンスターボールで捕獲して最大6匹のパーティとアイテムバッグを運用できます。" } },
     { "@type": "Question", "name": "インストール方法は？",
       "acceptedAnswer": { "@type": "Answer", "text": "Releases ページから .dmg をダウンロードして開き、Pokémon Mouse Follower を Applications フォルダにドラッグして起動します。Xcode や開発者ツールは不要です。" } },
     { "@type": "Question", "name": "スプライトはどこから来ていますか？",
@@ -94,7 +96,7 @@
         <span class="badge">Apple Silicon · Intel</span>
       </div>
       <h1>カーソルを追いかけるポケモン。</h1>
-      <p class="lead">小さな macOS メニューバーアプリ。ドット絵のポケモンが画面を歩き、マウスを追いかけ、止まると丸くなって眠ります。</p>
+      <p class="lead">小さな macOS メニューバーアプリ。ドット絵のポケモンが画面を歩き、マウスを追いかけ、止まると丸くなって眠ります。育成モードをオンにすれば、バトル・捕獲・進化も。</p>
       <div class="cta">
         <a class="btn" href="https://github.com/LimFull/pokemon-mouse-follower/releases/latest/download/PokemonMouseFollower.dmg">↓ macOS 版をダウンロード</a>
         <a class="btn ghost" href="https://github.com/LimFull/pokemon-mouse-follower">GitHub で見る</a>
@@ -132,14 +134,33 @@
       <div class="feature"><div class="ico">🧭</div><h3>8方向アニメーション</h3><p>進む方向に合わせてスプライトが向きを変えます。本物のドット絵の質感そのまま。</p></div>
       <div class="feature"><div class="ico">😴</div><h3>待機 → 睡眠</h3><p>止まると落ち着いて眠り、マウスを動かすとすぐに目を覚まします。</p></div>
       <div class="feature"><div class="ico">🐱</div><h3>ポケモン251匹</h3><p>第1・2世代すべて、うち124匹は色違いも。プレビュー・矢印・ランダムボタンで選べます。</p></div>
+      <div class="feature"><div class="ico">🎮</div><h3>育成モード</h3><p>野生との遭遇、画面上のオートバトル、経験値と進化、モンスターボールでの捕獲、6匹のパーティとアイテムバッグ。</p></div>
       <div class="feature"><div class="ico">🖥️</div><h3>クリック透過・マルチモニター</h3><p>作業を妨げない透明オーバーレイ、ディスプレイ間もなめらかに移動します。</p></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap split">
+    <img src="../assets/raising.png" width="741" height="512"
+         alt="育成モードのパーティパネルが開いた設定ウィンドウ: HPバー付きのパーティ4匹と繰り出し／引っ込めボタン、バッグ、育成設定">
+    <div>
+      <h3>育成モード — 1.1 の新機能</h3>
+      <p>フォロワーを自分で育てるポケモンに。クラシックな御三家6匹から1匹選ぶと:</p>
+      <ul>
+        <li>野生ポケモンがデスクトップに現れてうろつきます — 近づくとタイプ相性・わざエフェクト・状態異常が反映された<strong>オートバトル</strong>がオーバーレイ上で展開</li>
+        <li>勝つと<strong>経験値</strong>を獲得: レベルアップは頭上に表示され、新しいわざを覚え、<strong>進化</strong>はクラシックなホワイトアウト演出で再生</li>
+        <li>弱った野生をモンスターボールで<strong>捕獲</strong>して最大6匹のパーティに</li>
+        <li>アイテムがデスクトップに落ちます — 歩いて拾い、キズぐすり・ボール・進化アイテムを<strong>バッグ</strong>から使用</li>
+        <li>傷ついたメンバーはバトル外で回復（眠っている間はさらに速く）、深夜0時にはパーティ全体が全回復</li>
+      </ul>
     </div>
   </div>
 </section>
 
 <section style="background:var(--bg-soft); border-top:1px solid var(--border); border-bottom:1px solid var(--border);">
   <div class="wrap split">
-    <img src="../assets/settings.png" width="400" height="540"
+    <img src="../assets/settings.png" width="400" height="516"
          alt="設定ウィンドウ: 選択中ポケモンのプレビューと前／次の矢印、ランダムボタン、距離・速度・大きさ・睡眠時間のスライダー">
     <div>
       <h3>自分好みに</h3>
@@ -185,6 +206,7 @@
       <details><summary>対応する macOS のバージョンは？</summary><p>macOS 13（Ventura）以降、Apple Silicon と Intel Mac の両方（universal ビルド）。</p></details>
       <details><summary>Mac が重くなったり、クリックを妨げたりしますか？</summary><p>いいえ。透明でクリックを透過するオーバーレイに描かれる軽量なメニューバーアプリなので、下のアプリを妨げず、Dock アイコンもありません。</p></details>
       <details><summary>ポケモンは何匹から選べますか？</summary><p>第1・2世代の251匹、加えて色違いがある124匹の別カラースプライト。プレビュー・矢印・ランダムボタンで見て回れます。</p></details>
+      <details><summary>育成モードとは？</summary><p>フォロワーを自分で育てるポケモンに変えるオプションモードです。野生ポケモンがデスクトップに出現し、オーバーレイ上でオートバトル（タイプ相性、わざエフェクト、状態異常）が展開されます。勝つと経験値と進化を獲得し、モンスターボールで捕獲して最大6匹のパーティとアイテムバッグを運用できます。進行状況は自動保存されます。</p></details>
       <details><summary>インストール方法は？</summary><p><a href="https://github.com/LimFull/pokemon-mouse-follower/releases/latest">Releases</a> から <code>.dmg</code> を入手し、アプリを Applications にドラッグして起動します。macOS でそのまま開き、開発者ツールは不要です。</p></details>
       <details><summary>アンインストール方法は？</summary><p>メニューバーの 🐾 アイコン → 終了 のあと、アプリケーションからアプリをゴミ箱へ移動します。</p></details>
       <details><summary>スプライトはどこから来ていますか？</summary><p>ドットアニメーションはコミュニティプロジェクトの <a href="https://sprites.pmdcollab.org/">PMD Sprite Collab</a> から来ています。非商用の個人ファンプロジェクトで、Pokémon © Nintendo / Creatures Inc. / GAME FREAK inc.</p></details>

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Pokémon Mouse Follower — 커서를 따라다니는 포켓몬 macOS 앱</title>
-<meta name="description" content="무료 오픈소스 macOS 메뉴바 앱. 도트 포켓몬이 화면을 돌아다니며 마우스 커서를 따라다닙니다. 포켓몬 251마리, 다른 색상, 그림자 등 지원.">
+<meta name="description" content="무료 오픈소스 macOS 메뉴바 앱. 도트 포켓몬이 화면을 돌아다니며 마우스 커서를 따라다닙니다. 포켓몬 251마리 — 키우기 모드로 야생 조우·배틀·포획·진화까지.">
 <link rel="canonical" href="https://limfull.github.io/pokemon-mouse-follower/ko/">
 <meta name="theme-color" content="#5b61f0">
 <link rel="icon" href="../assets/icon.png">
@@ -41,7 +41,7 @@
   "url": "https://limfull.github.io/pokemon-mouse-follower/ko/",
   "image": "https://limfull.github.io/pokemon-mouse-follower/assets/og.png",
   "downloadUrl": "https://github.com/LimFull/pokemon-mouse-follower/releases/latest/download/PokemonMouseFollower.dmg",
-  "softwareVersion": "1.0.5",
+  "softwareVersion": "1.1.0",
   "author": { "@type": "Person", "name": "GADEUK LIM" },
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
 }
@@ -62,6 +62,8 @@
       "acceptedAnswer": { "@type": "Answer", "text": "아니요. 캐릭터는 투명한 클릭 통과 오버레이에 그려져 아래 앱 조작을 방해하지 않습니다. Dock 아이콘도 없이 메뉴바에만 아이콘이 뜹니다." } },
     { "@type": "Question", "name": "포켓몬은 몇 마리 중에서 고를 수 있나요?",
       "acceptedAnswer": { "@type": "Answer", "text": "1·2세대 포켓몬 251마리, 그리고 대체 색상(altColor)이 있는 124마리의 다른 색상 스프라이트를 고를 수 있습니다." } },
+    { "@type": "Question", "name": "키우기 모드는 무엇인가요?",
+      "acceptedAnswer": { "@type": "Answer", "text": "팔로워를 직접 키우는 포켓몬으로 바꾸는 선택 모드입니다. 야생 포켓몬이 데스크톱에 출현하고, 오버레이 위에서 타입 상성·상태이상이 반영된 자동 배틀이 펼쳐지며, 승리하면 경험치와 진화를 얻습니다. 몬스터볼로 포획해 최대 6마리 파티와 아이템 가방을 운영할 수 있습니다." } },
     { "@type": "Question", "name": "어떻게 설치하나요?",
       "acceptedAnswer": { "@type": "Answer", "text": "Releases 페이지에서 .dmg를 받아 열고, Pokémon Mouse Follower를 Applications 폴더로 드래그한 뒤 실행하면 됩니다. Xcode나 개발자 도구는 필요 없습니다." } },
     { "@type": "Question", "name": "스프라이트는 어디서 왔나요?",
@@ -94,7 +96,7 @@
         <span class="badge">Apple Silicon · Intel</span>
       </div>
       <h1>커서를 따라다니는 포켓몬.</h1>
-      <p class="lead">작은 macOS 메뉴바 앱. 도트 포켓몬이 화면을 거닐며 마우스를 쫓고, 멈추면 웅크려 잠듭니다.</p>
+      <p class="lead">작은 macOS 메뉴바 앱. 도트 포켓몬이 화면을 거닐며 마우스를 쫓고, 멈추면 웅크려 잠듭니다. 키우기 모드를 켜면 배틀하고, 잡고, 진화시킬 수도 있습니다.</p>
       <div class="cta">
         <a class="btn" href="https://github.com/LimFull/pokemon-mouse-follower/releases/latest/download/PokemonMouseFollower.dmg">↓ macOS용 다운로드</a>
         <a class="btn ghost" href="https://github.com/LimFull/pokemon-mouse-follower">GitHub에서 보기</a>
@@ -132,14 +134,33 @@
       <div class="feature"><div class="ico">🧭</div><h3>8방향 애니메이션</h3><p>스프라이트가 이동 방향으로 몸을 돌립니다. 진짜 도트 감성 그대로.</p></div>
       <div class="feature"><div class="ico">😴</div><h3>대기 → 수면</h3><p>멈추면 가만히 있다가 잠들고, 마우스를 움직이면 바로 깨어납니다.</p></div>
       <div class="feature"><div class="ico">🐱</div><h3>포켓몬 251마리</h3><p>1·2세대 전부, 그중 124마리는 다른 색상까지. 미리보기·화살표·랜덤 버튼으로 선택합니다.</p></div>
+      <div class="feature"><div class="ico">🎮</div><h3>키우기 모드</h3><p>야생 조우, 화면 위 자동 배틀, 경험치와 진화, 몬스터볼 포획, 6마리 파티와 아이템 가방.</p></div>
       <div class="feature"><div class="ico">🖥️</div><h3>클릭 통과 · 멀티 모니터</h3><p>작업을 막지 않는 투명 오버레이, 디스플레이 사이도 자연스럽게 넘나듭니다.</p></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap split">
+    <img src="../assets/raising.png" width="741" height="512"
+         alt="키우기 모드 파티 패널이 열린 설정 창: HP 바가 있는 파티 4마리와 내보내기/집어넣기 버튼, 가방, 키우기 설정">
+    <div>
+      <h3>키우기 모드 — 1.1 신기능</h3>
+      <p>팔로워를 직접 키우는 포켓몬으로 바꿔보세요. 클래식 스타터 6마리 중 하나를 고르면:</p>
+      <ul>
+        <li>야생 포켓몬이 데스크톱에 나타나 배회합니다 — 다가가면 타입 상성·기술 이펙트·상태이상이 반영된 <strong>자동 배틀</strong>이 오버레이 위에서 펼쳐집니다</li>
+        <li>승리하면 <strong>경험치</strong>를 획득: 레벨업이 머리 위에 표시되고, 새 기술을 배우며, <strong>진화</strong>는 클래식 화이트아웃 연출로 재생됩니다</li>
+        <li>약해진 야생을 몬스터볼로 <strong>포획</strong>해 최대 6마리 파티를 꾸립니다</li>
+        <li>아이템이 데스크톱에 떨어집니다 — 밟고 지나가 획득하고 회복약·볼·진화 아이템을 <strong>가방</strong>에서 사용합니다</li>
+        <li>다친 멤버는 배틀 밖에서 회복되고(잠들면 더 빠르게), 자정에는 파티 전체가 완전 회복됩니다</li>
+      </ul>
     </div>
   </div>
 </section>
 
 <section style="background:var(--bg-soft); border-top:1px solid var(--border); border-bottom:1px solid var(--border);">
   <div class="wrap split">
-    <img src="../assets/settings.png" width="400" height="540"
+    <img src="../assets/settings.png" width="400" height="516"
          alt="설정 창: 선택한 포켓몬의 미리보기와 이전/다음 화살표, 랜덤 버튼, 거리·속도·크기·수면 시간 슬라이더">
     <div>
       <h3>내 취향대로</h3>
@@ -185,6 +206,7 @@
       <details><summary>어떤 macOS 버전을 지원하나요?</summary><p>macOS 13(Ventura) 이상, Apple Silicon과 Intel 맥 모두(universal 빌드).</p></details>
       <details><summary>맥이 느려지거나 클릭을 막나요?</summary><p>아니요. 투명한 클릭 통과 오버레이에 그려지는 가벼운 메뉴바 앱이라 아래 앱을 방해하지 않고, Dock 아이콘도 없습니다.</p></details>
       <details><summary>포켓몬은 몇 마리 중에서 고를 수 있나요?</summary><p>1·2세대 251마리, 그리고 대체 색상이 있는 124마리의 다른 색상 스프라이트. 미리보기·화살표·랜덤 버튼으로 둘러볼 수 있습니다.</p></details>
+      <details><summary>키우기 모드는 무엇인가요?</summary><p>팔로워를 직접 키우는 포켓몬으로 바꾸는 선택 모드입니다. 야생 포켓몬이 데스크톱에 출현하고, 오버레이 위에서 자동 배틀(타입 상성, 기술 이펙트, 상태이상)이 펼쳐지며, 승리하면 경험치와 진화를 얻습니다. 몬스터볼로 포획해 최대 6마리 파티와 아이템 가방을 운영할 수 있습니다. 진행 상황은 자동 저장됩니다.</p></details>
       <details><summary>어떻게 설치하나요?</summary><p><a href="https://github.com/LimFull/pokemon-mouse-follower/releases/latest">Releases</a>에서 <code>.dmg</code>를 받아 앱을 Applications로 드래그한 뒤 실행합니다. macOS에서 그냥 열리며 개발자 도구는 필요 없습니다.</p></details>
       <details><summary>어떻게 삭제하나요?</summary><p>메뉴바 🐾 아이콘 → 종료 후, 응용 프로그램에서 앱을 휴지통으로 옮기면 됩니다.</p></details>
       <details><summary>스프라이트는 어디서 왔나요?</summary><p>도트 애니메이션은 커뮤니티 프로젝트인 <a href="https://sprites.pmdcollab.org/">PMD Sprite Collab</a>에서 가져왔습니다. 비상업적 개인 팬 프로젝트이며, Pokémon © Nintendo / Creatures Inc. / GAME FREAK inc.</p></details>

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="google-site-verification" content="pgLpAox0LQHVeJc3UyzB9O8urxs8cpwsuWXkNe1hF9A">
 <title>Pokémon Mouse Follower — a Pokémon that follows your cursor on macOS</title>
-<meta name="description" content="A free, open-source macOS menu-bar app: a pixel-art Pokémon walks across your screen and follows your mouse cursor. Choose from 251 Pokémon, alt colors, shadows and more.">
+<meta name="description" content="A free, open-source macOS menu-bar app: a pixel-art Pokémon walks across your screen and follows your mouse cursor. Choose from 251 Pokémon — or raise your own with wild encounters, battles, catching and evolution.">
 <link rel="canonical" href="https://limfull.github.io/pokemon-mouse-follower/">
 <meta name="theme-color" content="#5b61f0">
 <link rel="icon" href="assets/icon.png">
@@ -42,7 +42,7 @@
   "url": "https://limfull.github.io/pokemon-mouse-follower/",
   "image": "https://limfull.github.io/pokemon-mouse-follower/assets/og.png",
   "downloadUrl": "https://github.com/LimFull/pokemon-mouse-follower/releases/latest/download/PokemonMouseFollower.dmg",
-  "softwareVersion": "1.0.5",
+  "softwareVersion": "1.1.0",
   "author": { "@type": "Person", "name": "GADEUK LIM" },
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
 }
@@ -62,6 +62,8 @@
       "acceptedAnswer": { "@type": "Answer", "text": "No. The character is drawn on a transparent, click-through overlay, so it never blocks the apps underneath. It also has no Dock icon — only a paw icon in the menu bar." } },
     { "@type": "Question", "name": "How many Pokémon can I choose from?",
       "acceptedAnswer": { "@type": "Answer", "text": "251 Pokémon from Generations 1 and 2, plus alternate-color (shiny-style) sprites for the 124 Pokémon that have them." } },
+    { "@type": "Question", "name": "What is raising mode?",
+      "acceptedAnswer": { "@type": "Answer", "text": "An optional mode where your follower becomes a Pokémon you raise: wild Pokémon appear on the desktop, auto battles play out on the overlay with type match-ups and status conditions, wins grant EXP and evolutions, you can catch wilds with Poké Balls, and manage a party of up to six with a bag of items." } },
     { "@type": "Question", "name": "How do I install it?",
       "acceptedAnswer": { "@type": "Answer", "text": "Download the .dmg from the Releases page, open it, drag Pokémon Mouse Follower into your Applications folder, and launch it. No Xcode or developer tools are required." } },
     { "@type": "Question", "name": "Where do the sprites come from?",
@@ -94,7 +96,7 @@
         <span class="badge">Apple Silicon · Intel</span>
       </div>
       <h1>A Pokémon that follows your cursor.</h1>
-      <p class="lead">A tiny macOS menu-bar app. A pixel-art Pokémon strolls across your screen, chases your mouse, and curls up to sleep when you stop.</p>
+      <p class="lead">A tiny macOS menu-bar app. A pixel-art Pokémon strolls across your screen, chases your mouse, and curls up to sleep when you stop. Or switch on raising mode and battle, catch and evolve it.</p>
       <div class="cta">
         <a class="btn" href="https://github.com/LimFull/pokemon-mouse-follower/releases/latest/download/PokemonMouseFollower.dmg">↓ Download for macOS</a>
         <a class="btn ghost" href="https://github.com/LimFull/pokemon-mouse-follower">View on GitHub</a>
@@ -132,14 +134,33 @@
       <div class="feature"><div class="ico">🧭</div><h3>8-direction animation</h3><p>Sprites turn to face wherever they're walking, in true pixel-art style.</p></div>
       <div class="feature"><div class="ico">😴</div><h3>Idle → sleep</h3><p>Stop moving and it settles down, then falls asleep. Move the mouse and it wakes right up.</p></div>
       <div class="feature"><div class="ico">🐱</div><h3>251 Pokémon</h3><p>All of Gen 1 &amp; 2, with alternate-color variants for 124 of them. Pick with a preview, arrows, or a random button.</p></div>
+      <div class="feature"><div class="ico">🎮</div><h3>Raising mode</h3><p>Wild encounters, on-screen auto battles, EXP and evolution, catching with Poké Balls, a six-mon party and a bag of items.</p></div>
       <div class="feature"><div class="ico">🖥️</div><h3>Click-through &amp; multi-monitor</h3><p>A transparent overlay that never blocks your work, and crosses between displays seamlessly.</p></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap split">
+    <img src="assets/raising.png" width="741" height="512"
+         alt="The Settings window with the raising-mode party panel: four party members with HP bars and send-out/recall buttons, a bag, and raising settings">
+    <div>
+      <h3>Raising mode — new in 1.1</h3>
+      <p>Turn the follower into a Pokémon you actually raise. Pick one of the six classic starters, then:</p>
+      <ul>
+        <li>Wild Pokémon wander onto your desktop — walk into one and an <strong>auto battle</strong> plays out on the overlay, with type match-ups, move effects and status conditions</li>
+        <li>Wins grant <strong>EXP</strong>: level-ups float over its head, new moves are learned, and <strong>evolutions</strong> play the classic white-out scene</li>
+        <li><strong>Catch</strong> weakened wilds with Poké Balls and build a party of up to six</li>
+        <li>Items drop on the desktop — walk over them and use potions, balls and evolution items from the <strong>bag</strong></li>
+        <li>Hurt members rest up out of battle (faster while napping) and the whole party heals at midnight</li>
+      </ul>
     </div>
   </div>
 </section>
 
 <section style="background:var(--bg-soft); border-top:1px solid var(--border); border-bottom:1px solid var(--border);">
   <div class="wrap split">
-    <img src="assets/settings.png" width="400" height="540"
+    <img src="assets/settings.png" width="400" height="516"
          alt="The Settings window: a live preview of the selected Pokémon with previous/next arrows and a random button, plus sliders for distance, speed, size and sleep time">
     <div>
       <h3>Make it yours</h3>
@@ -185,6 +206,7 @@
       <details><summary>Which macOS versions are supported?</summary><p>macOS 13 (Ventura) and later, on both Apple Silicon and Intel Macs (a universal build).</p></details>
       <details><summary>Does it slow down my Mac or block clicks?</summary><p>No. It's a lightweight menu-bar app drawn on a transparent, click-through overlay, so it never blocks the apps underneath and has no Dock icon.</p></details>
       <details><summary>How many Pokémon can I choose from?</summary><p>251 Pokémon from Generations 1 and 2, plus alternate-color sprites for the 124 that have them. You can browse with a live preview, arrows, or a random button.</p></details>
+      <details><summary>What is raising mode?</summary><p>An optional mode where the follower becomes a Pokémon you raise. Wild Pokémon appear on your desktop, auto battles play out on the overlay (type match-ups, move effects, status conditions), wins grant EXP and evolutions, you can catch wilds with Poké Balls, and you manage a party of up to six with a bag of items. Progress is saved automatically.</p></details>
       <details><summary>How do I install it?</summary><p>Download the <code>.dmg</code> from <a href="https://github.com/LimFull/pokemon-mouse-follower/releases/latest">Releases</a>, drag the app into Applications, and launch it. Downloads open normally on macOS — no developer tools needed.</p></details>
       <details><summary>How do I uninstall it?</summary><p>Click the 🐾 menu-bar icon → Quit, then drag the app from Applications to the Trash.</p></details>
       <details><summary>Where do the sprites come from?</summary><p>The pixel animations are from <a href="https://sprites.pmdcollab.org/">PMD Sprite Collab</a>, a community project. This is a non-commercial personal fan project; Pokémon © Nintendo / Creatures Inc. / GAME FREAK inc.</p></details>
