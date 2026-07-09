@@ -122,6 +122,12 @@ struct BattleEvent {
     let targetMaxHP: Int
     let fainted: Bool
     let statusApplied: String?  // ailment/volatile inflicted on the target, if any
+    // Which simulated round this event belongs to. Turn order is recomputed
+    // every round from effectiveSpeed (paralysis — and any future speed
+    // changes — can flip it), so playback must use this stamp, never guess
+    // boundaries from actor order. A mid-battle recall waits for the stamped
+    // turn to finish (mainline flee timing).
+    var turn: Int = 0
     var shakes: Int = 0         // .ball: how many of the 4 shake checks passed
     var caught: Bool = false    // .ball: capture succeeded
     var ballId: Int = 0         // .ball: GameItem raw value (for the icon)
@@ -177,12 +183,13 @@ enum BattleEngine {
                         moveName: ball.displayName, damage: 0, effectiveness: 1,
                         targetIsPlayer: false, targetHP: wild.currentHP,
                         targetMaxHP: wild.maxHP, fainted: false, statusApplied: nil,
-                        shakes: shakes, caught: ok, ballId: ball.rawValue,
+                        turn: turn, shakes: shakes, caught: ok, ballId: ball.rawValue,
                         playerAsleep: player.status == .sleep,
                         wildAsleep: wild.status == .sleep))
                     continue
                 }
-                act(attacker: atk, defender: def, actorIsPlayer: isPlayer, events: &events)
+                act(attacker: atk, defender: def, actorIsPlayer: isPlayer,
+                    turn: turn, events: &events)
             }
             guard !captured else { break }
             // End-of-round chip damage (burn 1/16, poison 1/8).
@@ -194,7 +201,7 @@ enum BattleEngine {
                     kind: .residual, actorIsPlayer: isPlayer, moveId: 0, moveName: s.rawValue,
                     damage: dmg, effectiveness: 1, targetIsPlayer: isPlayer,
                     targetHP: b.currentHP, targetMaxHP: b.maxHP, fainted: b.isFainted,
-                    statusApplied: nil,
+                    statusApplied: nil, turn: turn,
                     playerAsleep: player.status == .sleep,
                     wildAsleep: wild.status == .sleep))
             }
@@ -232,7 +239,7 @@ enum BattleEngine {
 
     /// One battler's action for the round: status gates, accuracy, damage, ailment.
     private static func act(attacker: Battler, defender: Battler,
-                            actorIsPlayer: Bool, events: inout [BattleEvent]) {
+                            actorIsPlayer: Bool, turn: Int, events: inout [BattleEvent]) {
         func emit(_ kind: BattleEvent.Kind, move: MoveData? = nil, reason: String = "",
                   damage: Int = 0, eff: Double = 1, targetIsPlayer: Bool? = nil,
                   status: String? = nil) {
@@ -245,7 +252,7 @@ enum BattleEngine {
                 moveId: move?.moveId ?? 0, moveName: move?.displayName ?? reason,
                 damage: damage, effectiveness: eff, targetIsPlayer: tgtIsPlayer,
                 targetHP: tgt.currentHP, targetMaxHP: tgt.maxHP, fainted: tgt.isFainted,
-                statusApplied: status,
+                statusApplied: status, turn: turn,
                 playerAsleep: player.status == .sleep, wildAsleep: wild.status == .sleep))
         }
 

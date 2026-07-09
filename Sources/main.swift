@@ -1728,6 +1728,12 @@ if let i = CommandLine.arguments.firstIndex(of: "--dump-evolution"),
 // Debug hook: `--selftest-raising` exercises the raising-mode data/state layer
 // against the bundled game data, prints a report, and exits. Harmless otherwise.
 if CommandLine.arguments.contains("--selftest-raising") {
+    // The selftest RESETS the party. Refuse to touch the real save: it only
+    // runs against a scratch directory (PMF_SAVE_DIR redirects persistence).
+    guard ProcessInfo.processInfo.environment["PMF_SAVE_DIR"] != nil else {
+        print("refusing --selftest-raising: it resets the save. Set PMF_SAVE_DIR to a scratch directory first.")
+        exit(2)
+    }
     print("GameData: species=\(GameData.species.count) moves=\(GameData.moves.count) starters=\(GameData.starters.count)")
     let st = RaisingState.shared
     st.reset()
@@ -1752,8 +1758,13 @@ if CommandLine.arguments.contains("--selftest-raising") {
         let r = BattleEngine.run(player: p, wild: w)
         print("battle: \(p.name) L\(p.level) \(p.gender.rawValue) vs wild \(w.name) L\(w.level) \(w.gender.rawValue) → \(r.playerWon ? "WIN" : "LOSE") in \(r.events.count) events, exp=\(r.expGained) (base \(w.baseExp)), endStatus=\(r.playerEndStatus ?? "none")")
         for e in r.events.prefix(4) {
-            print("  \(e.actorIsPlayer ? "▶" : "◀") [\(e.kind)] \(e.moveName): \(e.damage) dmg x\(e.effectiveness) (tgt \(e.targetIsPlayer ? "P" : "W") HP \(e.targetHP)/\(e.targetMaxHP))\(e.statusApplied.map { " +\($0)" } ?? "")\(e.fainted ? " FAINT" : "")")
+            print("  \(e.actorIsPlayer ? "▶" : "◀") [\(e.kind)] T\(e.turn) \(e.moveName): \(e.damage) dmg x\(e.effectiveness) (tgt \(e.targetIsPlayer ? "P" : "W") HP \(e.targetHP)/\(e.targetMaxHP))\(e.statusApplied.map { " +\($0)" } ?? "")\(e.fainted ? " FAINT" : "")")
         }
+        // Turn stamps (the mid-battle recall flees at these boundaries):
+        // must start at 1 and never decrease across the event log.
+        let turns = r.events.map(\.turn)
+        let monotonic = zip(turns, turns.dropFirst()).allSatisfy { $0 <= $1 }
+        print("turn stamps: first=\(turns.first ?? 0) last=\(turns.last ?? 0) monotonic=\(monotonic) (expect first=1, monotonic=true)")
     }
     // Status conditions (D19): Thunder Wave-style paralysis + burn chip damage.
     if let p = Battler(wildDex: 25, level: 20), let w = Battler(wildDex: 16, level: 18) {
@@ -1857,6 +1868,35 @@ if CommandLine.arguments.contains("--selftest-raising") {
         }
         let m = RaisingState.shared.active!
         print("playback: battleTicks=\(battleTicks) effectFrames=\(effectFrames) → \(Characters.displayName(String(format: "%03d", m.dex))) Lv\(m.level) HP \(m.currentHP)/\(m.maxHP) status=\(m.status ?? "none")")
+        AppSettings.shared.raisingMode = hadRaising
+    }
+    // Deferred recall (mainline flee timing): recalling mid-battle must NOT
+    // break off immediately — the turn in progress plays out first, then the
+    // battle cancels and the follower is recalled (activeIndex -1).
+    do {
+        let hadRaising = AppSettings.shared.raisingMode
+        AppSettings.shared.raisingMode = true
+        st.healMon(at: 0)
+        st.setActive(0)
+        let bc = BattleController()
+        let p = CGPoint(x: 500, y: 500)
+        bc.forceSpawn(at: CGPoint(x: 520, y: 500))
+        var playedOn = -1
+        var pendingSeen = false
+        for _ in 0..<20_000 {
+            _ = bc.update(playerGlobalPos: p)
+            if bc.isBattling, playedOn < 0 {
+                RaisingState.shared.recall()
+                pendingSeen = bc.recallPending
+                playedOn = 0
+                continue
+            }
+            if playedOn >= 0 {
+                if !bc.isBattling { break }
+                playedOn += 1
+            }
+        }
+        print("deferred recall: pending=\(pendingSeen) playedOn=\(playedOn) activeAfter=\(RaisingState.shared.save.activeIndex) (expect true, >0, -1)")
         AppSettings.shared.raisingMode = hadRaising
     }
     if let s7 = GameData.species[7] { _ = st.addToParty(st.makeMon(species: s7, level: 5)) }

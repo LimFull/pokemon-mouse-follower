@@ -36,6 +36,10 @@ struct BattleScene {
 }
 
 final class BattleController {
+    /// The live controller (owned by the app delegate) so PartyState can route
+    /// a mid-battle recall through the turn machinery.
+    private(set) static weak var current: BattleController?
+
     private enum Phase { case idle, present, battling, ending }
     private var phase: Phase = .idle
 
@@ -75,10 +79,34 @@ final class BattleController {
     private var wildAlpha = 1.0
     private var result: BattleResult?
     private var endTicks = 0
+    private var recallTurn: Int?         // flee after this simulated turn ends
 
-    init() { spawnCooldown = nextSpawnDelay() }
+    init() {
+        spawnCooldown = nextSpawnDelay()
+        BattleController.current = self
+    }
 
     var isBattling: Bool { phase == .battling || phase == .ending }
+
+    /// A recall was accepted but is waiting for the current turn to finish.
+    var recallPending: Bool { recallTurn != nil }
+
+    /// Mainline flee timing: a recall during battle playback only takes effect
+    /// once the turn in progress fully plays out (both sides acted, plus any
+    /// end-of-round chip damage). Returns true when the recall was deferred —
+    /// the controller will perform it at the turn boundary; false means no
+    /// turn machinery applies and the caller should recall immediately.
+    func requestRecall() -> Bool {
+        guard phase == .battling else { return false }
+        if recallTurn == nil {
+            recallTurn = evIdx < events.count ? events[evIdx].turn
+                                              : (events.last?.turn ?? 0)
+        }
+        return true
+    }
+
+    /// Drop a pending flee (e.g. the player sent out someone else instead).
+    func cancelRecallRequest() { recallTurn = nil }
 
     /// Debug: spawn a wild encounter immediately; `at` pins its position
     /// (used by the selftest to force a contact battle deterministically).
@@ -109,8 +137,10 @@ final class BattleController {
     func update(playerGlobalPos: CGPoint) -> BattleScene? {
         playerPos = playerGlobalPos
         // Abort any encounter if raising mode was turned off or the party was
-        // reset/emptied. A RECALL mid-battle only cancels the battle — the
-        // wild stays and goes back to wandering.
+        // reset/emptied. A recall mid-battle is deferred to the turn boundary
+        // (requestRecall) and only cancels the battle — the wild stays and
+        // goes back to wandering; the active==nil check below is the safety
+        // net for other ways the follower can vanish (e.g. released).
         if phase != .idle {
             if !AppSettings.shared.raisingMode || RaisingState.shared.party.isEmpty {
                 despawn()
@@ -211,7 +241,20 @@ final class BattleController {
             return
         }
         let e = events[evIdx]
-        if evTick == 0 { beginEvent(e) }
+        if evTick == 0 {
+            // Pending recall + the next event opens a LATER turn: the turn the
+            // player was committed to has fully played — flee now, before the
+            // new turn starts. The engine reorders combatants every turn by
+            // effectiveSpeed, so the stamped turn number is the only safe
+            // boundary marker.
+            if let rt = recallTurn, e.turn > rt {
+                recallTurn = nil
+                cancelBattle()
+                RaisingState.shared.recall()
+                return
+            }
+            beginEvent(e)
+        }
         // Battle poses (D2-1): attacker lunges/shoots, the hit side flinches.
         let (pPose, wPose) = poses(for: e)
         playerPose = pPose
@@ -550,6 +593,12 @@ final class BattleController {
             // challenging it; it leaves on its own despawn timer.
             phase = .present
         }
+        // The battle ended during the turn the flee was waiting on — the
+        // outcome stands (applied above), THEN the recall goes through.
+        if recallTurn != nil {
+            recallTurn = nil
+            RaisingState.shared.recall()
+        }
     }
 
     private func tickEnding() {
@@ -566,6 +615,7 @@ final class BattleController {
     /// wandering; nothing is granted or consumed.
     private func cancelBattle() {
         if let w = wild { w.currentHP = max(1, Int(curWHP * Double(w.maxHP))) }
+        recallTurn = nil
         events = []; result = nil; effects = []; ballFrame = nil
         playerPose = (.stand, 0)
         playerDodge = .zero; wildDodge = .zero
@@ -577,6 +627,7 @@ final class BattleController {
     }
 
     private func despawn() {
+        recallTurn = nil
         wild = nil; wildMon = nil; events = []; result = nil; effects = []; ballFrame = nil
         playerAlpha = 1.0; wildAlpha = 1.0
         phase = .idle

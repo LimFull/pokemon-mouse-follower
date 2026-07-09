@@ -119,6 +119,7 @@ final class RaisingPanelView: NSView {
         root.addArrangedSubview(sectionLabel("\(L("detail.party"))  \(party.count)/\(RaisingState.maxParty)"))
 
         let activeIdx = RaisingState.shared.save.activeIndex
+        let recallPending = BattleController.current?.recallPending ?? false
         for (i, mon) in party.enumerated() {
             let row = PartyRowView(mon: mon, isActive: i == activeIdx,
                                    onClick: { [weak self] in
@@ -130,7 +131,8 @@ final class RaisingPanelView: NSView {
                                    },
                                    onRecall: i == activeIdx ? {
                                        RaisingState.shared.recall()
-                                   } : nil)
+                                   } : nil,
+                                   recallPending: recallPending)
             root.addArrangedSubview(row)
         }
 
@@ -468,6 +470,9 @@ final class RaisingPanelView: NSView {
             let back = NSButton(title: L("detail.recall"), target: self, action: #selector(recallActiveTapped))
             back.bezelStyle = .rounded
             back.contentTintColor = Palette.accent
+            if BattleController.current?.recallPending == true {
+                back.isEnabled = false
+            }
             actions.addArrangedSubview(back)
         } else if !mon.isFainted {
             let out = NSButton(title: L("detail.sendout"), target: self, action: #selector(sendOutTapped))
@@ -771,9 +776,11 @@ final class PartyRowView: NSView {
     /// `isActive` marks the mon currently out on the desktop; `onSendOut`
     /// (when non-nil) shows the swap button that makes this one the follower,
     /// `onRecall` the withdraw button that puts the active one away.
+    /// `recallPending` disables the withdraw button while a mid-battle recall
+    /// waits for the turn to finish.
     init(mon: OwnedPokemon, isActive: Bool,
          onClick: @escaping () -> Void, onSendOut: (() -> Void)?,
-         onRecall: (() -> Void)? = nil) {
+         onRecall: (() -> Void)? = nil, recallPending: Bool = false) {
         self.onClick = onClick
         self.onSendOut = onSendOut
         self.onRecall = onRecall
@@ -851,6 +858,7 @@ final class PartyRowView: NSView {
             }
             b.frame = NSRect(x: 268, y: 13, width: 26, height: 24)
             b.toolTip = L("detail.recall")
+            if recallPending { b.isEnabled = false; b.alphaValue = 0.4 }
             addSubview(b)
         }
     }

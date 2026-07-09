@@ -219,14 +219,23 @@ final class RaisingState {
     /// Make the party member at `index` the active follower.
     func setActive(_ index: Int) {
         guard save.party.indices.contains(index) else { return }
+        // Sending someone out supersedes a flee that was waiting on the turn.
+        BattleController.current?.cancelRecallRequest()
         save.activeIndex = index
         persist()
         notifyChanged()
     }
 
     /// Recall the follower — nobody is out until the player sends one again.
-    /// A battle in progress is cancelled (the wild resumes wandering).
+    /// Mid-battle this works like the mainline RUN command: the recall waits
+    /// until the turn in progress fully plays out (the controller calls back
+    /// here at the turn boundary, or after the outcome if the battle ends
+    /// first); only then is the battle broken off and the follower recalled.
     func recall() {
+        if BattleController.current?.requestRecall() == true {
+            notifyChanged()   // panels show the pending state (buttons disable)
+            return
+        }
         save.activeIndex = -1
         persist()
         notifyChanged()
@@ -470,9 +479,17 @@ final class RaisingState {
 
     private static func saveURL() -> URL {
         let fm = FileManager.default
-        let dir = (fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+        // PMF_SAVE_DIR redirects ALL persistence. Selftests must set it: a
+        // debug run resets the party, and without the override it writes to
+        // the real save (overriding $HOME does NOT move applicationSupport).
+        let dir: URL
+        if let scratch = ProcessInfo.processInfo.environment["PMF_SAVE_DIR"] {
+            dir = URL(fileURLWithPath: scratch, isDirectory: true)
+        } else {
+            dir = (fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
                    ?? fm.temporaryDirectory)
-            .appendingPathComponent("PokemonMouseFollower", isDirectory: true)
+                .appendingPathComponent("PokemonMouseFollower", isDirectory: true)
+        }
         try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir.appendingPathComponent("raising.json")
     }
