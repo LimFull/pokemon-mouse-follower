@@ -548,13 +548,15 @@ final class HPBarView: NSView {
         layer?.backgroundColor = NSColor.quaternaryLabelColor.cgColor
 
         let ratio = max > 0 ? Swift.max(0, Swift.min(1, CGFloat(current) / CGFloat(max))) : 0
-        let fill = NSView(frame: NSRect(x: 0, y: 0, width: Swift.max(2, width * ratio), height: 8))
-        fill.autoresizingMask = []
-        fill.wantsLayer = true
-        fill.layer?.cornerRadius = 4
-        let auto: NSColor = ratio > 0.5 ? .systemGreen : (ratio > 0.2 ? .systemYellow : .systemRed)
-        fill.layer?.backgroundColor = (color ?? auto).cgColor
-        addSubview(fill)
+        if ratio > 0 {                       // no sliver of fill at 0 HP
+            let fill = NSView(frame: NSRect(x: 0, y: 0, width: Swift.max(2, width * ratio), height: 8))
+            fill.autoresizingMask = []
+            fill.wantsLayer = true
+            fill.layer?.cornerRadius = 4
+            let auto: NSColor = ratio > 0.5 ? .systemGreen : (ratio > 0.2 ? .systemYellow : .systemRed)
+            fill.layer?.backgroundColor = (color ?? auto).cgColor
+            addSubview(fill)
+        }
     }
     required init?(coder: NSCoder) { fatalError("not used") }
     override var intrinsicContentSize: NSSize { NSSize(width: w, height: 8) }

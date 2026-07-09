@@ -791,9 +791,11 @@ final class SpriteView: NSView {
 
     private func layoutHP(_ track: CALayer, _ fill: CALayer, center: CGPoint, frac: Double) {
         let w: CGFloat = 46, h: CGFloat = 5
-        track.isHidden = false; fill.isHidden = false
+        track.isHidden = false
         track.bounds = CGRect(x: 0, y: 0, width: w, height: h); track.position = center
-        let fw = max(1, w * CGFloat(max(0, min(1, frac))))
+        guard frac > 0 else { fill.isHidden = true; return }   // empty at 0 HP
+        fill.isHidden = false
+        let fw = max(1, w * CGFloat(min(1, frac)))
         fill.bounds = CGRect(x: 0, y: 0, width: fw, height: h)
         fill.position = CGPoint(x: center.x - (w - fw) / 2, y: center.y)   // left-anchored
         fill.backgroundColor = (frac > 0.5 ? NSColor.systemGreen
