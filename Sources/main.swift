@@ -1412,9 +1412,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let toggle = NSMenuItem(title: L("menu.pause"), action: #selector(toggleRunning), keyEquivalent: "p")
         toggle.target = self
         menu.addItem(toggle)
-        let spawn = NSMenuItem(title: "Spawn wild (debug)", action: #selector(debugSpawn), keyEquivalent: "")
-        spawn.target = self
-        menu.addItem(spawn)
+        // Debug submenu: instant battles against curated opponents (each
+        // exercises a status/effect path), plus item/EXP/heal shortcuts.
+        let debug = NSMenuItem(title: "디버그", action: nil, keyEquivalent: "")
+        let dm = NSMenu()
+        func encounter(_ title: String, _ dex: Int) {
+            let it = NSMenuItem(title: title, action: #selector(debugEncounter(_:)), keyEquivalent: "")
+            it.target = self
+            it.tag = dex
+            dm.addItem(it)
+        }
+        encounter("즉시 배틀: 랜덤", 0)
+        encounter("즉시 배틀: 피카츄 (마비)", 25)
+        encounter("즉시 배틀: 슬리프 (최면술·에스퍼)", 96)
+        encounter("즉시 배틀: 식스테일 (화상)", 37)
+        encounter("즉시 배틀: 아보 (독)", 23)
+        encounter("즉시 배틀: 루주라 (얼음·헤롱헤롱)", 124)
+        encounter("즉시 배틀: 별가사리 (물대포)", 120)
+        dm.addItem(.separator())
+        let items = NSMenuItem(title: "테스트 아이템 지급", action: #selector(debugGiveItems), keyEquivalent: "")
+        items.target = self
+        dm.addItem(items)
+        let heal = NSMenuItem(title: "파티 전체 회복", action: #selector(debugHealAll), keyEquivalent: "")
+        heal.target = self
+        dm.addItem(heal)
+        let exp = NSMenuItem(title: "활성 포켓몬 +300 EXP", action: #selector(debugGiveExp), keyEquivalent: "")
+        exp.target = self
+        dm.addItem(exp)
+        let wander = NSMenuItem(title: "야생 스폰 (배회)", action: #selector(debugSpawn), keyEquivalent: "")
+        wander.target = self
+        dm.addItem(wander)
+        debug.submenu = dm
+        menu.addItem(debug)
         menu.addItem(.separator())
         let quit = NSMenuItem(title: L("menu.quit"), action: #selector(quit), keyEquivalent: "q")
         quit.target = self
@@ -1497,6 +1526,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func debugSpawn() { battle.forceSpawn() }
+
+    @objc private func debugEncounter(_ sender: NSMenuItem) {
+        battle.forceEncounter(dex: sender.tag > 0 ? sender.tag : nil)
+    }
+
+    @objc private func debugGiveItems() {
+        let st = RaisingState.shared
+        st.addItem(.pokeBall, 5)
+        st.addItem(.greatBall, 2)
+        st.addItem(.potion, 3)
+        st.addItem(.superPotion, 2)
+        st.addItem(.revive, 2)
+        for stone: GameItem in [.fireStone, .thunderStone, .waterStone, .leafStone,
+                                .moonStone, .sunStone, .linkCord, .friendCandy] {
+            st.addItem(stone, 1)
+        }
+    }
+
+    @objc private func debugHealAll() {
+        let st = RaisingState.shared
+        for i in st.party.indices { st.healMon(at: i) }
+    }
+
+    @objc private func debugGiveExp() {
+        let st = RaisingState.shared
+        guard st.hasActiveGame else { return }
+        let result = st.gainExp(300)
+        let idx = st.save.activeIndex
+        for moveId in result.pendingMoves {
+            PromptCenter.shared.enqueue(.learnMove(monIndex: idx, moveId: moveId))
+        }
+    }
 
     @objc private func quit() {
         NSApplication.shared.terminate(nil)

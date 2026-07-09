@@ -88,6 +88,24 @@ final class BattleController {
         if let pos { wildMon?.place(at: pos) }
     }
 
+    /// Debug: drop a chosen wild (nil = random) right next to the follower at
+    /// the active mon's level — the battle starts on the next contact check.
+    func forceEncounter(dex: Int? = nil) {
+        guard AppSettings.shared.raisingMode,
+              let a = RaisingState.shared.active, !a.isFainted else { return }
+        if phase != .idle { despawn() }
+        let level = max(2, a.level)
+        guard let d = dex ?? GameData.wildPool(atLevel: level).randomElement(),
+              let w = Battler(wildDex: d, level: level),
+              let wm = WildMon(dex: d) else { return }
+        wild = w
+        wildMon = wm
+        let scale = AppSettings.shared.scale
+        wm.place(at: CGPoint(x: playerPos.x + 50 * scale, y: playerPos.y))
+        despawnTicks = 5 * 60 * 60
+        phase = .present
+    }
+
     func update(playerGlobalPos: CGPoint) -> BattleScene? {
         playerPos = playerGlobalPos
         // Abort any encounter if raising mode was turned off or the party was
