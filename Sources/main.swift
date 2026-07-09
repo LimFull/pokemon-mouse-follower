@@ -1911,6 +1911,24 @@ if CommandLine.arguments.contains("--selftest-raising") {
         print("playback: battleTicks=\(battleTicks) effectFrames=\(effectFrames) levelTagTicks=\(levelTagTicks) → \(Characters.displayName(String(format: "%03d", m.dex))) Lv\(m.level) HP \(m.currentHP)/\(m.maxHP) status=\(m.status ?? "none")")
         AppSettings.shared.raisingMode = hadRaising
     }
+    // Wander legs are capped: a wild must never trek edge-to-edge (it kept
+    // steamrolling over the follower and starting accidental battles). A leg
+    // ends at a stationary tick (pause or target repick), so the max distance
+    // between stationary points is the max single move.
+    if let wm = WildMon(dex: 7) {
+        wm.place(at: CGPoint(x: 1500, y: 1000))
+        var anchor = wm.pos, last = wm.pos
+        var maxLeg: CGFloat = 0
+        for _ in 0..<120_000 {
+            wm.wander(bounds: CGRect(x: 0, y: 0, width: 3000, height: 2000))
+            if wm.pos == last {
+                maxLeg = max(maxLeg, hypot(wm.pos.x - anchor.x, wm.pos.y - anchor.y))
+                anchor = wm.pos
+            }
+            last = wm.pos
+        }
+        print("wander max leg: \(Int(maxLeg))px over 120k ticks (expect <= 280)")
+    }
     // Sleep continuity: re-applying the SAME character (raisingChanged fires
     // on any party/bag change — the sleep-regen tick included) must not
     // reload the sheets and reset the idle clock, waking the sleeper.

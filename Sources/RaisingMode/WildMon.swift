@@ -55,8 +55,15 @@ final class WildMon {
             if Bool.random() {
                 pauseTicks = Int.random(in: 40...140)
             } else {
-                target = CGPoint(x: .random(in: bounds.minX + 60 ... bounds.maxX - 60),
-                                 y: .random(in: bounds.minY + 60 ... bounds.maxY - 60))
+                // Short hops only: each leg is capped so the wild meanders
+                // around where it spawned instead of trekking edge-to-edge —
+                // a screen crossing kept steamrolling over the follower and
+                // starting battles nobody asked for.
+                let angle = CGFloat.random(in: 0 ..< 2 * .pi)
+                let leg = CGFloat.random(in: 90...280)
+                target = CGPoint(
+                    x: min(max(pos.x + cos(angle) * leg, bounds.minX + 60), bounds.maxX - 60),
+                    y: min(max(pos.y + sin(angle) * leg, bounds.minY + 60), bounds.maxY - 60))
             }
             frame(moving: false)
             return
