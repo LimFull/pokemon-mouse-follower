@@ -238,6 +238,7 @@ final class BattleController {
         floatText = nil; floatAlpha = 0
         var text: String?
         var color = NSColor(srgbRed: 1.0, green: 0.85, blue: 0.3, alpha: 1)   // miss yellow
+        var overActor = false
         switch e.kind {
         case .miss where e.moveId > 0:
             text = e.effectiveness == 0 ? "No Effect" : "Miss"
@@ -247,17 +248,28 @@ final class BattleController {
         case .attack where e.damage > 0 && e.effectiveness > 0 && e.effectiveness < 1:
             text = "Not Very Effective.."
             color = NSColor(srgbRed: 0.75, green: 0.78, blue: 0.85, alpha: 1)
+        case .skip:
+            // Lost turn — say why, over the one who lost it.
+            overActor = true
+            switch e.moveName {
+            case "asleep": text = "Zzz.."; color = NSColor(srgbRed: 0.65, green: 0.72, blue: 0.95, alpha: 1)
+            case "frozen": text = "Frozen!"; color = NSColor(srgbRed: 0.55, green: 0.85, blue: 0.95, alpha: 1)
+            case "paralyzed": text = "Paralyzed!"; color = NSColor(srgbRed: 0.98, green: 0.85, blue: 0.25, alpha: 1)
+            case "infatuated": text = "In love!"; color = NSColor(srgbRed: 0.98, green: 0.55, blue: 0.72, alpha: 1)
+            default: break
+            }
         default:
             return
         }
         let span = 44
         guard let text, evTick >= impactAt, evTick < impactAt + span else { return }
         let scale = AppSettings.shared.scale
-        let defenderPos = e.targetIsPlayer ? playerPos : (wildMon?.pos ?? playerPos)
+        let anchorIsPlayer = overActor ? e.actorIsPlayer : e.targetIsPlayer
+        let anchor = anchorIsPlayer ? playerPos : (wildMon?.pos ?? playerPos)
         let t = Double(evTick - impactAt) / Double(span)
         floatText = text
-        floatPos = CGPoint(x: defenderPos.x,
-                           y: defenderPos.y + (26 + CGFloat(t) * 14) * scale)
+        floatPos = CGPoint(x: anchor.x,
+                           y: anchor.y + (26 + CGFloat(t) * 14) * scale)
         floatAlpha = 1.0 - t * 0.8
         floatColor = color.cgColor
     }
@@ -330,10 +342,15 @@ final class BattleController {
                 if e.actorIsPlayer { p = hurtPose } else { w = hurtPose }
             }
         case .residual:
-            if evTick >= impactAt, evTick < impactAt + 14 {
+            // Hurt pose held while the burn/poison effect plays (user req).
+            if evTick >= impactAt, evTick < hitAt + 6 {
                 let hurtPose = (BattlePose.hurt, evTick - impactAt)
                 if e.targetIsPlayer { p = hurtPose } else { w = hurtPose }
             }
+        case .skip where e.moveName == "asleep":
+            // Asleep: the actor visibly sleeps through its turn.
+            let sleepPose = (BattlePose.sleep, evTick)
+            if e.actorIsPlayer { p = sleepPose } else { w = sleepPose }
         default:
             break
         }
@@ -419,12 +436,38 @@ final class BattleController {
             let resolve = e.damage > 0 ? 26 : (e.kind == .miss ? 24 : 10)
             drainEnd = hitAt + resolve
             curTicks = drainEnd + (fast ? 8 : 16)   // beat gap before the reply
-        case .selfHit, .residual:
+        case .residual:
+            // Mainline end-of-turn chip damage: play the condition's effect
+            // (burn flames / poison gas) over the victim WITH the hurt pose,
+            // then drain — same beat order as an attack (#9).
+            let victim = e.targetIsPlayer ? playerPos : (wildMon?.pos ?? playerPos)
+            impactAt = 8
+            hitAt = 22
+            if let clip = EffectPlayer.statusClip(e.moveName) {
+                let ticks = min(clip.loop ? 30 : clip.totalTicks, 44)
+                effects.append(RunningEffect(clip: clip, anchor: victim, maxTicks: ticks))
+                hitAt = max(hitAt, ticks)
+            }
+            drainEnd = hitAt + 24
+            curTicks = drainEnd + 12
+        case .selfHit:
             impactAt = 6
             hitAt = 6
             drainEnd = hitAt + 24
             curTicks = drainEnd + 12
-        case .skip, .recover:
+        case .skip:
+            // A lost turn must be readable (paralyzed / frozen / asleep / in
+            // love): the condition's effect plays over the ACTOR + a float tag.
+            let actor = e.actorIsPlayer ? playerPos : (wildMon?.pos ?? playerPos)
+            impactAt = 4; hitAt = 0; drainEnd = 0
+            curTicks = 34
+            if let clip = EffectPlayer.statusClip(e.moveName) {
+                let ticks = min(clip.loop ? 30 : clip.totalTicks, 44)
+                effects.append(RunningEffect(clip: clip, anchor: actor, maxTicks: ticks, delay: 4))
+                curTicks = max(curTicks, ticks + 16)
+            }
+            if e.moveName == "asleep" { curTicks = 46 }   // let the sleep pose breathe
+        case .recover:
             impactAt = 0; hitAt = 0; drainEnd = 0
             curTicks = 28
         }

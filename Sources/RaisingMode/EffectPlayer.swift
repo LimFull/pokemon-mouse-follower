@@ -87,6 +87,27 @@ enum EffectPlayer {
         MoveEffects.map[moveId]?.screen == true
     }
 
+    /// Status-condition visuals (D19): the ROM's status-effect table is
+    /// undecoded, so each condition borrows the hit clip of its signature
+    /// move. Keys match the engine's residual names ("burn"/"poison") and
+    /// skip reasons ("paralyzed"/"frozen"/"infatuated").
+    private static let statusMoveIds: [String: Int] = {
+        func id(_ name: String) -> Int? {
+            GameData.moves.first { $0.value.names["e"] == name }?.key
+        }
+        var m: [String: Int] = [:]
+        m["burn"] = id("Will-O-Wisp") ?? id("Ember")
+        m["poison"] = id("Poison Gas") ?? id("Toxic")
+        m["paralyzed"] = id("Thunder Wave")
+        m["frozen"] = id("Powder Snow") ?? id("Ice Beam")
+        m["infatuated"] = id("Attract")
+        return m
+    }()
+
+    static func statusClip(_ key: String) -> EffectClip? {
+        statusMoveIds[key].flatMap { clip(forMove: $0) }
+    }
+
     /// The on-target hit clip for `moveId` (fully corrected: cropped/centered,
     /// tinted, particle-composed), or nil when the move has no sprite effect.
     static func clip(forMove moveId: Int) -> EffectClip? {

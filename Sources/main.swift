@@ -317,6 +317,7 @@ enum BattlePose {
     case attack     // Attack-Anim (contact moves)
     case shoot      // Shoot-Anim (projectile moves; falls back to attack)
     case hurt       // Hurt-Anim while damage lands
+    case sleep      // Sleep-Anim while asleep (loops)
 }
 
 final class CharacterController {
@@ -558,12 +559,16 @@ final class CharacterController {
         case .attack: poseSheet = attack
         case .shoot: poseSheet = shoot
         case .hurt: poseSheet = hurt
+        case .sleep: poseSheet = sleep
         case .stand: poseSheet = []
         }
         if !poseSheet.isEmpty {
             let row = min(lastRow, poseSheet.count - 1)
             if !poseSheet[row].isEmpty {
-                currentFrame = poseSheet[row][min(poseSheet[row].count - 1, poseTick / 3)]
+                // Sleep loops; the action poses play once and hold.
+                let col = pose == .sleep ? (poseTick / 12) % poseSheet[row].count
+                                         : min(poseSheet[row].count - 1, poseTick / 3)
+                currentFrame = poseSheet[row][col]
                 return   // keep the previous shadow anchor during the pose
             }
         }
@@ -1582,6 +1587,9 @@ if CommandLine.arguments.contains("--selftest-raising") {
             print("  effect \(label): steps=\(c.steps.count) ticks=\(c.totalTicks) loop=\(c.loop) head=\(c.headAnchored)")
         } else { print("  effect \(label): MISSING") }
     }
+    // Status visuals: every condition resolves to a playable proxy clip.
+    let statusKeys = ["burn", "poison", "paralyzed", "frozen", "infatuated"]
+    print("status clips:", statusKeys.map { "\($0)=\(EffectPlayer.statusClip($0) != nil ? "ok" : "MISSING")" }.joined(separator: " "))
     // Gender ratios (G): Magnemite genderless, Nidoran♀ always female, Chansey female.
     for d in [81, 29, 113] {
         if let s = GameData.species[d] {

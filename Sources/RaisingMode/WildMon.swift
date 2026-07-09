@@ -12,6 +12,7 @@ final class WildMon {
     private var attack: [[CGImage]] = []   // battle poses (D2-1); empty -> idle
     private var shoot: [[CGImage]] = []
     private var hurt: [[CGImage]] = []
+    private var sleep: [[CGImage]] = []
     private let octantToRow = [2, 3, 4, 5, 6, 7, 0, 1]
 
     private(set) var pos: CGPoint = .zero
@@ -30,6 +31,7 @@ final class WildMon {
         attack = Self.sheet("Attack-Anim", "Attack", subdir, xml)
         shoot = Self.sheet("Shoot-Anim", "Shoot", subdir, xml)
         hurt = Self.sheet("Hurt-Anim", "Hurt", subdir, xml)
+        sleep = Self.sheet("Sleep-Anim", "Sleep", subdir, xml)
         if idle.isEmpty { idle = walk }
         if shoot.isEmpty { shoot = attack }
         guard !walk.isEmpty else { return nil }
@@ -87,12 +89,16 @@ final class WildMon {
         case .attack: poseSheet = attack
         case .shoot: poseSheet = shoot
         case .hurt: poseSheet = hurt
+        case .sleep: poseSheet = sleep
         case .stand: poseSheet = []
         }
         if !poseSheet.isEmpty {
             let r = min(row, poseSheet.count - 1)
             if !poseSheet[r].isEmpty {
-                currentFrame = poseSheet[r][min(poseSheet[r].count - 1, poseTick / 3)]
+                // Sleep loops; the action poses play once and hold.
+                let col = pose == .sleep ? (poseTick / 12) % poseSheet[r].count
+                                         : min(poseSheet[r].count - 1, poseTick / 3)
+                currentFrame = poseSheet[r][col]
                 return
             }
         }
