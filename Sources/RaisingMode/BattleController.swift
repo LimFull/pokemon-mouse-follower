@@ -133,11 +133,11 @@ final class BattleController {
         let d = hypot(playerPos.x - wm.pos.x, playerPos.y - wm.pos.y)
         let active = RaisingState.shared.active
         let conscious = !(active?.isFainted ?? true)
-        // A fainted mon is ignored — the wild just wanders. A conscious one it
-        // notices gets challenged: the wild walks up and the battle starts on
-        // actual contact, right where they meet (no teleporting stance snap).
+        // A fainted mon is ignored — the wild just wanders. Near a conscious
+        // one it stops and watches; the battle starts on actual contact and is
+        // fought right where they meet (no teleporting stance snap).
         if conscious, d < 56 * scale { startBattle(); return }
-        if conscious && d < 170 * scale { wm.approach(playerPos) }
+        if conscious && d < 90 * scale { wm.faceStanding(toward: playerPos) }
         else { wm.wander(bounds: screenBounds()) }
     }
 
