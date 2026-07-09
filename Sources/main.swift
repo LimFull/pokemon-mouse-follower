@@ -1373,6 +1373,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var wasFainted = false
     private let evolution = EvolutionAnimator()   // mainline evolution scene (D8/#9)
     private var regenCounter = 0            // out-of-battle +1 HP tick (~30s)
+    private var dailyHealCounter = 0        // ~10s date-change poll (D23 midnight heal)
     private var overlays: [(window: NSWindow, view: SpriteView)] = []
     private var statusItem: NSStatusItem!
     private var timer: Timer?
@@ -1565,6 +1566,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     self.regenCounter = 0
                     RaisingState.shared.regenTick()
                 }
+            }
+            // Daily full heal (D23) fires at the actual date change, not just
+            // whenever the panel next opens: fainted members revive at local
+            // midnight with the settings window closed too. Deferred past a
+            // battle in progress — its pre-simulated outcome would overwrite
+            // the fresh HP at finishBattle.
+            self.dailyHealCounter += 1
+            if self.dailyHealCounter >= 10 * 60 {
+                self.dailyHealCounter = 0
+                if !self.battle.isBattling { RaisingState.shared.dailyHealIfNeeded() }
             }
             // Items: the mon picks one up by walking over it (not mid-battle).
             let itemScene = self.items.update(followerPos: self.controller.position,

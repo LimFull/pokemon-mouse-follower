@@ -467,7 +467,9 @@ final class RaisingState {
     // MARK: daily heal (D23)
 
     /// Fully heal the whole party if the local calendar day changed since the
-    /// last heal. Returns true if a heal happened.
+    /// last heal. Returns true if a heal happened. Notifies so panels redraw
+    /// even when the heal fires from the app tick at midnight (the nested
+    /// panel refresh this can cause is a one-shot: the second call is a no-op).
     @discardableResult
     func dailyHealIfNeeded() -> Bool {
         let today = RaisingState.today()
@@ -475,6 +477,7 @@ final class RaisingState {
         for i in save.party.indices { save.party[i].heal() }
         save.lastHealDay = today
         persist()
+        notifyChanged()
         return true
     }
 
