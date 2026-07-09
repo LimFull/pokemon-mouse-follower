@@ -1852,11 +1852,13 @@ if CommandLine.arguments.contains("--selftest-raising") {
         var effectFrames = 0, battleTicks = 0
         let trace = ProcessInfo.processInfo.environment["PMF_TRACE_BATTLE"] != nil
         var hadFX = false, hadFlashP = false, hadFlashW = false
+        var levelTagTicks = 0
         var lastPose = BattlePose.stand
         for tick in 0..<20_000 {
             let scene = bc.update(playerGlobalPos: p)
             if bc.isBattling { battleTicks += 1 }
             if scene?.effectFrame != nil { effectFrames += 1 }
+            if scene?.floatText?.hasPrefix("Level Up") == true { levelTagTicks += 1 }
             if trace, let sc = scene, bc.isBattling {
                 let fx = sc.effectFrame != nil
                 if fx != hadFX { print("  t\(tick) effect \(fx ? "ON" : "off")"); hadFX = fx }
@@ -1867,7 +1869,40 @@ if CommandLine.arguments.contains("--selftest-raising") {
             if scene == nil && battleTicks > 0 { break }   // battle done + despawned
         }
         let m = RaisingState.shared.active!
-        print("playback: battleTicks=\(battleTicks) effectFrames=\(effectFrames) → \(Characters.displayName(String(format: "%03d", m.dex))) Lv\(m.level) HP \(m.currentHP)/\(m.maxHP) status=\(m.status ?? "none")")
+        print("playback: battleTicks=\(battleTicks) effectFrames=\(effectFrames) levelTagTicks=\(levelTagTicks) → \(Characters.displayName(String(format: "%03d", m.dex))) Lv\(m.level) HP \(m.currentHP)/\(m.maxHP) status=\(m.status ?? "none")")
+        AppSettings.shared.raisingMode = hadRaising
+    }
+    // Level-up tag: prime the active mon 1 EXP short of its next level, then
+    // battle until a win — the ending beat must float "Level Up!" overhead.
+    do {
+        let hadRaising = AppSettings.shared.raisingMode
+        AppSettings.shared.raisingMode = true
+        st.setActive(0)
+        var tagTicks = 0, wins = 0, tries = 0
+        for _ in 0..<8 where tagTicks == 0 {
+            tries += 1
+            st.healMon(at: 0)
+            guard let mon = st.active, let sp = mon.species,
+                  sp.expCurve.indices.contains(mon.level) else { break }
+            let short = sp.expCurve[mon.level] - mon.exp - 1
+            if short > 0 { _ = st.gainExp(short) }
+            let before = st.active!.level
+            let bc = BattleController()
+            let p = CGPoint(x: 500, y: 500)
+            bc.forceSpawn(at: CGPoint(x: 520, y: 500))
+            var sawBattle = false
+            for _ in 0..<20_000 {
+                let scene = bc.update(playerGlobalPos: p)
+                if bc.isBattling { sawBattle = true }
+                if scene?.floatText?.hasPrefix("Level Up") == true { tagTicks += 1 }
+                if sawBattle, !bc.isBattling {
+                    if st.active!.isFainted { break }          // lost — retry
+                    if scene == nil { break }                  // won + despawned
+                }
+            }
+            if st.active!.level > before { wins += 1 }
+        }
+        print("levelup tag: shown \(tagTicks) ticks over \(wins) level-up win(s) in \(tries) battles (expect ticks>0)")
         AppSettings.shared.raisingMode = hadRaising
     }
     // Deferred recall (mainline flee timing): recalling mid-battle must NOT

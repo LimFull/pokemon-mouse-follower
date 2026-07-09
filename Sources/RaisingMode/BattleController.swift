@@ -79,7 +79,9 @@ final class BattleController {
     private var wildAlpha = 1.0
     private var result: BattleResult?
     private var endTicks = 0
+    private var endTotal = 1             // endTicks' starting value (tag timing)
     private var recallTurn: Int?         // flee after this simulated turn ends
+    private var levelUpTo: Int?          // show a level-up tag while ending
 
     init() {
         spawnCooldown = nextSpawnDelay()
@@ -568,6 +570,7 @@ final class BattleController {
             for moveId in growth.pendingMoves {
                 PromptCenter.shared.enqueue(.learnMove(monIndex: expIdx, moveId: moveId))
             }
+            levelUpTo = growth.leveledTo
             if r.captured, let w = wild {
                 captured = true
                 if st.partyHasRoom {
@@ -581,10 +584,13 @@ final class BattleController {
         if captured {
             // The wild is inside the ball (already hidden); linger briefly.
             endTicks = fast ? 30 : 60
+            endTotal = endTicks
             phase = .ending
         } else if won {
             ballFrame = nil
-            endTicks = fast ? 40 : 90
+            // A level-up tag needs a beat longer to read (mainline jingle).
+            endTicks = levelUpTo != nil ? (fast ? 60 : 130) : (fast ? 40 : 90)
+            endTotal = endTicks
             phase = .ending                 // the beaten wild fades away
         } else {
             ballFrame = nil
@@ -607,6 +613,19 @@ final class BattleController {
         if ballFrame == nil {
             wildAlpha = max(0, Double(endTicks) / 40.0)   // defeated wild fades out
         }                                                  // caught: stays in the ball
+        // Level-up tag over the winner's head (mainline post-battle beat):
+        // same floating-tag pipeline as "Miss"/"Super Effective!", gold, and
+        // drifting upward across the whole ending.
+        floatText = nil; floatAlpha = 0
+        if let lv = levelUpTo {
+            let t = min(1.0, max(0.0, Double(endTotal - endTicks) / Double(endTotal)))
+            let scale = AppSettings.shared.scale
+            floatText = "Level Up! Lv.\(lv)"
+            floatPos = CGPoint(x: playerPos.x,
+                               y: playerPos.y + (28 + CGFloat(t) * 16) * scale)
+            floatAlpha = 1.0 - t * 0.8
+            floatColor = NSColor(srgbRed: 1.0, green: 0.84, blue: 0.25, alpha: 1).cgColor
+        }
         if endTicks <= 0 { despawn() }
     }
 
@@ -628,6 +647,8 @@ final class BattleController {
 
     private func despawn() {
         recallTurn = nil
+        levelUpTo = nil
+        floatText = nil; floatAlpha = 0
         wild = nil; wildMon = nil; events = []; result = nil; effects = []; ballFrame = nil
         playerAlpha = 1.0; wildAlpha = 1.0
         phase = .idle
