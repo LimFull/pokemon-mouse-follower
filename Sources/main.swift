@@ -1025,7 +1025,7 @@ final class SettingsWindowController: NSObject {
 
     init(controller: CharacterController) {
         self.controller = controller
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 640),
+        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 596),
                           styleMask: [.titled, .closable], backing: .buffered, defer: false)
         window.title = L("settings.window.title")
         window.isReleasedWhenClosed = false
@@ -1109,7 +1109,7 @@ final class SettingsWindowController: NSObject {
         // NOTE: pin only tops + fixed heights (never subview.bottom == content.bottom),
         // otherwise NSWindow shrink-wraps its height to the Auto Layout fitting size
         // and the window collapses to the title bar.
-        let contentH: CGFloat = 640
+        let contentH: CGFloat = 596   // fits the 9-row grid + preview (no encounter row)
         NSLayoutConstraint.activate([
             leftColumn.leadingAnchor.constraint(equalTo: content.leadingAnchor),
             leftColumn.topAnchor.constraint(equalTo: content.topAnchor),
