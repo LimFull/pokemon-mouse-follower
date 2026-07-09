@@ -472,7 +472,7 @@ final class RaisingPanelView: NSView {
         } else if !mon.isFainted {
             let out = NSButton(title: L("detail.sendout"), target: self, action: #selector(sendOutTapped))
             out.bezelStyle = .rounded
-            out.contentTintColor = Palette.accent
+            out.contentTintColor = .systemBlue
             actions.addArrangedSubview(out)
         }
         let release = NSButton(title: L("detail.release"), target: self, action: #selector(releaseTapped))
@@ -830,7 +830,7 @@ final class PartyRowView: NSView {
                                  accessibilityDescription: "send out")?
                 .withSymbolConfiguration(.init(pointSize: 19, weight: .semibold)) {
                 b.image = img
-                b.contentTintColor = Palette.accent
+                b.contentTintColor = .systemBlue
             } else {
                 b.title = "▶"
             }
@@ -841,13 +841,13 @@ final class PartyRowView: NSView {
         if onRecall != nil {
             let b = NSButton(title: "", target: self, action: #selector(recallTapped))
             b.isBordered = false
-            if let img = NSImage(systemSymbolName: "arrow.down.circle.fill",
+            if let img = NSImage(systemSymbolName: "arrowshape.left.circle.fill",
                                  accessibilityDescription: "recall")?
                 .withSymbolConfiguration(.init(pointSize: 19, weight: .semibold)) {
                 b.image = img
                 b.contentTintColor = Palette.accent
             } else {
-                b.title = "▼"
+                b.title = "◀"
             }
             b.frame = NSRect(x: 268, y: 13, width: 26, height: 24)
             b.toolTip = L("detail.recall")
