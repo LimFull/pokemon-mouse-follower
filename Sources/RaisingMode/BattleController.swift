@@ -48,7 +48,8 @@ final class BattleController {
     private var evIdx = 0
     private var evTick = 0
     private var curTicks = 20            // current event's playback length
-    private var hitAt = 0                // tick where damage/dodge lands (#9)
+    private var impactAt = 0             // tick where the attack visually connects
+    private var hitAt = 0                // tick where the HP drain may start (#9)
     private var drainEnd = 0             // tick where the HP drain finishes
     private var effects: [RunningEffect] = []   // phases: projectile, then hit
     private var ballFrame: CGImage?      // thrown ball being drawn (D11)
@@ -174,7 +175,7 @@ final class BattleController {
             let t = min(1.0, max(0.0, Double(evTick - hitAt) / Double(drainEnd - hitAt)))
             if e.targetIsPlayer { curPHP = lerp(pFrom, pTo, t) } else { curWHP = lerp(wFrom, wTo, t) }
         }
-        let flashing = e.damage > 0 && evTick >= hitAt && evTick < hitAt + 10
+        let flashing = e.damage > 0 && evTick >= impactAt && evTick < impactAt + 10
         flashP = flashing && e.targetIsPlayer
         flashW = flashing && !e.targetIsPlayer
         tickDodge(e)
@@ -196,8 +197,8 @@ final class BattleController {
         let defenderPos = e.targetIsPlayer ? playerPos : (wildMon?.pos ?? playerPos)
         let attackerPos = e.targetIsPlayer ? (wildMon?.pos ?? playerPos) : playerPos
         let dodgeSpan = 22
-        if evTick >= hitAt, evTick < hitAt + dodgeSpan {
-            let t = CGFloat(evTick - hitAt) / CGFloat(dodgeSpan)
+        if evTick >= impactAt, evTick < impactAt + dodgeSpan {
+            let t = CGFloat(evTick - impactAt) / CGFloat(dodgeSpan)
             var dx = defenderPos.x - attackerPos.x, dy = defenderPos.y - attackerPos.y
             let d = max(0.001, hypot(dx, dy)); dx /= d; dy /= d
             let amp = sin(t * .pi) * 20 * scale
@@ -205,8 +206,8 @@ final class BattleController {
             if e.targetIsPlayer { playerDodge = off } else { wildDodge = off }
         }
         let textSpan = 40
-        if evTick >= hitAt, evTick < hitAt + textSpan {
-            let t = Double(evTick - hitAt) / Double(textSpan)
+        if evTick >= impactAt, evTick < impactAt + textSpan {
+            let t = Double(evTick - impactAt) / Double(textSpan)
             missPos = CGPoint(x: defenderPos.x,
                               y: defenderPos.y + (26 + CGFloat(t) * 14) * scale)
             missAlpha = 1.0 - t * 0.8
@@ -223,22 +224,24 @@ final class BattleController {
         switch e.kind {
         case .attack, .miss:
             let hasProj = EffectPlayer.projectile(forMove: e.moveId) != nil
-            if evTick < min(26, hitAt) {
+            // Attack anim runs through the impact (holding its last frame just
+            // past it), so a lunge isn't cut off mid-swing.
+            if evTick < min(36, impactAt + 12) {
                 let atk = (hasProj ? BattlePose.shoot : .attack, evTick)
                 if e.actorIsPlayer { p = atk } else { w = atk }
             }
-            if e.kind == .attack, e.damage > 0, evTick >= hitAt, evTick < hitAt + 18 {
-                let hurtPose = (BattlePose.hurt, evTick - hitAt)
+            if e.kind == .attack, e.damage > 0, evTick >= impactAt, evTick < impactAt + 18 {
+                let hurtPose = (BattlePose.hurt, evTick - impactAt)
                 if e.targetIsPlayer { p = hurtPose } else { w = hurtPose }
             }
         case .selfHit:
-            if evTick >= hitAt, evTick < hitAt + 18 {
-                let hurtPose = (BattlePose.hurt, evTick - hitAt)
+            if evTick >= impactAt, evTick < impactAt + 18 {
+                let hurtPose = (BattlePose.hurt, evTick - impactAt)
                 if e.actorIsPlayer { p = hurtPose } else { w = hurtPose }
             }
         case .residual:
-            if evTick >= hitAt, evTick < hitAt + 14 {
-                let hurtPose = (BattlePose.hurt, evTick - hitAt)
+            if evTick >= impactAt, evTick < impactAt + 14 {
+                let hurtPose = (BattlePose.hurt, evTick - impactAt)
                 if e.targetIsPlayer { p = hurtPose } else { w = hurtPose }
             }
         default:
@@ -297,33 +300,41 @@ final class BattleController {
             // flight + one wobble per shake + a settle/burst tail
             curTicks = 16 + e.shakes * 14 + 26
         case .attack, .miss:
-            // Same effect timeline for hits and misses (#10).
+            // Same effect timeline for hits and misses (#10). Projectiles
+            // connect when the shot arrives (travel end); contact moves after
+            // a windup, so the hit effect bursts as the lunge lands — not at
+            // the start of the attack animation.
             let wildPos = wildMon?.pos ?? playerPos
             let target = e.targetIsPlayer ? playerPos : wildPos
             let attacker = e.actorIsPlayer ? playerPos : wildPos
+            let travel = 18, windup = 20
             var total = 0
-            if e.moveId > 0 {
-                if let proj = EffectPlayer.projectile(forMove: e.moveId) {
-                    let travel = 18
-                    effects.append(RunningEffect(clip: proj, from: attacker, to: target, maxTicks: travel))
-                    total += travel
-                }
-                if let clip = EffectPlayer.clip(forMove: e.moveId) {
-                    let hitTicks = min(clip.loop ? 40 : clip.totalTicks, 54)
-                    effects.append(RunningEffect(clip: clip, anchor: target, maxTicks: hitTicks))
-                    total += hitTicks
-                }
+            let proj = e.moveId > 0 ? EffectPlayer.projectile(forMove: e.moveId) : nil
+            if let proj {
+                effects.append(RunningEffect(clip: proj, from: attacker, to: target, maxTicks: travel))
+                total = travel
+            } else {
+                total = windup
             }
-            hitAt = max(16, min(total, 72))
+            impactAt = total
+            if e.moveId > 0, let clip = EffectPlayer.clip(forMove: e.moveId) {
+                let hitTicks = min(clip.loop ? 40 : clip.totalTicks, 54)
+                let delay = proj == nil ? windup : 0
+                effects.append(RunningEffect(clip: clip, anchor: target,
+                                             maxTicks: delay + hitTicks, delay: delay))
+                total += hitTicks
+            }
+            hitAt = max(impactAt, min(total, 72))
             let resolve = e.damage > 0 ? 26 : (e.kind == .miss ? 24 : 10)
             drainEnd = hitAt + resolve
             curTicks = drainEnd + (fast ? 8 : 16)   // beat gap before the reply
         case .selfHit, .residual:
+            impactAt = 6
             hitAt = 6
             drainEnd = hitAt + 24
             curTicks = drainEnd + 12
         case .skip, .recover:
-            hitAt = 0; drainEnd = 0
+            impactAt = 0; hitAt = 0; drainEnd = 0
             curTicks = 28
         }
     }

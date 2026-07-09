@@ -263,33 +263,36 @@ struct RunningEffect {
     let to: CGPoint
     var tick = 0
     let maxTicks: Int            // hard stop (event beat), also caps loops
+    let delay: Int               // ticks to wait before the clip starts drawing
 
-    init(clip: EffectClip, anchor: CGPoint, maxTicks: Int) {
-        self.init(clip: clip, from: anchor, to: anchor, maxTicks: maxTicks)
+    init(clip: EffectClip, anchor: CGPoint, maxTicks: Int, delay: Int = 0) {
+        self.init(clip: clip, from: anchor, to: anchor, maxTicks: maxTicks, delay: delay)
     }
 
-    init(clip: EffectClip, from: CGPoint, to: CGPoint, maxTicks: Int) {
+    init(clip: EffectClip, from: CGPoint, to: CGPoint, maxTicks: Int, delay: Int = 0) {
         self.clip = clip
         self.from = from
         self.to = to
         self.maxTicks = max(1, maxTicks)
+        self.delay = max(0, delay)
     }
 
     private var travels: Bool { from != to }
 
     var isDone: Bool {
-        tick >= maxTicks || (!clip.loop && !travels && tick >= clip.totalTicks)
+        tick >= maxTicks || (!clip.loop && !travels && tick - delay >= clip.totalTicks)
     }
 
-    /// Current frame + its global position, nil when finished.
+    /// Current frame + its global position, nil while delayed or finished.
     func current(scale: CGFloat) -> (CGImage, CGPoint)? {
-        guard !isDone else { return nil }
+        guard !isDone, tick >= delay else { return nil }
+        let local = tick - delay
         // Loops cycle; a non-loop clip in flight gets its whole animation
         // compressed into the travel time (a grow-then-drift sequence
         // completes mid-air instead of freezing on its first frames).
-        var t = clip.loop ? tick % max(1, clip.totalTicks)
-              : travels ? min(clip.totalTicks - 1, tick * clip.totalTicks / maxTicks)
-              : tick
+        var t = clip.loop ? local % max(1, clip.totalTicks)
+              : travels ? min(clip.totalTicks - 1, local * clip.totalTicks / max(1, maxTicks - delay))
+              : local
         for s in clip.steps {
             if t < s.ticks {
                 let f = travels ? CGFloat(tick) / CGFloat(maxTicks) : 0
