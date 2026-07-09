@@ -906,7 +906,12 @@ enum Palette {
     static func dynamic(_ light: NSColor, _ dark: NSColor) -> NSColor {
         NSColor(name: nil) { $0.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? dark : light }
     }
-    static let accent = NSColor(srgbRed: 1.0, green: 0.44, blue: 0.42, alpha: 1)   // warm coral-red
+    // General highlight (labels, values, active borders, action buttons):
+    // calm indigo in the violet family the labels/cards already lean toward —
+    // red is reserved for actual danger (fainted, release, recall).
+    static let accent = dynamic(NSColor(srgbRed: 0.42, green: 0.36, blue: 0.80, alpha: 1),
+                                NSColor(srgbRed: 0.64, green: 0.62, blue: 0.98, alpha: 1))
+    static let danger = NSColor(srgbRed: 1.0, green: 0.44, blue: 0.42, alpha: 1)   // warm coral-red
     static let windowBG = dynamic(NSColor(srgbRed: 1.0, green: 0.98, blue: 0.95, alpha: 1),
                                   NSColor(srgbRed: 0.11, green: 0.11, blue: 0.13, alpha: 1))
     static let cardTop = dynamic(.white, NSColor(srgbRed: 0.18, green: 0.18, blue: 0.20, alpha: 1))

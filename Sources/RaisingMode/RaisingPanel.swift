@@ -469,7 +469,7 @@ final class RaisingPanelView: NSView {
         if idx == RaisingState.shared.save.activeIndex {
             let back = NSButton(title: L("detail.recall"), target: self, action: #selector(recallActiveTapped))
             back.bezelStyle = .rounded
-            back.contentTintColor = Palette.accent
+            back.contentTintColor = Palette.danger
             if BattleController.current?.recallPending == true {
                 back.isEnabled = false
             }
@@ -852,7 +852,7 @@ final class PartyRowView: NSView {
                                  accessibilityDescription: "recall")?
                 .withSymbolConfiguration(.init(pointSize: 19, weight: .semibold)) {
                 b.image = img
-                b.contentTintColor = Palette.accent
+                b.contentTintColor = Palette.danger
             } else {
                 b.title = "◀"
             }
