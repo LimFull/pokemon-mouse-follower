@@ -48,7 +48,8 @@ while read -r id dex sub; do
              Walk-Anim.png Walk-Shadow.png \
              Idle-Anim.png Idle-Shadow.png \
              Sleep-Anim.png Sleep-Shadow.png \
-             Faint-Anim.png; do
+             Faint-Anim.png \
+             Attack-Anim.png Hurt-Anim.png Shoot-Anim.png Charge-Anim.png; do
         if curl -fsS -o "$dst/$f" "$RAW/sprite/$dex/$sub/$f" 2>/dev/null; then
             got=1
         else
