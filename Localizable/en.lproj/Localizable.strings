@@ -2,6 +2,17 @@
 "menu.pause" = "Pause";
 "menu.resume" = "Resume";
 "menu.quit" = "Quit";
+"menu.version" = "Version";
+"menu.checkUpdate" = "Check for Updates…";
+"update.latest.title" = "You're up to date";
+"update.latest.body" = "Version %@ is the latest.";
+"update.available.title" = "Update available: %@";
+"update.available.body" = "A new version is available.\nCurrent %@ → New %@\n\nUpdate now?";
+"update.now" = "Update now";
+"update.later" = "Later";
+"update.downloading" = "Downloading update…";
+"update.installing" = "Installing… the app will restart.";
+"update.error" = "Update failed";
 "settings.window.title" = "Pokémon Mouse Follower Settings";
 "label.character" = "Character";
 "button.random" = "Random";

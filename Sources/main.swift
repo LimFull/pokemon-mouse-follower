@@ -1388,6 +1388,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var timer: Timer?
     private var running = true
     private var settingsController: SettingsWindowController?
+    // Self-update: retained for the lifetime of a download so the delegate lives.
+    private var updateInProgress = false
+    private var downloader: Downloader?
+    private var updateHUD: UpdateProgressWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupWindows()
@@ -1537,6 +1541,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             debug.submenu = dm
             menu.addItem(debug)
         }
+        menu.addItem(.separator())
+        let versionItem = NSMenuItem(title: "\(L("menu.version")) \(Updater.currentVersion)", action: nil, keyEquivalent: "")
+        menu.addItem(versionItem)
+        let checkUpdate = NSMenuItem(title: L("menu.checkUpdate"), action: #selector(checkForUpdate), keyEquivalent: "")
+        checkUpdate.target = self
+        menu.addItem(checkUpdate)
         menu.addItem(.separator())
         let quit = NSMenuItem(title: L("menu.quit"), action: #selector(quit), keyEquivalent: "q")
         quit.target = self
@@ -1704,6 +1714,80 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         debugGainExp(s.expCurve[target - 1] - mon.exp)
+    }
+
+    // MARK: - Self-update
+
+    @objc private func checkForUpdate() {
+        guard !updateInProgress else { return }
+        Updater.fetchLatest { [weak self] result in
+            guard let self else { return }
+            switch result {
+            case .failure(let e):
+                self.updateAlert(.warning, L("update.error"), e.localizedDescription)
+            case .success(let rel):
+                if Updater.isNewer(rel.version, than: Updater.currentVersion) {
+                    self.promptUpdate(rel)
+                } else {
+                    self.updateAlert(.informational, L("update.latest.title"),
+                                     String(format: L("update.latest.body"), Updater.currentVersion))
+                }
+            }
+        }
+    }
+
+    private func promptUpdate(_ rel: Updater.Release) {
+        NSApp.activate(ignoringOtherApps: true)
+        let a = NSAlert()
+        a.messageText = String(format: L("update.available.title"), rel.version)
+        var info = String(format: L("update.available.body"), Updater.currentVersion, rel.version)
+        if !rel.notes.isEmpty { info += "\n\n" + String(rel.notes.prefix(500)) }
+        a.informativeText = info
+        a.addButton(withTitle: L("update.now"))     // default (first)
+        a.addButton(withTitle: L("update.later"))
+        if a.runModal() == .alertFirstButtonReturn { startDownload(rel) }
+    }
+
+    private func startDownload(_ rel: Updater.Release) {
+        updateInProgress = true
+        let hud = UpdateProgressWindow()
+        updateHUD = hud
+        hud.show(L("update.downloading"))
+        downloader = Downloader(
+            onProgress: { [weak hud] p in hud?.setProgress(p) },
+            onDone: { [weak self] result in
+                guard let self else { return }
+                switch result {
+                case .failure(let e):
+                    self.finishUpdate(failure: e)
+                case .success(let dmg):
+                    self.updateHUD?.setText(L("update.installing"))
+                    do {
+                        try Updater.installAndRelaunch(dmgPath: dmg)
+                        NSApp.terminate(nil)
+                    } catch {
+                        self.finishUpdate(failure: error)
+                    }
+                }
+            })
+        downloader?.start(rel.dmgURL)
+    }
+
+    private func finishUpdate(failure e: Error) {
+        updateHUD?.close()
+        updateHUD = nil
+        downloader = nil
+        updateInProgress = false
+        updateAlert(.warning, L("update.error"), e.localizedDescription)
+    }
+
+    private func updateAlert(_ style: NSAlert.Style, _ title: String, _ text: String) {
+        NSApp.activate(ignoringOtherApps: true)
+        let a = NSAlert()
+        a.alertStyle = style
+        a.messageText = title
+        a.informativeText = text
+        a.runModal()
     }
 
     @objc private func quit() {

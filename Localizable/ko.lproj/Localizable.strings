@@ -2,6 +2,17 @@
 "menu.pause" = "일시정지";
 "menu.resume" = "다시 시작";
 "menu.quit" = "종료";
+"menu.version" = "버전";
+"menu.checkUpdate" = "업데이트 확인…";
+"update.latest.title" = "최신 버전입니다";
+"update.latest.body" = "버전 %@이(가) 최신입니다.";
+"update.available.title" = "업데이트 있음: %@";
+"update.available.body" = "새 버전이 있습니다.\n현재 %@ → 최신 %@\n\n지금 업데이트할까요?";
+"update.now" = "지금 업데이트";
+"update.later" = "나중에";
+"update.downloading" = "업데이트 다운로드 중…";
+"update.installing" = "설치 중… 앱이 재시작됩니다.";
+"update.error" = "업데이트 실패";
 "settings.window.title" = "Pokémon Mouse Follower 설정";
 "label.character" = "캐릭터";
 "button.random" = "랜덤";
