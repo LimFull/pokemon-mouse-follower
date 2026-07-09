@@ -73,6 +73,31 @@ enum MoveMechanic {
     case fleeSelf                         // Teleport: the user escapes the battle
     case fleeFoe                          // Roar / Whirlwind: the foe is blown out
     case splash                           // usable, does nothing at all
+    // wave 2 — crit/evasion package, move-choice control, type shifts
+    case acupressure                      // a random stat +2
+    case captivate                        // opposite gender: SP.ATK -2
+    case psychUp                          // copy the foe's stat stages
+    case guardSwap                        // trade DEF/SP.DEF stages
+    case powerSwap                        // trade ATK/SP.ATK stages
+    case aquaRing                         // Aqua Ring / Ingrain: 1/16 heal per round
+    case stockpile                        // DEF/SP.DEF +1, count up to 3
+    case swallow                          // heal by stockpile count, spend it
+    case psychoShift                      // pass own major status to the foe
+    case healBlock                        // foe can't restore HP for 5 rounds
+    case disable                          // foe's last move sealed 4 rounds
+    case encore                           // foe repeats its last move 3 rounds
+    case taunt                            // foe limited to damaging moves 3 rounds
+    case imprison                         // foe can't use moves the user knows
+    case sleepTalk                        // acts with a random own move while asleep
+    case magicCoat                        // bounces status moves back this round
+    case conversion                       // type becomes one of the user's moves'
+    case conversion2                      // type becomes one resisting foe's last move
+    case magnetRise                       // 5 rounds of Ground immunity
+    case focusEnergy                      // crit stage +2
+    case luckyChant                       // foe can't crit the user for 5 rounds
+    case identify                         // Foresight/Odor Sleuth: evasion ignored, Ghost hittable
+    case miracleEye                       // evasion ignored, Dark hittable by Psychic
+    case lockOn                           // Lock-On/Mind Reader: next attacks can't miss
 }
 
 enum MoveMechanics {
@@ -126,7 +151,7 @@ enum MoveMechanics {
         "Calm Mind": .statSelf([(.spa, 1), (.spd, 1)]),
         "Amnesia": .statSelf([(.spd, 2)]),
         "Cosmic Power": .statSelf([(.def, 1), (.spd, 1)]),
-        "Stockpile": .statSelf([(.def, 1), (.spd, 1)]),
+        "Stockpile": .stockpile,
         "Iron Defense": .statSelf([(.def, 2)]), "Acid Armor": .statSelf([(.def, 2)]),
         "Barrier": .statSelf([(.def, 2)]), "Harden": .statSelf([(.def, 1)]),
         "Withdraw": .statSelf([(.def, 1)]), "Defense Curl": .statSelf([(.def, 1)]),
@@ -164,13 +189,33 @@ enum MoveMechanics {
         "Mimic": .mimic, "Sketch": .mimic,
         "Teleport": .fleeSelf, "Roar": .fleeFoe, "Whirlwind": .fleeFoe,
         "Splash": .splash,
+        // --- wave 2 ---------------------------------------------------------
+        "Acupressure": .acupressure, "Captivate": .captivate,
+        "Psych Up": .psychUp, "Guard Swap": .guardSwap, "Power Swap": .powerSwap,
+        "Aqua Ring": .aquaRing, "Ingrain": .aquaRing,
+        "Swallow": .swallow, "Psycho Shift": .psychoShift, "Heal Block": .healBlock,
+        "Disable": .disable, "Encore": .encore, "Taunt": .taunt,
+        "Imprison": .imprison, "Sleep Talk": .sleepTalk, "Magic Coat": .magicCoat,
+        "Conversion": .conversion, "Conversion 2": .conversion2,
+        "Magnet Rise": .magnetRise,
+        "Focus Energy": .focusEnergy, "Lucky Chant": .luckyChant,
+        "Foresight": .identify, "Odor Sleuth": .identify, "Miracle Eye": .miracleEye,
+        "Lock-On": .lockOn, "Mind Reader": .lockOn,
+    ]
+
+    /// High-critical-ratio moves (+1 crit stage, mainline).
+    private static let critBonusByName: Set<String> = [
+        "Karate Chop", "Razor Leaf", "Crabhammer", "Slash", "Aeroblast",
+        "Cross Chop", "Night Slash", "Leaf Blade", "Blaze Kick", "Cross Poison",
+        "Psycho Cut", "Shadow Claw", "Stone Edge", "Air Cutter", "Attack Order",
+        "Razor Wind", "Sky Attack", "Spacial Rend",
     ]
 
     /// Move priority by English name (mainline brackets; 0 when absent).
     private static let priorityByName: [String: Int] = [
         "Quick Attack": 1, "Mach Punch": 1, "ExtremeSpeed": 1, "Extreme Speed": 1,
         "Aqua Jet": 1, "Bullet Punch": 1, "Ice Shard": 1, "Shadow Sneak": 1,
-        "Sucker Punch": 1, "Protect": 4, "Detect": 4,
+        "Sucker Punch": 1, "Protect": 4, "Detect": 4, "Magic Coat": 4,
         "Vital Throw": -1, "Focus Punch": -3, "Revenge": -4, "Avalanche": -4,
         "Counter": -5, "Mirror Coat": -5, "Roar": -6, "Whirlwind": -6,
     ]
@@ -190,6 +235,13 @@ enum MoveMechanics {
         }
         return out
     }()
+
+    static let critBonusByMoveId: Set<Int> = {
+        Set(GameData.moves.compactMap { critBonusByName.contains($0.value.displayName) ? $0.key : nil })
+    }()
+
+    /// +1 crit stage for the high-ratio moves, else 0.
+    static func critBonus(of moveId: Int) -> Int { critBonusByMoveId.contains(moveId) ? 1 : 0 }
 
     /// Struggle's move id (typeless fallback when nothing else is usable).
     static let struggleId: Int = {

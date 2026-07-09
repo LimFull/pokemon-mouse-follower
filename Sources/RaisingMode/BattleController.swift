@@ -318,6 +318,9 @@ final class BattleController {
         switch e.kind {
         case .miss where e.moveId > 0:
             text = e.effectiveness == 0 ? "No Effect" : "Miss"
+        case .attack where e.crit && e.damage > 0:
+            text = "Critical Hit!"
+            color = NSColor(srgbRed: 1.0, green: 0.5, blue: 0.15, alpha: 1)
         case .attack where e.damage > 0 && e.effectiveness > 1:
             text = "Super Effective!"
             color = NSColor(srgbRed: 1.0, green: 0.45, blue: 0.25, alpha: 1)

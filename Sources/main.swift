@@ -1846,6 +1846,11 @@ if CommandLine.arguments.contains("--selftest-raising") {
             b.stages[.def] = -6
             let lowered = (0..<300).map { _ in BattleEngine.computeDamage(attacker: a, defender: b, move: tackle, eff: 1) }.reduce(0, +)
             print("stages: -6 DEF -> x\(String(format: "%.1f", Double(lowered) / Double(max(1, base)))) damage (expect ~4.0)")
+            // Crits double and punch through the defender's buffs.
+            b.stages = [.def: 6]
+            let buffed = (0..<300).map { _ in BattleEngine.computeDamage(attacker: a, defender: b, move: tackle, eff: 1) }.reduce(0, +)
+            let critted = (0..<300).map { _ in BattleEngine.computeDamage(attacker: a, defender: b, move: tackle, eff: 1, crit: true) }.reduce(0, +)
+            print("crit: vs +6 DEF -> x\(String(format: "%.1f", Double(critted) / Double(max(1, buffed)))) damage (expect ~6-8)")
         }
         // Zero-usable movesets after the table: only "copy the foe's move
         // first" sets and pure field-sport sets should remain — they Struggle,
