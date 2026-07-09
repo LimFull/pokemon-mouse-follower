@@ -1588,6 +1588,17 @@ if CommandLine.arguments.contains("--selftest-raising") {
         if r.captured { _ = st.addCaptured(from: w2); print("party after capture=\(st.party.count)") }
     }
     print("bag: pokeball=\(st.itemCount(.pokeBall)) potion=\(st.itemCount(.potion)) canUsePotionOnHurt=\(st.canUseItem(.potion, at: 0))")
+    // Wild battle-pose sheets actually load (attack frame differs from idle).
+    if let wm = WildMon(dex: 7) {
+        wm.place(at: .zero)
+        wm.faceStanding(toward: CGPoint(x: 10, y: 0))
+        let idleFrame = wm.currentFrame
+        wm.faceStanding(toward: CGPoint(x: 10, y: 0), pose: .attack, poseTick: 12)
+        let atkDistinct = wm.currentFrame !== idleFrame
+        wm.faceStanding(toward: CGPoint(x: 10, y: 0), pose: .hurt, poseTick: 6)
+        let hurtDistinct = wm.currentFrame !== idleFrame
+        print("wild pose sheets: attack distinct=\(atkDistinct) hurt distinct=\(hurtDistinct) (expect true true)")
+    }
     // PP (#4/#5/#6): battles consume it, empty moves unusable -> Struggle, heal restores.
     if let p4 = Battler(wildDex: 25, level: 12), let w4 = Battler(wildDex: 16, level: 10) {
         let before = p4.pp
@@ -1626,10 +1637,20 @@ if CommandLine.arguments.contains("--selftest-raising") {
         let p = CGPoint(x: 500, y: 500)
         bc.forceSpawn(at: CGPoint(x: 520, y: 500))    // inside battle range
         var effectFrames = 0, battleTicks = 0
-        for _ in 0..<20_000 {
+        let trace = ProcessInfo.processInfo.environment["PMF_TRACE_BATTLE"] != nil
+        var hadFX = false, hadFlashP = false, hadFlashW = false
+        var lastPose = BattlePose.stand
+        for tick in 0..<20_000 {
             let scene = bc.update(playerGlobalPos: p)
             if bc.isBattling { battleTicks += 1 }
             if scene?.effectFrame != nil { effectFrames += 1 }
+            if trace, let sc = scene, bc.isBattling {
+                let fx = sc.effectFrame != nil
+                if fx != hadFX { print("  t\(tick) effect \(fx ? "ON" : "off")"); hadFX = fx }
+                if sc.flashPlayer != hadFlashP { if sc.flashPlayer { print("  t\(tick) FLASH player (impact)") }; hadFlashP = sc.flashPlayer }
+                if sc.flashWild != hadFlashW { if sc.flashWild { print("  t\(tick) FLASH wild (impact)") }; hadFlashW = sc.flashWild }
+                if sc.playerPose != lastPose { print("  t\(tick) playerPose -> \(sc.playerPose)"); lastPose = sc.playerPose }
+            }
             if scene == nil && battleTicks > 0 { break }   // battle done + despawned
         }
         let m = RaisingState.shared.active!

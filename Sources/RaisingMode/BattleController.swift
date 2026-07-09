@@ -59,6 +59,7 @@ final class BattleController {
     private var wildDodge = CGPoint.zero
     private var missPos: CGPoint?
     private var missAlpha = 0.0
+    private var lastTracedWildPose = BattlePose.stand   // PMF_TRACE_BATTLE only
     private var curPHP = 1.0, curWHP = 1.0
     private var pFrom = 1.0, pTo = 1.0, wFrom = 1.0, wTo = 1.0
     private var flashP = false, flashW = false
@@ -168,6 +169,10 @@ final class BattleController {
         // Battle poses (D2-1): attacker lunges/shoots, the hit side flinches.
         let (pPose, wPose) = poses(for: e)
         playerPose = pPose
+        if ProcessInfo.processInfo.environment["PMF_TRACE_BATTLE"] != nil, wPose.0 != lastTracedWildPose {
+            lastTracedWildPose = wPose.0
+            print("  wildPose -> \(wPose.0) (event \(e.kind), actorIsPlayer=\(e.actorIsPlayer), evTick=\(evTick))")
+        }
         wildMon?.faceStanding(toward: playerPos, pose: wPose.0, poseTick: wPose.1)
         // #9: the HP bar drains only AFTER the attack finished landing —
         // attack plays (0..hitAt), damage drains (hitAt..drainEnd), pause.
@@ -179,6 +184,7 @@ final class BattleController {
         flashP = flashing && e.targetIsPlayer
         flashW = flashing && !e.targetIsPlayer
         tickDodge(e)
+        tickLunge(e)
         if e.kind == .ball { tickBall(e) }
         if !effects.isEmpty {
             effects[0].advance()
@@ -212,6 +218,31 @@ final class BattleController {
                               y: defenderPos.y + (26 + CGFloat(t) * 14) * scale)
             missAlpha = 1.0 - t * 0.8
         }
+    }
+
+    /// Contact-move lunge: the attacker physically darts at the defender,
+    /// peaking exactly at the impact tick, then springs back. Makes a Tackle
+    /// read as a body blow on BOTH sides regardless of how animated the
+    /// species' Attack sheet is. Projectile moves stay put (they shoot).
+    private func tickLunge(_ e: BattleEvent) {
+        guard e.kind == .attack || e.kind == .miss, e.moveId > 0,
+              EffectPlayer.projectile(forMove: e.moveId) == nil else { return }
+        let scale = AppSettings.shared.scale
+        let attackerPos = e.actorIsPlayer ? playerPos : (wildMon?.pos ?? playerPos)
+        let defenderPos = e.actorIsPlayer ? (wildMon?.pos ?? playerPos) : playerPos
+        var dx = defenderPos.x - attackerPos.x, dy = defenderPos.y - attackerPos.y
+        let d = max(0.001, hypot(dx, dy)); dx /= d; dy /= d
+        let springBack = 12
+        var f: CGFloat = 0
+        if evTick < impactAt {
+            let t = CGFloat(evTick) / CGFloat(max(1, impactAt))
+            f = t * t                                  // accelerate in
+        } else if evTick < impactAt + springBack {
+            f = 1 - CGFloat(evTick - impactAt) / CGFloat(springBack)
+        }
+        let amp = f * min(d * 0.55, 26 * scale)        // close the gap, don't overlap
+        let off = CGPoint(x: dx * amp, y: dy * amp)
+        if e.actorIsPlayer { playerDodge = off } else { wildDodge = off }
     }
 
     /// Per-tick battle poses for the current event (D2-1): the attacker plays
