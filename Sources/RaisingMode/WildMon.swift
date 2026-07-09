@@ -65,6 +65,18 @@ final class WildMon {
         frame(moving: true)
     }
 
+    /// Walk straight toward `p` (a noticed player — it comes to challenge you).
+    func approach(_ p: CGPoint) {
+        tick += 1
+        let dx = p.x - pos.x, dy = p.y - pos.y
+        let dist = hypot(dx, dy)
+        guard dist > 1 else { frame(moving: false); return }
+        let vx = dx / dist * speed, vy = dy / dist * speed
+        pos.x += vx; pos.y += vy
+        faceVector(vx, vy)
+        frame(moving: true)
+    }
+
     /// Stand still, turned toward `point` (used when a battle starts). `pose`
     /// plays a battle sheet once from `poseTick`, holding its last frame (D2-1).
     func faceStanding(toward point: CGPoint, pose: BattlePose = .stand, poseTick: Int = 0) {

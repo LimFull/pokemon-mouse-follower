@@ -133,22 +133,25 @@ final class BattleController {
         let d = hypot(playerPos.x - wm.pos.x, playerPos.y - wm.pos.y)
         let active = RaisingState.shared.active
         let conscious = !(active?.isFainted ?? true)
-        // A fainted mon is ignored — the wild just wanders. A conscious one that
-        // wanders close is noticed (stop & look) and, on contact, battled.
-        if conscious && d < 150 * scale { wm.faceStanding(toward: playerPos) }
+        // A fainted mon is ignored — the wild just wanders. A conscious one it
+        // notices gets challenged: the wild walks up and the battle starts on
+        // actual contact, right where they meet (no teleporting stance snap).
+        if conscious, d < 56 * scale { startBattle(); return }
+        if conscious && d < 170 * scale { wm.approach(playerPos) }
         else { wm.wander(bounds: screenBounds()) }
-        if conscious, d < 85 * scale { startBattle() }
     }
 
     private func startBattle() {
         guard let w = wild, let wm = wildMon, let mon = RaisingState.shared.active, let p = Battler(mon: mon) else { despawn(); return }
-        // Snap the wild to a battle stance: a scale-relative gap from the player,
-        // along the direction they met, facing each other.
+        // Fight where they met. Only un-overlap: if the two are practically on
+        // top of each other, nudge the wild out to a minimal gap.
         let scale = AppSettings.shared.scale
         var dx = wm.pos.x - playerPos.x, dy = wm.pos.y - playerPos.y
         let dist = max(0.001, hypot(dx, dy)); dx /= dist; dy /= dist
-        // Close melee stance (#7) — contact moves should read as contact.
-        wm.setPos(CGPoint(x: playerPos.x + dx * 46 * scale, y: playerPos.y + dy * 46 * scale))
+        let minGap = 36 * scale
+        if dist < minGap {
+            wm.setPos(CGPoint(x: playerPos.x + dx * minGap, y: playerPos.y + dy * minGap))
+        }
         wm.faceStanding(toward: playerPos)
         // Balls to throw (D11); a full party still catches — the release-or-
         // abandon prompt (D14) resolves it afterwards. Cheap balls go first.
