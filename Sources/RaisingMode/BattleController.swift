@@ -293,7 +293,9 @@ final class BattleController {
     /// to the attack line.
     private func tickDodge(_ e: BattleEvent) {
         playerDodge = .zero; wildDodge = .zero
-        guard e.kind == .miss, e.moveId > 0 else { return }
+        // Sidestep only attacks that could have hurt — a whiffed status move
+        // has nothing to dodge.
+        guard e.kind == .miss, e.moveId > 0, BattleEngine.isDamaging(e.moveId) else { return }
         let scale = AppSettings.shared.scale
         let defenderPos = e.targetIsPlayer ? playerPos : (wildMon?.pos ?? playerPos)
         let attackerPos = e.targetIsPlayer ? (wildMon?.pos ?? playerPos) : playerPos
@@ -388,7 +390,11 @@ final class BattleController {
     /// species' Attack sheet is. Projectile moves stay put (they shoot);
     /// full-screen moves neither lunge nor shoot.
     private func tickLunge(_ e: BattleEvent) {
+        // Only a landed hit (or a whiffed DAMAGING move) is a body blow —
+        // status moves (Leer, Defense Curl, ...) play their effect clip and
+        // pose in place instead of ramming the foe.
         guard e.kind == .attack || e.kind == .miss, e.moveId > 0,
+              e.damage > 0 || (e.kind == .miss && BattleEngine.isDamaging(e.moveId)),
               !EffectPlayer.isScreen(e.moveId),
               !EffectPlayer.hasProjectile(e.moveId) else { return }
         let scale = AppSettings.shared.scale
