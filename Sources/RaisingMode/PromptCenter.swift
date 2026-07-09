@@ -102,7 +102,7 @@ final class PromptCenter: NSObject {
         stack.addArrangedSubview(t)
         let s = NSTextField(labelWithString: subtitle)
         s.font = .rounded(11, .medium)
-        s.textColor = Palette.accent
+        s.textColor = Palette.ink
         stack.addArrangedSubview(s)
         stack.setCustomSpacing(12, after: s)
 

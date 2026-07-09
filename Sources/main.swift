@@ -911,6 +911,10 @@ enum Palette {
     // red is reserved for actual danger (fainted, release, recall).
     static let accent = dynamic(NSColor(srgbRed: 0.42, green: 0.36, blue: 0.80, alpha: 1),
                                 NSColor(srgbRed: 0.64, green: 0.62, blue: 0.98, alpha: 1))
+    // Emphasized TEXT: grayish near-black (near-white in dark mode) — colored
+    // accents are for borders/fills, not prose.
+    static let ink = dynamic(NSColor(srgbRed: 0.18, green: 0.17, blue: 0.20, alpha: 1),
+                             NSColor(srgbRed: 0.92, green: 0.92, blue: 0.94, alpha: 1))
     static let danger = NSColor(srgbRed: 1.0, green: 0.44, blue: 0.42, alpha: 1)   // warm coral-red
     static let windowBG = dynamic(NSColor(srgbRed: 1.0, green: 0.98, blue: 0.95, alpha: 1),
                                   NSColor(srgbRed: 0.11, green: 0.11, blue: 0.13, alpha: 1))
@@ -1196,7 +1200,7 @@ final class SettingsWindowController: NSObject {
         let b = NSButton(title: "", target: self, action: action)
         b.bezelStyle = .rounded
         b.attributedTitle = NSAttributedString(string: title, attributes: [
-            .foregroundColor: Palette.accent, .font: NSFont.rounded(20, .bold)])
+            .foregroundColor: Palette.ink, .font: NSFont.rounded(20, .bold)])
         b.widthAnchor.constraint(equalToConstant: 42).isActive = true
         return b
     }
@@ -1299,7 +1303,7 @@ final class SettingsWindowController: NSObject {
         let l = NSTextField(labelWithString: text)
         l.alignment = .left
         l.font = .rounded(13, .semibold)
-        l.textColor = Palette.accent
+        l.textColor = Palette.ink
         l.widthAnchor.constraint(equalToConstant: 44).isActive = true
         valueLabels[tag] = l
         return l

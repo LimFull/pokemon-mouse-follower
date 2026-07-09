@@ -179,7 +179,7 @@ final class RaisingPanelView: NSView {
         slider.translatesAutoresizingMaskIntoConstraints = false
         slider.widthAnchor.constraint(equalToConstant: 130).isActive = true
         let value = monoLabel(String(format: "%.0fm", AppSettings.shared.encounterMinutes), 12, .semibold)
-        value.textColor = Palette.accent
+        value.textColor = Palette.ink
         encounterValueLabel = value
         let row = NSStackView(views: [label, slider, value])
         row.orientation = .horizontal
@@ -210,7 +210,7 @@ final class RaisingPanelView: NSView {
         b.alignment = .left
         b.attributedTitle = NSAttributedString(
             string: "\(bagExpanded ? "▾" : "▸") 🎒 \(L("detail.bag"))  ·  \(total)",
-            attributes: [.font: NSFont.rounded(13, .bold), .foregroundColor: Palette.accent])
+            attributes: [.font: NSFont.rounded(13, .bold), .foregroundColor: Palette.ink])
         return b
     }
 
@@ -309,7 +309,7 @@ final class RaisingPanelView: NSView {
         icon.heightAnchor.constraint(equalToConstant: 18).isActive = true
         let name = monoLabel(item.displayName, 12, .medium)
         let qty = monoLabel("×\(count)", 12, .semibold)
-        qty.textColor = Palette.accent
+        qty.textColor = Palette.ink
         let row = NSStackView(views: [icon, name, NSView(), qty])
         row.orientation = .horizontal
         row.alignment = .centerY
@@ -339,9 +339,9 @@ final class RaisingPanelView: NSView {
         let back = NSButton(title: "‹ \(L("detail.party"))", target: self, action: #selector(backToList))
         back.bezelStyle = .rounded
         back.isBordered = false
-        back.contentTintColor = Palette.accent
+        back.contentTintColor = Palette.ink
         back.attributedTitle = NSAttributedString(string: "‹ \(L("detail.party"))",
-            attributes: [.foregroundColor: Palette.accent, .font: NSFont.rounded(13, .semibold)])
+            attributes: [.foregroundColor: Palette.ink, .font: NSFont.rounded(13, .semibold)])
         root.addArrangedSubview(back)
 
         // Bordered retro summary box.
@@ -805,7 +805,7 @@ final class PartyRowView: NSView {
         if isActive { title = "▶ " + title }
         let name = NSTextField(labelWithString: title)
         name.font = .rounded(13, .semibold)
-        name.textColor = mon.isFainted ? .systemRed : (isActive ? Palette.accent : Palette.label)
+        name.textColor = mon.isFainted ? .systemRed : (isActive ? Palette.ink : Palette.label)
         name.frame = NSRect(x: 54, y: 6, width: 210, height: 18)
         addSubview(name)
 
