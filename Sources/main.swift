@@ -619,6 +619,8 @@ final class SpriteView: NSView {
     private let itemLayer = CALayer()
     private let pHPTrack = CALayer(); private let pHPFill = CALayer()
     private let wHPTrack = CALayer(); private let wHPFill = CALayer()
+    private let levelLabel = CATextLayer()   // "Lv.n" above the wild's head
+    private let missLabel = CATextLayer()    // floating "Miss" tag on a dodge
     // Evolution burst: radial white glow over the follower (design D8/#9).
     private let glowLayer = CAGradientLayer()
     var screenOrigin: CGPoint = .zero
@@ -657,6 +659,23 @@ final class SpriteView: NSView {
         itemLayer.isHidden = true
         layer?.addSublayer(itemLayer)
 
+        levelLabel.alignmentMode = .center
+        levelLabel.cornerRadius = 5
+        levelLabel.backgroundColor = CGColor(gray: 0.08, alpha: 0.62)
+        levelLabel.foregroundColor = CGColor(gray: 1, alpha: 0.95)
+        levelLabel.isHidden = true
+        layer?.addSublayer(levelLabel)
+
+        missLabel.alignmentMode = .center
+        missLabel.string = "Miss"
+        missLabel.foregroundColor = NSColor(srgbRed: 1.0, green: 0.85, blue: 0.3, alpha: 1).cgColor
+        missLabel.shadowColor = NSColor.black.cgColor
+        missLabel.shadowOpacity = 0.9
+        missLabel.shadowRadius = 1.5
+        missLabel.shadowOffset = CGSize(width: 0, height: -1)
+        missLabel.isHidden = true
+        layer?.addSublayer(missLabel)
+
         glowLayer.type = .radial
         glowLayer.colors = [CGColor(gray: 1, alpha: 0.95),
                             CGColor(gray: 1, alpha: 0.55),
@@ -681,6 +700,8 @@ final class SpriteView: NSView {
         guard let scene else {
             wildLayer.isHidden = true
             effectLayer.isHidden = true
+            levelLabel.isHidden = true
+            missLabel.isHidden = true
             [pHPTrack, pHPFill, wHPTrack, wHPFill].forEach { $0.isHidden = true }
             spriteLayer.opacity = 1
             return
@@ -715,6 +736,37 @@ final class SpriteView: NSView {
                                            y: scene.effectPos.y - screenOrigin.y)
         } else {
             effectLayer.isHidden = true
+        }
+
+        let bs = window?.backingScaleFactor ?? 2
+        // Level tag above the wild's head (#1) — above the HP bar in battle.
+        if let lv = scene.wildLevel {
+            let fs = min(16, max(9, 6 * s))
+            levelLabel.isHidden = false
+            levelLabel.contentsScale = bs
+            levelLabel.font = NSFont.rounded(fs, .bold)
+            levelLabel.fontSize = fs
+            levelLabel.string = "Lv.\(lv)"
+            let w = (CGFloat("Lv.\(lv)".count) * fs * 0.62) + 10
+            levelLabel.bounds = CGRect(x: 0, y: 0, width: w, height: fs + 6)
+            levelLabel.position = CGPoint(x: wx, y: wy + (scene.showBars ? 30 : 22) * s)
+            levelLabel.opacity = Float(scene.wildAlpha)
+        } else {
+            levelLabel.isHidden = true
+        }
+
+        // Floating "Miss" tag over a dodging defender (#10).
+        if let mp = scene.missPos {
+            let fs = min(20, max(11, 8 * s))
+            missLabel.isHidden = false
+            missLabel.contentsScale = bs
+            missLabel.font = NSFont.rounded(fs, .heavy)
+            missLabel.fontSize = fs
+            missLabel.bounds = CGRect(x: 0, y: 0, width: fs * 3.2, height: fs + 4)
+            missLabel.position = CGPoint(x: mp.x - screenOrigin.x, y: mp.y - screenOrigin.y)
+            missLabel.opacity = Float(scene.missAlpha)
+        } else {
+            missLabel.isHidden = true
         }
         CATransaction.commit()
     }
@@ -1244,6 +1296,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var wasFainted = false
     private var evoGlowTicks = 0            // evolution burst countdown (D8/#9)
     private let evoGlowTotal = 150
+    private var regenCounter = 0            // out-of-battle +1 HP tick (~30s)
     private var overlays: [(window: NSWindow, view: SpriteView)] = []
     private var statusItem: NSStatusItem!
     private var timer: Timer?
@@ -1367,6 +1420,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // Face the wild; play the battle pose the controller picked.
                 self.controller.face(sc.wildPos, pose: sc.playerPose, poseTick: sc.playerPoseTick)
             }
+            // Slow out-of-battle recovery: +1 HP to hurt members every ~30s.
+            if AppSettings.shared.raisingMode && !self.battle.isBattling {
+                self.regenCounter += 1
+                if self.regenCounter >= 30 * 60 {
+                    self.regenCounter = 0
+                    RaisingState.shared.regenTick()
+                }
+            }
             // Items: the mon picks one up by walking over it (not mid-battle).
             let itemScene = self.items.update(followerPos: self.controller.position,
                                               canPickup: !self.battle.isBattling && !fainted)
@@ -1377,9 +1438,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let t = CGFloat(self.evoGlowTicks) / CGFloat(self.evoGlowTotal)
                 glow = t * (0.8 + 0.2 * sin(CGFloat(self.evoGlowTicks) * 0.35))
             }
+            // Sidestep offset while the follower dodges a missed attack (#10).
+            var renderPos = self.controller.position
+            if let sc = scene {
+                renderPos.x += sc.playerDodge.x
+                renderPos.y += sc.playerDodge.y
+            }
             for (_, view) in self.overlays {
                 view.render(self.controller.currentFrame,
-                            globalPos: self.controller.position,
+                            globalPos: renderPos,
                             shadow: self.controller.currentShadow,
                             rotation: self.controller.faintRotation,
                             glow: glow)
@@ -1521,6 +1588,27 @@ if CommandLine.arguments.contains("--selftest-raising") {
         if r.captured { _ = st.addCaptured(from: w2); print("party after capture=\(st.party.count)") }
     }
     print("bag: pokeball=\(st.itemCount(.pokeBall)) potion=\(st.itemCount(.potion)) canUsePotionOnHurt=\(st.canUseItem(.potion, at: 0))")
+    // PP (#4/#5/#6): battles consume it, empty moves unusable -> Struggle, heal restores.
+    if let p4 = Battler(wildDex: 25, level: 12), let w4 = Battler(wildDex: 16, level: 10) {
+        let before = p4.pp
+        _ = BattleEngine.run(player: p4, wild: w4)
+        print("pp consume: \(before) -> \(p4.pp) (expect some decrease)")
+        p4.pp = p4.pp.map { _ in 0 }
+        print("no-pp fallback: chooseMove=\(BattleEngine.chooseMove(attacker: p4, defender: w4)) (expect Struggle \(GameData.struggleId))")
+    }
+    var caterpie = st.makeMon(species: GameData.species[10]!, level: 20)
+    caterpie.heal()
+    print("heal restores pp: \(caterpie.currentPP) == max \(caterpie.maxPP)")
+    // Over-leveled capture evolves on the next level (#11): Lv20 Caterpie -> Metapod at 21.
+    _ = st.addToParty(caterpie)
+    st.setActive(st.party.count - 1)
+    let need = (GameData.species[10]!.expCurve[20]) - caterpie.exp
+    let g11 = st.gainExp(need)
+    print("overlevel evo: Lv\(st.active!.level) dex=\(st.active!.dex) evolved=\(g11.evolvedFrom ?? 0)->\(g11.evolvedTo ?? 0) (expect 10->11)")
+    st.setActive(0)
+    // Wild pool (#12): evolved forms gated by their LEVEL thresholds.
+    print("minWildLevel: Metapod=\(GameData.minWildLevel[11] ?? -1) Butterfree=\(GameData.minWildLevel[12] ?? -1) Charizard=\(GameData.minWildLevel[6] ?? -1) Pikachu=\(GameData.minWildLevel[25] ?? -1)")
+    print("wildPool(5) has Butterfree: \(GameData.wildPool(atLevel: 5).contains(12)) (expect false), size=\(GameData.wildPool(atLevel: 5).count)")
     // Overlay-prompt state ops (C1): full-party capture resolve + indexed learnMove.
     if let w3 = Battler(wildDex: 25, level: 9), let cap = st.capturedMon(from: w3), let s16 = GameData.species[16] {
         while st.partyHasRoom { _ = st.addToParty(st.makeMon(species: s16, level: 4)) }

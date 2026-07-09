@@ -136,6 +136,35 @@ enum GameData {
         .filter { $0.isBaseForm }
         .sorted { $0.dex < $1.dex }
 
+    /// Struggle — the no-PP-left fallback move (mainline behavior).
+    static let struggleId: Int =
+        moves.first { $0.value.names["e"] == "Struggle" }?.key ?? 154
+
+    /// Lowest level a wild of `dex` may appear at: an evolved form can't show
+    /// up below the LEVEL-evolution thresholds along its pre-evo chain
+    /// (no Lv5 Butterfree — design D1-3 refined). Item/trade stages add none.
+    static let minWildLevel: [Int: Int] = {
+        var out: [Int: Int] = [:]
+        for dex in species.keys {
+            var minL = 1
+            var cur = dex
+            while let pre = species[cur]?.preEvoDex {
+                if let evo = species[pre]?.evolutions.first(where: { $0.toDex == cur }),
+                   evo.method == "LEVEL" {
+                    minL = max(minL, evo.param1)
+                }
+                cur = pre
+            }
+            out[dex] = minL
+        }
+        return out
+    }()
+
+    /// Wild species allowed to spawn at `level`.
+    static func wildPool(atLevel level: Int) -> [Int] {
+        species.keys.filter { (minWildLevel[$0] ?? 1) <= level }
+    }
+
     /// Stats of `s` at `level`, from mainline base stats (IV/EV/nature omitted,
     /// design D4). Falls back to the EoS growth model if base stats are missing.
     static func stats(_ s: SpeciesData, level: Int) -> Stats {

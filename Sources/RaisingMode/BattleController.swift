@@ -25,6 +25,10 @@ struct BattleScene {
     let effectPos: CGPoint
     var playerPose: BattlePose = .stand   // battle pose for the follower (D2-1)
     var playerPoseTick: Int = 0
+    var wildLevel: Int?                   // shown above the wild's head
+    var playerDodge: CGPoint = .zero      // sidestep offset while evading a miss
+    var missPos: CGPoint?                 // floating "Miss" text position
+    var missAlpha: Double = 0
 }
 
 final class BattleController {
@@ -44,10 +48,16 @@ final class BattleController {
     private var evIdx = 0
     private var evTick = 0
     private var curTicks = 20            // current event's playback length
+    private var hitAt = 0                // tick where damage/dodge lands (#9)
+    private var drainEnd = 0             // tick where the HP drain finishes
     private var effects: [RunningEffect] = []   // phases: projectile, then hit
     private var ballFrame: CGImage?      // thrown ball being drawn (D11)
     private var ballPos = CGPoint.zero
     private var playerPose: (BattlePose, Int) = (.stand, 0)   // pose + its tick
+    private var playerDodge = CGPoint.zero
+    private var wildDodge = CGPoint.zero
+    private var missPos: CGPoint?
+    private var missAlpha = 0.0
     private var curPHP = 1.0, curWHP = 1.0
     private var pFrom = 1.0, pTo = 1.0, wFrom = 1.0, wTo = 1.0
     private var flashP = false, flashW = false
@@ -93,9 +103,13 @@ final class BattleController {
     }
 
     private func spawn(near active: OwnedPokemon) {
-        let level = max(2, active.level + Int.random(in: -3...3))
-        let dex = Int.random(in: 1...251)
-        guard let w = Battler(wildDex: dex, level: level), let wm = WildMon(dex: dex) else { spawnCooldown = 120; return }
+        // Level scales to the ACTIVE mon, capped just above it so wilds stay
+        // beatable (#2); species must fit the level — no under-leveled evolved
+        // forms like a Lv5 Butterfree (#12, GameData.minWildLevel).
+        let level = min(100, max(2, active.level + Int.random(in: -4...2)))
+        guard let dex = GameData.wildPool(atLevel: level).randomElement(),
+              let w = Battler(wildDex: dex, level: level),
+              let wm = WildMon(dex: dex) else { spawnCooldown = 120; return }
         let b = screenBounds()
         wm.place(at: CGPoint(x: .random(in: b.minX + 80 ... b.maxX - 80),
                              y: .random(in: b.minY + 80 ... b.maxY - 80)))
@@ -127,7 +141,8 @@ final class BattleController {
         let scale = AppSettings.shared.scale
         var dx = wm.pos.x - playerPos.x, dy = wm.pos.y - playerPos.y
         let dist = max(0.001, hypot(dx, dy)); dx /= dist; dy /= dist
-        wm.setPos(CGPoint(x: playerPos.x + dx * 75 * scale, y: playerPos.y + dy * 75 * scale))
+        // Close melee stance (#7) — contact moves should read as contact.
+        wm.setPos(CGPoint(x: playerPos.x + dx * 46 * scale, y: playerPos.y + dy * 46 * scale))
         wm.faceStanding(toward: playerPos)
         // Balls to throw (D11); a full party still catches — the release-or-
         // abandon prompt (D14) resolves it afterwards. Cheap balls go first.
@@ -153,9 +168,16 @@ final class BattleController {
         let (pPose, wPose) = poses(for: e)
         playerPose = pPose
         wildMon?.faceStanding(toward: playerPos, pose: wPose.0, poseTick: wPose.1)
-        let t = min(1.0, Double(evTick) / Double(curTicks) * 1.4)
-        if e.targetIsPlayer { curPHP = lerp(pFrom, pTo, t) } else { curWHP = lerp(wFrom, wTo, t) }
-        if evTick > 8 { flashP = false; flashW = false }
+        // #9: the HP bar drains only AFTER the attack finished landing —
+        // attack plays (0..hitAt), damage drains (hitAt..drainEnd), pause.
+        if drainEnd > hitAt {
+            let t = min(1.0, max(0.0, Double(evTick - hitAt) / Double(drainEnd - hitAt)))
+            if e.targetIsPlayer { curPHP = lerp(pFrom, pTo, t) } else { curWHP = lerp(wFrom, wTo, t) }
+        }
+        let flashing = e.damage > 0 && evTick >= hitAt && evTick < hitAt + 10
+        flashP = flashing && e.targetIsPlayer
+        flashW = flashing && !e.targetIsPlayer
+        tickDodge(e)
         if e.kind == .ball { tickBall(e) }
         if !effects.isEmpty {
             effects[0].advance()
@@ -165,34 +187,58 @@ final class BattleController {
         if evTick >= curTicks { evTick = 0; evIdx += 1 }
     }
 
+    /// Miss handling (#10): the defender sidesteps (out and back, perpendicular
+    /// to the attack line) while a "Miss" tag floats up over its head.
+    private func tickDodge(_ e: BattleEvent) {
+        playerDodge = .zero; wildDodge = .zero; missPos = nil; missAlpha = 0
+        guard e.kind == .miss, e.moveId > 0 else { return }
+        let scale = AppSettings.shared.scale
+        let defenderPos = e.targetIsPlayer ? playerPos : (wildMon?.pos ?? playerPos)
+        let attackerPos = e.targetIsPlayer ? (wildMon?.pos ?? playerPos) : playerPos
+        let dodgeSpan = 22
+        if evTick >= hitAt, evTick < hitAt + dodgeSpan {
+            let t = CGFloat(evTick - hitAt) / CGFloat(dodgeSpan)
+            var dx = defenderPos.x - attackerPos.x, dy = defenderPos.y - attackerPos.y
+            let d = max(0.001, hypot(dx, dy)); dx /= d; dy /= d
+            let amp = sin(t * .pi) * 20 * scale
+            let off = CGPoint(x: -dy * amp, y: dx * amp)
+            if e.targetIsPlayer { playerDodge = off } else { wildDodge = off }
+        }
+        let textSpan = 40
+        if evTick >= hitAt, evTick < hitAt + textSpan {
+            let t = Double(evTick - hitAt) / Double(textSpan)
+            missPos = CGPoint(x: defenderPos.x,
+                              y: defenderPos.y + (26 + CGFloat(t) * 14) * scale)
+            missAlpha = 1.0 - t * 0.8
+        }
+    }
+
     /// Per-tick battle poses for the current event (D2-1): the attacker plays
     /// Attack (Shoot for projectile moves) at the start of its beat; the side
-    /// taking damage plays Hurt while the hit lands.
+    /// taking damage plays Hurt as the hit lands (a missed target dodges
+    /// instead — tickDodge).
     private func poses(for e: BattleEvent) -> (player: (BattlePose, Int), wild: (BattlePose, Int)) {
         var p: (BattlePose, Int) = (.stand, 0)
         var w: (BattlePose, Int) = (.stand, 0)
         switch e.kind {
         case .attack, .miss:
             let hasProj = EffectPlayer.projectile(forMove: e.moveId) != nil
-            if evTick < 26 {
+            if evTick < min(26, hitAt) {
                 let atk = (hasProj ? BattlePose.shoot : .attack, evTick)
                 if e.actorIsPlayer { p = atk } else { w = atk }
             }
-            if e.kind == .attack, e.damage > 0 {
-                let hitStart = hasProj ? 18 : 6
-                if evTick >= hitStart, evTick < hitStart + 18 {
-                    let hurtPose = (BattlePose.hurt, evTick - hitStart)
-                    if e.targetIsPlayer { p = hurtPose } else { w = hurtPose }
-                }
+            if e.kind == .attack, e.damage > 0, evTick >= hitAt, evTick < hitAt + 18 {
+                let hurtPose = (BattlePose.hurt, evTick - hitAt)
+                if e.targetIsPlayer { p = hurtPose } else { w = hurtPose }
             }
         case .selfHit:
-            if evTick < 18 {
-                let hurtPose = (BattlePose.hurt, evTick)
+            if evTick >= hitAt, evTick < hitAt + 18 {
+                let hurtPose = (BattlePose.hurt, evTick - hitAt)
                 if e.actorIsPlayer { p = hurtPose } else { w = hurtPose }
             }
         case .residual:
-            if evTick < 14 {
-                let hurtPose = (BattlePose.hurt, evTick)
+            if evTick >= hitAt, evTick < hitAt + 14 {
+                let hurtPose = (BattlePose.hurt, evTick - hitAt)
                 if e.targetIsPlayer { p = hurtPose } else { w = hurtPose }
             }
         default:
@@ -234,40 +280,52 @@ final class BattleController {
         }
     }
 
-    /// Set up one event beat: HP-bar animation targets, hit flash, and the
-    /// move-effect phases — a projectile flown attacker -> target when the
-    /// move has one, then the hit clip over whoever got hit. The beat lasts
-    /// long enough for the phases to play out (capped so slow effects don't
-    /// stall the battle); misses/skips/status-only beats run shorter.
+    /// Set up one event beat (#8/#9 pacing): the attack (poses + projectile +
+    /// hit effect) plays out first, THEN the HP bar drains, then a clear pause
+    /// before the next combatant acts. Misses run the same attack but resolve
+    /// into a dodge instead of a drain (#10).
     private func beginEvent(_ e: BattleEvent) {
         let to = frac(e.targetHP, e.targetMaxHP)
-        if e.targetIsPlayer { pFrom = curPHP; pTo = to; flashP = e.damage > 0 }
-        else { wFrom = curWHP; wTo = to; flashW = e.damage > 0 }
+        if e.targetIsPlayer { pFrom = curPHP; pTo = to }
+        else { wFrom = curWHP; wTo = to }
 
         effects = []
         ballFrame = nil
-        if e.kind == .ball {
+        switch e.kind {
+        case .ball:
+            hitAt = 0; drainEnd = 0
             // flight + one wobble per shake + a settle/burst tail
             curTicks = 16 + e.shakes * 14 + 26
-            return
+        case .attack, .miss:
+            // Same effect timeline for hits and misses (#10).
+            let wildPos = wildMon?.pos ?? playerPos
+            let target = e.targetIsPlayer ? playerPos : wildPos
+            let attacker = e.actorIsPlayer ? playerPos : wildPos
+            var total = 0
+            if e.moveId > 0 {
+                if let proj = EffectPlayer.projectile(forMove: e.moveId) {
+                    let travel = 18
+                    effects.append(RunningEffect(clip: proj, from: attacker, to: target, maxTicks: travel))
+                    total += travel
+                }
+                if let clip = EffectPlayer.clip(forMove: e.moveId) {
+                    let hitTicks = min(clip.loop ? 40 : clip.totalTicks, 54)
+                    effects.append(RunningEffect(clip: clip, anchor: target, maxTicks: hitTicks))
+                    total += hitTicks
+                }
+            }
+            hitAt = max(16, min(total, 72))
+            let resolve = e.damage > 0 ? 26 : (e.kind == .miss ? 24 : 10)
+            drainEnd = hitAt + resolve
+            curTicks = drainEnd + (fast ? 8 : 16)   // beat gap before the reply
+        case .selfHit, .residual:
+            hitAt = 6
+            drainEnd = hitAt + 24
+            curTicks = drainEnd + 12
+        case .skip, .recover:
+            hitAt = 0; drainEnd = 0
+            curTicks = 28
         }
-        curTicks = (e.damage > 0 || e.kind == .attack) ? eventTicks : eventTicks * 3 / 5
-        guard e.kind == .attack else { return }
-        let wildPos = wildMon?.pos ?? playerPos
-        let target = e.targetIsPlayer ? playerPos : wildPos
-        let attacker = e.actorIsPlayer ? playerPos : wildPos
-        var total = 0
-        if let proj = EffectPlayer.projectile(forMove: e.moveId) {
-            let travel = 18
-            effects.append(RunningEffect(clip: proj, from: attacker, to: target, maxTicks: travel))
-            total += travel
-        }
-        if let clip = EffectPlayer.clip(forMove: e.moveId) {
-            let hitTicks = min(clip.loop ? eventTicks * 2 : clip.totalTicks, 54)
-            effects.append(RunningEffect(clip: clip, anchor: target, maxTicks: hitTicks))
-            total += hitTicks
-        }
-        curTicks = max(curTicks, min(total, 70))
     }
 
     private func finishBattle() {
@@ -278,6 +336,7 @@ final class BattleController {
             for b in r.ballsUsed { st.consumeItem(b) }
             let expIdx = st.save.activeIndex        // who fought (before faint swap)
             let growth = st.applyBattleOutcome(playerHP: r.playerEndHP, status: r.playerEndStatus,
+                                               pp: r.playerEndPP,
                                                won: r.playerWon, expGained: r.expGained)
             // A 5th move needs a replace decision — on-overlay prompt (C1/#5).
             for moveId in growth.pendingMoves {
@@ -333,12 +392,17 @@ final class BattleController {
         let fx = ballFrame.map { ($0, ballPos) }
             ?? effects.first?.current(scale: AppSettings.shared.scale)
         return BattleScene(
-            wildFrame: frame, wildPos: wm.pos, playerPos: playerPos,
+            wildFrame: frame,
+            wildPos: CGPoint(x: wm.pos.x + wildDodge.x, y: wm.pos.y + wildDodge.y),
+            playerPos: playerPos,
             playerHP: curPHP, wildHP: curWHP, flashPlayer: flashP, flashWild: flashW,
             playerAlpha: playerAlpha, wildAlpha: wildAlpha, showBars: isBattling,
             effectFrame: fx?.0, effectPos: fx?.1 ?? .zero,
             playerPose: phase == .battling ? playerPose.0 : .stand,
-            playerPoseTick: playerPose.1)
+            playerPoseTick: playerPose.1,
+            wildLevel: wild?.level,
+            playerDodge: playerDodge,
+            missPos: missPos, missAlpha: missAlpha)
     }
 
     // MARK: helpers

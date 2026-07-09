@@ -235,8 +235,9 @@ final class RaisingPanelView: NSView {
         // Moves (click a row to expand/collapse its type + description inline).
         inner.addArrangedSubview(divider())
         inner.addArrangedSubview(monoLabel("▶ \(L("detail.moves"))", 12, .bold))
-        for id in mon.moves {
-            inner.addArrangedSubview(moveRow(id))
+        let ppNow = mon.currentPP
+        for (slot, id) in mon.moves.enumerated() {
+            inner.addArrangedSubview(moveRow(id, currentPP: ppNow.indices.contains(slot) ? ppNow[slot] : 0))
             if expandedMove == id { inner.addArrangedSubview(moveDetailInline(id)) }
         }
 
@@ -338,8 +339,9 @@ final class RaisingPanelView: NSView {
         RaisingState.shared.learnMove(moveId, replacing: slot < mon.moves.count ? slot : nil)
     }
 
-    // A clickable move line (monospace, retro) that expands/collapses its detail.
-    private func moveRow(_ id: Int) -> NSButton {
+    // A clickable move line (monospace, retro) that expands/collapses its
+    // detail. Shows current/max PP (#5); an empty move renders dimmed red.
+    private func moveRow(_ id: Int, currentPP: Int) -> NSButton {
         let m = GameData.moves[id]
         let name = (m?.displayName ?? "Move \(id)").padding(toLength: 14, withPad: " ", startingAt: 0)
         let arrow = expandedMove == id ? "▾" : "▸"
@@ -347,9 +349,12 @@ final class RaisingPanelView: NSView {
         b.isBordered = false
         b.tag = id
         b.alignment = .left
-        b.attributedTitle = NSAttributedString(string: "\(arrow) \(name) PP \(m?.pp ?? 0)", attributes: [
-            .font: NSFont.monospacedSystemFont(ofSize: 12, weight: .regular),
-            .foregroundColor: Palette.label])
+        b.attributedTitle = NSAttributedString(
+            string: "\(arrow) \(name) PP \(currentPP)/\(m?.pp ?? 0)",
+            attributes: [
+                .font: NSFont.monospacedSystemFont(ofSize: 12, weight: .regular),
+                .foregroundColor: currentPP == 0 ? NSColor.systemRed : Palette.label,
+            ])
         return b
     }
 
