@@ -226,7 +226,11 @@ final class RaisingPanelView: NSView {
         ].joined(separator: "\n")
         inner.addArrangedSubview(divider())
         inner.addArrangedSubview(monoLabel(statsText, 12, .medium))
-        inner.addArrangedSubview(monoLabel("\(L("detail.exp"))  \(mon.exp)", 11, .regular))
+        // EXP: remaining to the next level + a gauge over this level's span.
+        let (expLeft, expFrac) = mon.expToNext
+        inner.addArrangedSubview(monoLabel("\(L("detail.exp.next"))  \(expLeft)", 11, .regular))
+        inner.addArrangedSubview(HPBarView(current: Int(expFrac * 1000), max: 1000,
+                                           width: Self.contentWidth - 28, color: .systemBlue))
 
         // Moves (click a row to expand/collapse its type + description inline).
         inner.addArrangedSubview(divider())
@@ -513,7 +517,9 @@ final class StatusBadge: NSView {
 
 final class HPBarView: NSView {
     private let w: CGFloat
-    init(current: Int, max: Int, width: CGFloat) {
+    /// Ratio-colored (green/yellow/red) by default; pass `color` for a fixed
+    /// fill (e.g. the blue EXP gauge).
+    init(current: Int, max: Int, width: CGFloat, color: NSColor? = nil) {
         self.w = width
         super.init(frame: NSRect(x: 0, y: 0, width: width, height: 8))
         wantsLayer = true
@@ -525,8 +531,8 @@ final class HPBarView: NSView {
         fill.autoresizingMask = []
         fill.wantsLayer = true
         fill.layer?.cornerRadius = 4
-        let color: NSColor = ratio > 0.5 ? .systemGreen : (ratio > 0.2 ? .systemYellow : .systemRed)
-        fill.layer?.backgroundColor = color.cgColor
+        let auto: NSColor = ratio > 0.5 ? .systemGreen : (ratio > 0.2 ? .systemYellow : .systemRed)
+        fill.layer?.backgroundColor = (color ?? auto).cgColor
         addSubview(fill)
     }
     required init?(coder: NSCoder) { fatalError("not used") }

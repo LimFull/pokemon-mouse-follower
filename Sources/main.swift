@@ -1468,6 +1468,8 @@ if CommandLine.arguments.contains("--selftest-raising") {
     if let m = st.active {
         let evo = (g.evolvedFrom != nil) ? "\(g.evolvedFrom!)->\(g.evolvedTo!)" : "none"
         print("train: Lv\(m.level) dex=\(m.dex) \(Characters.displayName(String(format: "%03d", m.dex))) moves=\(m.moves) evolved=\(evo) auto=\(g.learnedMoves) pending=\(g.pendingMoves)")
+        let (left, frac) = m.expToNext
+        print("exp gauge: toNext=\(left) frac=\(String(format: "%.2f", frac)) (expect 0<frac<1, left>0)")
     }
     print("followerFolder(raising off)=\(st.followerFolder)")
     // Battle: active mon vs a wild Pidgey (dex 16).

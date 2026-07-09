@@ -46,6 +46,18 @@ struct OwnedPokemon: Codable {
         currentHP = maxHP
         status = nil
     }
+
+    /// Progress toward the next level: EXP still needed and the 0...1 fill of
+    /// the current level's span (resets to 0 on level-up, full = level-up).
+    var expToNext: (remaining: Int, fraction: Double) {
+        guard let s = species, s.expCurve.indices.contains(level - 1) else { return (0, 1) }
+        guard level < 100, s.expCurve.indices.contains(level) else { return (0, 1) }  // max level
+        let base = s.expCurve[level - 1]
+        let next = s.expCurve[level]
+        let span = max(1, next - base)
+        let into = min(max(0, exp - base), span)
+        return (max(0, next - exp), Double(into) / Double(span))
+    }
 }
 
 /// The persisted save document.

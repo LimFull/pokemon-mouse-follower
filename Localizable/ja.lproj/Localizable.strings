@@ -309,3 +309,4 @@
 "prompt.full.keep" = "新しいポケモンを逃がす";
 "prompt.caught.title" = "捕獲";
 "move.accuracy" = "命中";
+"detail.exp.next" = "つぎのレベルまで";
