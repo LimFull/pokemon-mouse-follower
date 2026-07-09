@@ -126,10 +126,62 @@ final class RaisingPanelView: NSView {
         root.addArrangedSubview(bagHeader())
         if bagExpanded { root.addArrangedSubview(bagCard()) }
 
+        // Raising-only settings (moved off the general pane): encounter
+        // interval + master switches for wild and item spawns.
+        root.setCustomSpacing(16, after: root.arrangedSubviews.last ?? root)
+        root.addArrangedSubview(sectionLabel("⚙︎ " + L("raising.settings")))
+        root.addArrangedSubview(encounterRow())
+        let wildCB = NSButton(checkboxWithTitle: L("label.wildspawn"), target: self,
+                              action: #selector(wildSpawnToggled(_:)))
+        wildCB.state = AppSettings.shared.wildSpawnsEnabled ? .on : .off
+        wildCB.font = .rounded(12, .medium)
+        root.addArrangedSubview(wildCB)
+        let itemCB = NSButton(checkboxWithTitle: L("label.itemspawn"), target: self,
+                              action: #selector(itemSpawnToggled(_:)))
+        itemCB.state = AppSettings.shared.itemSpawnsEnabled ? .on : .off
+        itemCB.font = .rounded(12, .medium)
+        root.addArrangedSubview(itemCB)
+
         root.setCustomSpacing(18, after: root.arrangedSubviews.last ?? root)
         let reset = NSButton(title: L("detail.reset"), target: self, action: #selector(resetTapped))
         reset.bezelStyle = .rounded
         root.addArrangedSubview(reset)
+    }
+
+    // MARK: raising settings
+
+    private var encounterValueLabel: NSTextField?
+
+    private func encounterRow() -> NSStackView {
+        let label = monoLabel(L("label.encounter"), 12, .medium)
+        let slider = NSSlider(value: Double(AppSettings.shared.encounterMinutes),
+                              minValue: AppSettings.encounterRange.lowerBound,
+                              maxValue: AppSettings.encounterRange.upperBound,
+                              target: self, action: #selector(encounterChanged(_:)))
+        slider.isContinuous = true
+        slider.translatesAutoresizingMaskIntoConstraints = false
+        slider.widthAnchor.constraint(equalToConstant: 130).isActive = true
+        let value = monoLabel(String(format: "%.0fm", AppSettings.shared.encounterMinutes), 12, .semibold)
+        value.textColor = Palette.accent
+        encounterValueLabel = value
+        let row = NSStackView(views: [label, slider, value])
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 8
+        return row
+    }
+
+    @objc private func encounterChanged(_ sender: NSSlider) {
+        AppSettings.shared.encounterMinutes = CGFloat(sender.doubleValue)
+        encounterValueLabel?.stringValue = String(format: "%.0fm", sender.doubleValue)
+    }
+
+    @objc private func wildSpawnToggled(_ sender: NSButton) {
+        AppSettings.shared.wildSpawnsEnabled = (sender.state == .on)
+    }
+
+    @objc private func itemSpawnToggled(_ sender: NSButton) {
+        AppSettings.shared.itemSpawnsEnabled = (sender.state == .on)
     }
 
     // MARK: bag UI

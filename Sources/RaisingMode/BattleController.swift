@@ -125,7 +125,8 @@ final class BattleController {
     // MARK: phases
 
     private func tickIdle() {
-        guard AppSettings.shared.raisingMode, let a = RaisingState.shared.active, !a.isFainted else { return }
+        guard AppSettings.shared.raisingMode, AppSettings.shared.wildSpawnsEnabled,
+              let a = RaisingState.shared.active, !a.isFainted else { return }
         spawnCooldown -= 1
         if spawnCooldown <= 0 { spawn(near: a) }
     }
@@ -148,6 +149,7 @@ final class BattleController {
     }
 
     private func tickPresent() {
+        if !AppSettings.shared.wildSpawnsEnabled { despawn(); return }
         despawnTicks -= 1
         if despawnTicks <= 0 { despawn(); return }
         guard let wm = wildMon else { despawn(); return }

@@ -62,3 +62,6 @@
 "detail.sendout" = "Send out";
 "bag.capture" = "Try to catch (throw Poké Balls)";
 "prompt.next.title" = "Choose your next Pokémon";
+"raising.settings" = "Raising settings";
+"label.wildspawn" = "Wild encounters";
+"label.itemspawn" = "Item spawns";

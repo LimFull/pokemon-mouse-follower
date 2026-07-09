@@ -198,7 +198,8 @@ final class ItemSpawner {
                              pos: CGPoint(x: pos.x, y: pos.y + CGFloat(t) * 22),
                              alpha: 1.0 - t)
         }
-        guard AppSettings.shared.raisingMode, RaisingState.shared.hasActiveGame else {
+        guard AppSettings.shared.raisingMode, AppSettings.shared.itemSpawnsEnabled,
+              RaisingState.shared.hasActiveGame else {
             current = nil
             return nil
         }

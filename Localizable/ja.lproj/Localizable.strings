@@ -314,3 +314,6 @@
 "detail.sendout" = "つれていく";
 "bag.capture" = "捕獲する（ボールを投げる）";
 "prompt.next.title" = "つぎのポケモンをえらんでください";
+"raising.settings" = "育成設定";
+"label.wildspawn" = "野生ポケモン出現";
+"label.itemspawn" = "アイテム出現";

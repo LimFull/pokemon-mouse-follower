@@ -166,6 +166,15 @@ final class AppSettings {
         get { get("encounterMinutes", 45) }
         set { d.set(Double(newValue), forKey: "encounterMinutes") }
     }
+    // Master switches for wild encounters / item spawns (default on).
+    var wildSpawnsEnabled: Bool {
+        get { d.object(forKey: "wildSpawnsEnabled") == nil ? true : d.bool(forKey: "wildSpawnsEnabled") }
+        set { d.set(newValue, forKey: "wildSpawnsEnabled") }
+    }
+    var itemSpawnsEnabled: Bool {
+        get { d.object(forKey: "itemSpawnsEnabled") == nil ? true : d.bool(forKey: "itemSpawnsEnabled") }
+        set { d.set(newValue, forKey: "itemSpawnsEnabled") }
+    }
 }
 
 // MARK: - Sprite loading / slicing
@@ -1011,6 +1020,8 @@ final class SettingsWindowController: NSObject {
     private var preview: CharacterPreviewView!
     private var raisingPanel: RaisingPanelView?
     private let raisingPanelWidth: CGFloat = 340
+    private var grid: NSGridView!
+    private var topStack: NSStackView!      // character preview area (normal mode only)
 
     init(controller: CharacterController) {
         self.controller = controller
@@ -1026,7 +1037,7 @@ final class SettingsWindowController: NSObject {
 
     private func buildUI() {
         let s = AppSettings.shared
-        let grid = NSGridView()
+        grid = NSGridView()
         grid.translatesAutoresizingMaskIntoConstraints = false
         grid.rowSpacing = 16
         grid.columnSpacing = 12
@@ -1045,9 +1056,6 @@ final class SettingsWindowController: NSObject {
         grid.addRow(with: [makeLabel(L("label.sleep")),
                            makeSlider(tag: 3, range: AppSettings.sleepRange, value: Double(s.sleepDelay)),
                            makeValueLabel(3, text: fmt(3, s.sleepDelay))])
-        grid.addRow(with: [makeLabel(L("label.encounter")),
-                           makeSlider(tag: 4, range: AppSettings.encounterRange, value: Double(s.encounterMinutes)),
-                           makeValueLabel(4, text: fmt(4, s.encounterMinutes))])
         grid.addRow(with: [makeLabel(L("label.altcolor")), makeAltColorCheckbox(), NSGridCell.emptyContentView])
         grid.addRow(with: [makeLabel(L("label.shadow")), makeShadowCheckbox(), NSGridCell.emptyContentView])
         grid.addRow(with: [makeLabel(L("label.launch")), makeLaunchCheckbox(), NSGridCell.emptyContentView])
@@ -1068,7 +1076,7 @@ final class SettingsWindowController: NSObject {
         previewRow.orientation = .horizontal
         previewRow.alignment = .centerY
         previewRow.spacing = 16
-        let topStack = NSStackView(views: [previewRow, makeRandomButton()])
+        topStack = NSStackView(views: [previewRow, makeRandomButton()])
         topStack.orientation = .vertical
         topStack.alignment = .centerX
         topStack.spacing = 12
@@ -1122,11 +1130,20 @@ final class SettingsWindowController: NSObject {
         ])
 
         preview.setCharacter(AppSettings.shared.selectedCharacter)
+        updateModeVisibility()
 
         if AppSettings.shared.raisingMode {
             applyRaisingWidth(expanded: true, animate: false)
             panel.refresh()
         }
+    }
+
+    /// In raising mode the follower IS the active raising mon, so the whole
+    /// character-picker area (preview, arrows, random, dropdown) is moot.
+    private func updateModeVisibility() {
+        let raising = AppSettings.shared.raisingMode
+        topStack.isHidden = raising
+        grid.row(at: 0).isHidden = raising   // character dropdown row
     }
 
     private func applyRaisingWidth(expanded: Bool, animate: Bool) {
@@ -1217,6 +1234,7 @@ final class SettingsWindowController: NSObject {
         let on = sender.state == .on
         AppSettings.shared.raisingMode = on
         applyRaisingWidth(expanded: on, animate: true)
+        updateModeVisibility()
         raisingPanel?.refresh()
         NotificationCenter.default.post(name: .raisingChanged, object: nil)   // switch follower
     }
@@ -1260,7 +1278,6 @@ final class SettingsWindowController: NSObject {
         switch tag {
         case 2: return String(format: "%.1f×", v)
         case 3: return String(format: "%.0fs", v)
-        case 4: return String(format: "%.0fm", v)
         default: return String(format: "%.0f", v)
         }
     }
@@ -1303,7 +1320,6 @@ final class SettingsWindowController: NSObject {
         case 1: s.maxSpeed = v
         case 2: s.scale = v   // reflected on the next render tick
         case 3: s.sleepDelay = v
-        case 4: s.encounterMinutes = v   // picked up on the next spawn scheduling
         default: break
         }
         valueLabels[sender.tag]?.stringValue = fmt(sender.tag, v)
