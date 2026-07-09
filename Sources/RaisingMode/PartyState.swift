@@ -87,12 +87,18 @@ final class RaisingState {
 
     private init() {
         save = RaisingState.loadFromDisk() ?? RaisingSave()
+        // Normalize a stale index (older saves / corruption). -1 = recalled.
+        if save.activeIndex >= save.party.count {
+            save.activeIndex = save.party.isEmpty ? -1 : 0
+        }
     }
 
     var party: [OwnedPokemon] { save.party }
     var hasActiveGame: Bool { !save.party.isEmpty }
+
+    /// The mon currently out on the desktop; nil while everyone is recalled.
     var active: OwnedPokemon? {
-        guard save.party.indices.contains(save.activeIndex) else { return save.party.first }
+        guard save.activeIndex >= 0, save.party.indices.contains(save.activeIndex) else { return nil }
         return save.party[save.activeIndex]
     }
     var allFainted: Bool { !save.party.isEmpty && save.party.allSatisfy { $0.isFainted } }
@@ -214,6 +220,14 @@ final class RaisingState {
     func setActive(_ index: Int) {
         guard save.party.indices.contains(index) else { return }
         save.activeIndex = index
+        persist()
+        notifyChanged()
+    }
+
+    /// Recall the follower — nobody is out until the player sends one again.
+    /// A battle in progress is cancelled (the wild resumes wandering).
+    func recall() {
+        save.activeIndex = -1
         persist()
         notifyChanged()
     }

@@ -127,7 +127,10 @@ final class RaisingPanelView: NSView {
                                    },
                                    onSendOut: mon.isFainted || i == activeIdx ? nil : {
                                        RaisingState.shared.setActive(i)
-                                   })
+                                   },
+                                   onRecall: i == activeIdx ? {
+                                       RaisingState.shared.recall()
+                                   } : nil)
             root.addArrangedSubview(row)
         }
 
@@ -461,7 +464,12 @@ final class RaisingPanelView: NSView {
             train.bezelStyle = .rounded
             actions.addArrangedSubview(train)
         }
-        if idx != RaisingState.shared.save.activeIndex, !mon.isFainted {
+        if idx == RaisingState.shared.save.activeIndex {
+            let back = NSButton(title: L("detail.recall"), target: self, action: #selector(recallActiveTapped))
+            back.bezelStyle = .rounded
+            back.contentTintColor = Palette.accent
+            actions.addArrangedSubview(back)
+        } else if !mon.isFainted {
             let out = NSButton(title: L("detail.sendout"), target: self, action: #selector(sendOutTapped))
             out.bezelStyle = .rounded
             out.contentTintColor = Palette.accent
@@ -477,6 +485,11 @@ final class RaisingPanelView: NSView {
     @objc private func sendOutTapped() {
         guard let i = detailIndex else { return }
         RaisingState.shared.setActive(i)
+        refresh()
+    }
+
+    @objc private func recallActiveTapped() {
+        RaisingState.shared.recall()
         refresh()
     }
 
@@ -752,14 +765,18 @@ final class FlippedView: NSView {
 final class PartyRowView: NSView {
     private let onClick: () -> Void
     private let onSendOut: (() -> Void)?
+    private let onRecall: (() -> Void)?
     override var isFlipped: Bool { true }
 
     /// `isActive` marks the mon currently out on the desktop; `onSendOut`
-    /// (when non-nil) shows the swap button that makes this one the follower.
+    /// (when non-nil) shows the swap button that makes this one the follower,
+    /// `onRecall` the withdraw button that puts the active one away.
     init(mon: OwnedPokemon, isActive: Bool,
-         onClick: @escaping () -> Void, onSendOut: (() -> Void)?) {
+         onClick: @escaping () -> Void, onSendOut: (() -> Void)?,
+         onRecall: (() -> Void)? = nil) {
         self.onClick = onClick
         self.onSendOut = onSendOut
+        self.onRecall = onRecall
         super.init(frame: NSRect(x: 0, y: 0, width: 300, height: 50))
         translatesAutoresizingMaskIntoConstraints = false
         widthAnchor.constraint(equalToConstant: 300).isActive = true
@@ -821,10 +838,26 @@ final class PartyRowView: NSView {
             b.toolTip = L("detail.sendout")
             addSubview(b)
         }
+        if onRecall != nil {
+            let b = NSButton(title: "", target: self, action: #selector(recallTapped))
+            b.isBordered = false
+            if let img = NSImage(systemSymbolName: "arrow.down.circle.fill",
+                                 accessibilityDescription: "recall")?
+                .withSymbolConfiguration(.init(pointSize: 19, weight: .semibold)) {
+                b.image = img
+                b.contentTintColor = Palette.accent
+            } else {
+                b.title = "▼"
+            }
+            b.frame = NSRect(x: 268, y: 13, width: 26, height: 24)
+            b.toolTip = L("detail.recall")
+            addSubview(b)
+        }
     }
     required init?(coder: NSCoder) { fatalError("not used") }
 
     @objc private func sendOutTapped() { onSendOut?() }
+    @objc private func recallTapped() { onRecall?() }
 
     override func mouseDown(with event: NSEvent) { onClick() }
 }

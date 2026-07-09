@@ -109,9 +109,14 @@ final class BattleController {
     func update(playerGlobalPos: CGPoint) -> BattleScene? {
         playerPos = playerGlobalPos
         // Abort any encounter if raising mode was turned off or the party was
-        // reset/emptied, so a later spawn (or reset) isn't blocked by stale state.
-        if phase != .idle && (!AppSettings.shared.raisingMode || RaisingState.shared.active == nil) {
-            despawn()
+        // reset/emptied. A RECALL mid-battle only cancels the battle — the
+        // wild stays and goes back to wandering.
+        if phase != .idle {
+            if !AppSettings.shared.raisingMode || RaisingState.shared.party.isEmpty {
+                despawn()
+            } else if isBattling && RaisingState.shared.active == nil {
+                cancelBattle()
+            }
         }
         switch phase {
         case .idle: tickIdle()
@@ -554,6 +559,21 @@ final class BattleController {
             wildAlpha = max(0, Double(endTicks) / 40.0)   // defeated wild fades out
         }                                                  // caught: stays in the ball
         if endTicks <= 0 { despawn() }
+    }
+
+    /// Break off the current battle without applying its pre-simulated
+    /// outcome: the wild keeps the HP the gauge was showing and resumes
+    /// wandering; nothing is granted or consumed.
+    private func cancelBattle() {
+        if let w = wild { w.currentHP = max(1, Int(curWHP * Double(w.maxHP))) }
+        events = []; result = nil; effects = []; ballFrame = nil
+        playerPose = (.stand, 0)
+        playerDodge = .zero; wildDodge = .zero
+        floatText = nil; floatAlpha = 0; screenFlash = 0
+        flashP = false; flashW = false
+        wildAlpha = 1; playerAlpha = 1
+        evIdx = 0; evTick = 0
+        phase = .present
     }
 
     private func despawn() {

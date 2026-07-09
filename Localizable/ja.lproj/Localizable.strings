@@ -317,3 +317,4 @@
 "raising.settings" = "育成設定";
 "label.wildspawn" = "野生ポケモン出現";
 "label.itemspawn" = "アイテム出現";
+"detail.recall" = "もどす";

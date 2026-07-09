@@ -317,3 +317,4 @@
 "raising.settings" = "키우기 설정";
 "label.wildspawn" = "야생 포켓몬 출현";
 "label.itemspawn" = "아이템 출현";
+"detail.recall" = "집어넣기";

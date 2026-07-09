@@ -1518,10 +1518,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // rendering until it completes (mainline behavior).
             let evoFrame = self.evolution.active ? self.evolution.update() : nil
             let evolving = evoFrame != nil
+            // Recalled: a game is running but nobody is sent out — no follower.
+            let recalled = AppSettings.shared.raisingMode
+                && RaisingState.shared.hasActiveGame
+                && RaisingState.shared.active == nil
             let fainted = AppSettings.shared.raisingMode
                 && (RaisingState.shared.active?.isFainted ?? false)
-            if evolving {
-                // hold position; no walking/facing while evolving
+            if evolving || recalled {
+                // hold position; no walking/facing while evolving or recalled
             } else if fainted {
                 // A knocked-out active mon plays the faint animation once and stays
                 // put where it fell (it doesn't follow the cursor).
@@ -1550,7 +1554,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             // Items: the mon picks one up by walking over it (not mid-battle).
             let itemScene = self.items.update(followerPos: self.controller.position,
-                                              canPickup: !self.battle.isBattling && !fainted)
+                                              canPickup: !self.battle.isBattling && !fainted && !recalled)
             // Sidestep offset while the follower dodges a missed attack (#10).
             var renderPos = playerPos
             if let sc = scene, !evolving {
@@ -1562,7 +1566,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     view.render(frame, globalPos: renderPos,
                                 shadow: self.controller.currentShadow, glow: glow)
                 } else {
-                    view.render(self.controller.currentFrame,
+                    view.render(recalled ? nil : self.controller.currentFrame,
                                 globalPos: renderPos,
                                 shadow: self.controller.currentShadow,
                                 rotation: self.controller.faintRotation)

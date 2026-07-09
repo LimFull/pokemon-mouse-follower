@@ -65,3 +65,4 @@
 "raising.settings" = "Raising settings";
 "label.wildspawn" = "Wild encounters";
 "label.itemspawn" = "Item spawns";
+"detail.recall" = "Recall";
