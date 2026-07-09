@@ -100,7 +100,9 @@ enum EffectPlayer {
         var m: [String: Int] = [:]
         m["burn"] = id("Will-O-Wisp") ?? id("Ember")
         m["poison"] = id("Poison Gas") ?? id("Toxic")
-        m["paralyzed"] = id("Thunder Wave")
+        // Spark's crackle sits ON the mon (no falling bolt — a paralyzed mon
+        // shouldn't look like it's being struck by Thunderbolt).
+        m["paralyzed"] = id("Spark") ?? id("Thunder Wave")
         m["frozen"] = id("Powder Snow") ?? id("Ice Beam")
         m["infatuated"] = id("Attract")
         return m
@@ -164,7 +166,7 @@ enum EffectPlayer {
                                 ticks: $0.ticks, dx: $0.dx, dy: $0.dy)
             }
             steps = composeBurst(steps)
-            steps = capSize(steps, maxDim: 64)   // a hit spark ≈ the mon, not 2x it
+            steps = capSize(steps, maxDim: 46)   // a hit spark stays smaller than the mon
         } else if doTint {
             // Drawn art with an approximate palette: re-hue, keep shading.
             let color = TypeStyle.color(type)
@@ -273,7 +275,7 @@ enum EffectPlayer {
     /// is sized to the full spread so edge particles never get sliced off.
     private static func composeBurst(_ steps: [EffectClip.Step]) -> [EffectClip.Step] {
         let maxPart = steps.map { max($0.image.width, $0.image.height) }.max() ?? 16
-        let canvas = 2 * 16 + maxPart + 6   // ring radius peaks at 16
+        let canvas = 2 * 30 + maxPart + 8   // ring radius peaks at 30 (capped after)
         let copies = 7
         let n = max(1, steps.count - 1)
         return steps.enumerated().map { (i, s) in
@@ -287,7 +289,7 @@ enum EffectPlayer {
             let c = CGFloat(canvas) / 2
             for j in 0..<copies {
                 let jitter = 0.65 + 0.35 * CGFloat((j * 37) % 10) / 9.0
-                let r = (3 + 13 * progress) * jitter
+                let r = (4 + 26 * progress) * jitter
                 let angle = CGFloat(j) * 2.399963        // golden angle
                 let x = c + cos(angle) * r - w / 2
                 let y = c + sin(angle) * r - h / 2
