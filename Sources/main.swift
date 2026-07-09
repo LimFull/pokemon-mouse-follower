@@ -359,6 +359,7 @@ final class CharacterController {
     /// The follower dozed off (idle past the sleep delay). Raising mode reads
     /// this for the faster resting regen; only update(mouseGlobal:) drives it.
     private(set) var isSleeping = false
+    private var loadedSubdir = ""         // sheet dir in memory (setCharacter dedupe)
 
     private let slowRadius: CGFloat = 130
     private let accel: CGFloat = 0.55
@@ -388,6 +389,11 @@ final class CharacterController {
                            subdirectory: "\(subdir)/altcolor") != nil {
             subdir += "/altcolor"
         }
+        // Same sheets already loaded — nothing to reload. raisingChanged fires
+        // on ANY party/bag change (the ~7.5s sleep-regen tick included), and a
+        // full reload resets the idle clock below, waking a sleeping follower.
+        if loaded, subdir == loadedSubdir { return }
+        loadedSubdir = subdir
         let xml = Sprite.loadText("AnimData", ext: "xml", subdir: subdir)
         shadowSize = xml.map { Sprite.shadowSize(in: $0) } ?? 1
         walk = slicedSheet("Walk-Anim", anim: "Walk", subdir: subdir, xml: xml)
@@ -1879,6 +1885,21 @@ if CommandLine.arguments.contains("--selftest-raising") {
         let m = RaisingState.shared.active!
         print("playback: battleTicks=\(battleTicks) effectFrames=\(effectFrames) levelTagTicks=\(levelTagTicks) → \(Characters.displayName(String(format: "%03d", m.dex))) Lv\(m.level) HP \(m.currentHP)/\(m.maxHP) status=\(m.status ?? "none")")
         AppSettings.shared.raisingMode = hadRaising
+    }
+    // Sleep continuity: re-applying the SAME character (raisingChanged fires
+    // on any party/bag change — the sleep-regen tick included) must not
+    // reload the sheets and reset the idle clock, waking the sleeper.
+    do {
+        let cc = CharacterController()
+        cc.setCharacter("025")
+        let cursor = CGPoint(x: 100, y: 100)
+        for _ in 0..<(Int(AppSettings.shared.sleepDelay) * 60 + 1200) {
+            cc.update(mouseGlobal: cursor)
+        }
+        let asleepBefore = cc.isSleeping
+        cc.setCharacter("025")            // what the regen notification does
+        cc.update(mouseGlobal: cursor)
+        print("sleep continuity: asleep=\(asleepBefore) stillAsleep=\(cc.isSleeping) (expect true true)")
     }
     // Level-up tag: prime the active mon 1 EXP short of its next level, then
     // battle until a win — the ending beat must float "Level Up!" overhead.
