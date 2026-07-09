@@ -268,9 +268,10 @@ final class RaisingState {
             }
         }
         persist()
-        if r.evolvedTo != nil {
+        if let from = r.evolvedFrom, let to = r.evolvedTo {
             notifyChanged()   // follower sprite changed
-            NotificationCenter.default.post(name: .raisingEvolved, object: nil)
+            NotificationCenter.default.post(name: .raisingEvolved, object: nil,
+                                            userInfo: ["from": from, "to": to])
         }
         return r
     }
@@ -375,6 +376,7 @@ final class RaisingState {
     @discardableResult
     func useItem(_ item: GameItem, at index: Int) -> Int? {
         guard canUseItem(item, at: index), consumeItem(item) else { return nil }
+        let fromDex = save.party[index].dex
         var evolvedTo: Int? = nil
         if item.healAmount > 0 {
             save.party[index].currentHP = min(save.party[index].maxHP,
@@ -391,8 +393,9 @@ final class RaisingState {
         }
         persist()
         notifyChanged()
-        if evolvedTo != nil, index == save.activeIndex {
-            NotificationCenter.default.post(name: .raisingEvolved, object: nil)
+        if let to = evolvedTo, index == save.activeIndex {
+            NotificationCenter.default.post(name: .raisingEvolved, object: nil,
+                                            userInfo: ["from": fromDex, "to": to])
         }
         return evolvedTo
     }

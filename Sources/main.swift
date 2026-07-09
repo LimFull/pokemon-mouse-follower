@@ -1321,8 +1321,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let battle = BattleController()
     private let items = ItemSpawner()
     private var wasFainted = false
-    private var evoGlowTicks = 0            // evolution burst countdown (D8/#9)
-    private let evoGlowTotal = 150
+    private let evolution = EvolutionAnimator()   // mainline evolution scene (D8/#9)
     private var regenCounter = 0            // out-of-battle +1 HP tick (~30s)
     private var overlays: [(window: NSWindow, view: SpriteView)] = []
     private var statusItem: NSStatusItem!
@@ -1340,7 +1339,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NotificationCenter.default.addObserver(
             self, selector: #selector(raisingChanged), name: .raisingChanged, object: nil)
         NotificationCenter.default.addObserver(
-            self, selector: #selector(raisingEvolved), name: .raisingEvolved, object: nil)
+            self, selector: #selector(raisingEvolved(_:)), name: .raisingEvolved, object: nil)
         if CommandLine.arguments.contains("--show-settings") { showSettings() }
         // Debug: preview the on-overlay prompts (C1) without earning them.
         if ProcessInfo.processInfo.environment["PMF_TEST_PROMPT"] != nil,
@@ -1355,9 +1354,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         controller.setCharacter(RaisingState.shared.followerFolder)
     }
 
-    // A mon just evolved: cover the sprite swap with a white burst that fades.
-    @objc private func raisingEvolved() {
-        if AppSettings.shared.raisingMode { evoGlowTicks = evoGlowTotal }
+    // A mon just evolved: play the mainline evolution scene in place
+    // (silhouette -> accelerating morph -> white-out -> sparkly reveal).
+    @objc private func raisingEvolved(_ note: Notification) {
+        guard AppSettings.shared.raisingMode,
+              let from = note.userInfo?["from"] as? Int,
+              let to = note.userInfo?["to"] as? Int else { return }
+        evolution.start(fromDex: from, toDex: to, at: controller.position)
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -1471,9 +1474,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let t = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
             guard let self, self.running else { return }
             let cursor = NSEvent.mouseLocation
+            // The evolution scene freezes the follower and takes over its
+            // rendering until it completes (mainline behavior).
+            let evoFrame = self.evolution.active ? self.evolution.update() : nil
+            let evolving = evoFrame != nil
             let fainted = AppSettings.shared.raisingMode
                 && (RaisingState.shared.active?.isFainted ?? false)
-            if fainted {
+            if evolving {
+                // hold position; no walking/facing while evolving
+            } else if fainted {
                 // A knocked-out active mon plays the faint animation once and stays
                 // put where it fell (it doesn't follow the cursor).
                 if !self.wasFainted { self.controller.startFaint(); self.wasFainted = true }
@@ -1485,8 +1494,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     self.controller.update(mouseGlobal: cursor)
                 }
             }
-            let scene = self.battle.update(playerGlobalPos: self.controller.position)
-            if self.battle.isBattling, let sc = scene {
+            let playerPos = evolving ? self.evolution.position : self.controller.position
+            let scene = self.battle.update(playerGlobalPos: playerPos)
+            if self.battle.isBattling, !evolving, let sc = scene {
                 // Face the wild; play the battle pose the controller picked.
                 self.controller.face(sc.wildPos, pose: sc.playerPose, poseTick: sc.playerPoseTick)
             }
@@ -1501,25 +1511,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // Items: the mon picks one up by walking over it (not mid-battle).
             let itemScene = self.items.update(followerPos: self.controller.position,
                                               canPickup: !self.battle.isBattling && !fainted)
-            // Evolution burst: bright at the swap, pulsing while it fades out.
-            var glow: CGFloat = 0
-            if self.evoGlowTicks > 0 {
-                self.evoGlowTicks -= 1
-                let t = CGFloat(self.evoGlowTicks) / CGFloat(self.evoGlowTotal)
-                glow = t * (0.8 + 0.2 * sin(CGFloat(self.evoGlowTicks) * 0.35))
-            }
             // Sidestep offset while the follower dodges a missed attack (#10).
-            var renderPos = self.controller.position
-            if let sc = scene {
+            var renderPos = playerPos
+            if let sc = scene, !evolving {
                 renderPos.x += sc.playerDodge.x
                 renderPos.y += sc.playerDodge.y
             }
             for (_, view) in self.overlays {
-                view.render(self.controller.currentFrame,
-                            globalPos: renderPos,
-                            shadow: self.controller.currentShadow,
-                            rotation: self.controller.faintRotation,
-                            glow: glow)
+                if let (frame, glow) = evoFrame {
+                    view.render(frame, globalPos: renderPos,
+                                shadow: self.controller.currentShadow, glow: glow)
+                } else {
+                    view.render(self.controller.currentFrame,
+                                globalPos: renderPos,
+                                shadow: self.controller.currentShadow,
+                                rotation: self.controller.faintRotation)
+                }
                 view.renderBattle(scene)
                 view.renderItem(itemScene)
             }
@@ -1646,6 +1653,31 @@ if let i = CommandLine.arguments.firstIndex(of: "--dump-icons"), CommandLine.arg
         CGImageDestinationFinalize(d)
     }
     print("dumped \(GameItem.allCases.count) icons → \(dir.path)")
+    exit(0)
+}
+
+// Debug hook: `--dump-evolution <fromDex> <toDex> <outDir>` writes the
+// evolution scene's frames (every 10 ticks) for a visual check.
+if let i = CommandLine.arguments.firstIndex(of: "--dump-evolution"),
+   CommandLine.arguments.count > i + 3,
+   let fromDex = Int(CommandLine.arguments[i + 1]), let toDex = Int(CommandLine.arguments[i + 2]) {
+    let dir = URL(fileURLWithPath: CommandLine.arguments[i + 3])
+    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let anim = EvolutionAnimator()
+    anim.start(fromDex: fromDex, toDex: toDex, at: .zero)
+    var n = 0, tick = 0
+    while let (frame, glow) = anim.update() {
+        if tick % 10 == 0 {
+            let u = dir.appendingPathComponent(String(format: "e%03d-g%02.0f.png", tick, glow * 10))
+            if let d = CGImageDestinationCreateWithURL(u as CFURL, UTType.png.identifier as CFString, 1, nil) {
+                CGImageDestinationAddImage(d, frame, nil)
+                CGImageDestinationFinalize(d)
+                n += 1
+            }
+        }
+        tick += 1
+    }
+    print("dumped \(n) evolution frames over \(tick) ticks → \(dir.path)")
     exit(0)
 }
 
