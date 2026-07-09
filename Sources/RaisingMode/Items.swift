@@ -229,6 +229,23 @@ final class ItemSpawner {
         despawnTicks = (fast ? 60 : 10 * 60) * 60      // 1 min (fast) / 10 min
     }
 
+    /// Debug: drop `item` (nil = weighted random) a short walk away from the
+    /// follower — far enough that the pickup can be watched/recorded, clamped
+    /// on screen. Replaces whatever is out; the spawn timer restarts normally
+    /// after the pickup/despawn.
+    func forceSpawn(_ item: GameItem? = nil, near follower: CGPoint) {
+        var r = CGRect.null
+        for s in NSScreen.screens { r = r.union(s.frame) }
+        if r.isNull { r = CGRect(x: 0, y: 0, width: 1440, height: 900) }
+        pickupTicks = 0
+        current = item ?? GameItem.randomSpawn()
+        let angle = CGFloat.random(in: 0 ..< 2 * .pi)
+        let d = 220 * AppSettings.shared.scale
+        pos = CGPoint(x: min(max(follower.x + cos(angle) * d, r.minX + 60), r.maxX - 60),
+                      y: min(max(follower.y + sin(angle) * d, r.minY + 60), r.maxY - 60))
+        despawnTicks = (fast ? 60 : 10 * 60) * 60
+    }
+
     private func nextCooldown() -> Int {
         fast ? 8 * 60 : Int.random(in: (10 * 60)...(20 * 60)) * 60   // 8s / 10–20 min
     }

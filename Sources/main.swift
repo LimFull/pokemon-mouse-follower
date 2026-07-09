@@ -1514,6 +1514,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let wander = NSMenuItem(title: "야생 스폰 (배회)", action: #selector(debugSpawn), keyEquivalent: "")
             wander.target = self
             dm.addItem(wander)
+            // Field-item drops near the follower — pickup GIFs on demand.
+            let itemRandom = NSMenuItem(title: "필드 아이템 스폰: 랜덤", action: #selector(debugSpawnItem(_:)), keyEquivalent: "")
+            itemRandom.target = self
+            itemRandom.tag = 0
+            dm.addItem(itemRandom)
+            let itemBall = NSMenuItem(title: "필드 아이템 스폰: 몬스터볼", action: #selector(debugSpawnItem(_:)), keyEquivalent: "")
+            itemBall.target = self
+            itemBall.tag = GameItem.pokeBall.rawValue
+            dm.addItem(itemBall)
             dm.addItem(.separator())
             // Force a status on the active mon — it carries into the next battle,
             // so the skip/residual visuals are testable without RNG.
@@ -1632,6 +1641,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func debugSpawn() { battle.forceSpawn() }
+
+    @objc private func debugSpawnItem(_ sender: NSMenuItem) {
+        items.forceSpawn(GameItem(rawValue: sender.tag), near: controller.position)
+    }
 
     @objc private func debugEncounter(_ sender: NSMenuItem) {
         battle.forceEncounter(dex: sender.tag > 0 ? sender.tag : nil)
