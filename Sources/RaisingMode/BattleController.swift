@@ -310,10 +310,41 @@ final class BattleController {
         }
     }
 
+    /// The moment an ailment is inflicted: (float label, color, status-clip
+    /// key). Keyed by the engine's ailment names carried in statusApplied.
+    private static let ailmentLanding: [String: (String, NSColor, String)] = [
+        "paralysis": ("Paralyzed!", NSColor(srgbRed: 0.98, green: 0.85, blue: 0.25, alpha: 1), "paralyzed"),
+        "burn": ("Burned!", NSColor(srgbRed: 1.0, green: 0.55, blue: 0.25, alpha: 1), "burn"),
+        "poison": ("Poisoned!", NSColor(srgbRed: 0.75, green: 0.45, blue: 0.95, alpha: 1), "poison"),
+        "sleep": ("Fell asleep!", NSColor(srgbRed: 0.65, green: 0.72, blue: 0.95, alpha: 1), "asleep"),
+        "freeze": ("Frozen!", NSColor(srgbRed: 0.55, green: 0.85, blue: 0.95, alpha: 1), "frozen"),
+        "confusion": ("Confused!", NSColor(srgbRed: 0.9, green: 0.6, blue: 0.95, alpha: 1), "confused"),
+        "infatuation": ("In love!", NSColor(srgbRed: 0.98, green: 0.55, blue: 0.72, alpha: 1), "infatuated"),
+    ]
+
     /// Floating combat tag over the defender at impact: "Miss"/"No Effect" on
     /// a whiff, "Super Effective!"/"Not Very Effective.." by type matchup.
     private func tickFloatText(_ e: BattleEvent) {
         floatText = nil; floatAlpha = 0
+        // An ailment landing gets its own late window (after the HP drain and
+        // the effectiveness tag's beat) so "Super Effective!" and "Burned!"
+        // both get read on a burning Flamethrower hit.
+        if e.kind == .attack, let s = e.statusApplied,
+           let (label, color, _) = Self.ailmentLanding[s] {
+            let span = 44
+            if evTick >= drainEnd, evTick < drainEnd + span {
+                let scale = AppSettings.shared.scale
+                let anchor = e.targetIsPlayer ? playerPos : (wildMon?.pos ?? playerPos)
+                let t = Double(evTick - drainEnd) / Double(span)
+                floatText = label
+                floatPos = CGPoint(x: anchor.x,
+                                   y: anchor.y + (26 + CGFloat(t) * 14) * scale)
+                floatAlpha = 1.0 - t * 0.8
+                floatColor = color.cgColor
+                return
+            }
+            if evTick >= drainEnd { return }   // window over — stay clear
+        }
         var text: String?
         var color = NSColor(srgbRed: 1.0, green: 0.85, blue: 0.3, alpha: 1)   // miss yellow
         var overActor = false
@@ -556,6 +587,17 @@ final class BattleController {
             let resolve = e.damage > 0 ? 26 : (e.kind == .miss ? 24 : 10)
             drainEnd = hitAt + resolve
             curTicks = drainEnd + (fast ? 8 : 16)   // beat gap before the reply
+            // An inflicted ailment announces itself: its status clip queues up
+            // after the move's own effect, and the beat stretches so the
+            // "Burned!"-style tag (tickFloatText) has room to play out.
+            if e.kind == .attack, let s = e.statusApplied,
+               let (_, _, clipKey) = Self.ailmentLanding[s] {
+                if let clip = EffectPlayer.statusClip(clipKey) {
+                    let ticks = min(clip.loop ? 30 : clip.totalTicks, 44)
+                    effects.append(RunningEffect(clip: clip, anchor: target, maxTicks: ticks))
+                }
+                curTicks = max(curTicks, drainEnd + 52)
+            }
         case .residual:
             // Mainline end-of-turn chip damage: play the condition's effect
             // (burn flames / poison gas) over the victim WITH the hurt pose,

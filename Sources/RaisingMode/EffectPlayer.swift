@@ -105,6 +105,8 @@ enum EffectPlayer {
         m["paralyzed"] = id("Spark") ?? id("Thunder Wave")
         m["frozen"] = id("Powder Snow") ?? id("Ice Beam")
         m["infatuated"] = id("Attract")
+        m["asleep"] = id("Sing") ?? id("Hypnosis")
+        m["confused"] = id("Supersonic") ?? id("Confuse Ray")
         return m
     }()
 

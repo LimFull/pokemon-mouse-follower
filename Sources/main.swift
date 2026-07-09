@@ -1892,7 +1892,7 @@ if CommandLine.arguments.contains("--selftest-raising") {
         } else { print("  effect \(label): MISSING") }
     }
     // Status visuals: every condition resolves to a playable proxy clip.
-    let statusKeys = ["burn", "poison", "paralyzed", "frozen", "infatuated"]
+    let statusKeys = ["burn", "poison", "paralyzed", "frozen", "infatuated", "asleep", "confused"]
     print("status clips:", statusKeys.map { "\($0)=\(EffectPlayer.statusClip($0) != nil ? "ok" : "MISSING")" }.joined(separator: " "))
     // Gender ratios (G): Magnemite genderless, Nidoran♀ always female, Chansey female.
     for d in [81, 29, 113] {
