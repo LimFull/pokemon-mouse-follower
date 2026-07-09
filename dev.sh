@@ -30,4 +30,5 @@ swiftc -Onone -g "${SWIFT_SOURCES[@]}" -o "$BUNDLE/Contents/MacOS/${APP_NAME}"
 
 echo "==> Running in foreground (Ctrl+C to quit). Logs below:"
 echo "-------------------------------------------------------"
-exec "$BUNDLE/Contents/MacOS/${APP_NAME}"
+# PMF_DEV exposes the status-bar debug submenu (release builds hide it).
+PMF_DEV=1 exec "$BUNDLE/Contents/MacOS/${APP_NAME}"

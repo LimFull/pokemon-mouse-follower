@@ -1470,50 +1470,55 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(toggle)
         // Debug submenu: instant battles against curated opponents (each
         // exercises a status/effect path), plus item/EXP/heal shortcuts.
-        let debug = NSMenuItem(title: "디버그", action: nil, keyEquivalent: "")
-        let dm = NSMenu()
-        func encounter(_ title: String, _ dex: Int) {
-            let it = NSMenuItem(title: title, action: #selector(debugEncounter(_:)), keyEquivalent: "")
-            it.target = self
-            it.tag = dex
-            dm.addItem(it)
+        // Dev runs only — dev.sh sets PMF_DEV, and PMF_FAST_BATTLE test runs
+        // imply it; the release build never shows it.
+        let env = ProcessInfo.processInfo.environment
+        if env["PMF_DEV"] != nil || env["PMF_FAST_BATTLE"] != nil {
+            let debug = NSMenuItem(title: "디버그", action: nil, keyEquivalent: "")
+            let dm = NSMenu()
+            func encounter(_ title: String, _ dex: Int) {
+                let it = NSMenuItem(title: title, action: #selector(debugEncounter(_:)), keyEquivalent: "")
+                it.target = self
+                it.tag = dex
+                dm.addItem(it)
+            }
+            encounter("즉시 배틀: 랜덤", 0)
+            encounter("즉시 배틀: 피카츄 (마비)", 25)
+            encounter("즉시 배틀: 슬리프 (최면술·에스퍼)", 96)
+            encounter("즉시 배틀: 식스테일 (화상)", 37)
+            encounter("즉시 배틀: 아보 (독)", 23)
+            encounter("즉시 배틀: 루주라 (얼음·헤롱헤롱)", 124)
+            encounter("즉시 배틀: 별가사리 (물대포)", 120)
+            dm.addItem(.separator())
+            let items = NSMenuItem(title: "테스트 아이템 지급", action: #selector(debugGiveItems), keyEquivalent: "")
+            items.target = self
+            dm.addItem(items)
+            let heal = NSMenuItem(title: "파티 전체 회복", action: #selector(debugHealAll), keyEquivalent: "")
+            heal.target = self
+            dm.addItem(heal)
+            let lvl = NSMenuItem(title: "활성 포켓몬 +1 레벨", action: #selector(debugLevelUp), keyEquivalent: "")
+            lvl.target = self
+            dm.addItem(lvl)
+            let evo = NSMenuItem(title: "활성 포켓몬 진화 레벨까지", action: #selector(debugLevelToEvolution), keyEquivalent: "")
+            evo.target = self
+            dm.addItem(evo)
+            let wander = NSMenuItem(title: "야생 스폰 (배회)", action: #selector(debugSpawn), keyEquivalent: "")
+            wander.target = self
+            dm.addItem(wander)
+            dm.addItem(.separator())
+            // Force a status on the active mon — it carries into the next battle,
+            // so the skip/residual visuals are testable without RNG.
+            for (title, key) in [("내 포켓몬: 마비", "paralysis"), ("내 포켓몬: 화상", "burn"),
+                                 ("내 포켓몬: 독", "poison"), ("내 포켓몬: 수면", "sleep"),
+                                 ("내 포켓몬: 얼음", "freeze"), ("내 포켓몬: 상태 해제", "")] {
+                let it = NSMenuItem(title: title, action: #selector(debugSetStatus(_:)), keyEquivalent: "")
+                it.target = self
+                it.representedObject = key
+                dm.addItem(it)
+            }
+            debug.submenu = dm
+            menu.addItem(debug)
         }
-        encounter("즉시 배틀: 랜덤", 0)
-        encounter("즉시 배틀: 피카츄 (마비)", 25)
-        encounter("즉시 배틀: 슬리프 (최면술·에스퍼)", 96)
-        encounter("즉시 배틀: 식스테일 (화상)", 37)
-        encounter("즉시 배틀: 아보 (독)", 23)
-        encounter("즉시 배틀: 루주라 (얼음·헤롱헤롱)", 124)
-        encounter("즉시 배틀: 별가사리 (물대포)", 120)
-        dm.addItem(.separator())
-        let items = NSMenuItem(title: "테스트 아이템 지급", action: #selector(debugGiveItems), keyEquivalent: "")
-        items.target = self
-        dm.addItem(items)
-        let heal = NSMenuItem(title: "파티 전체 회복", action: #selector(debugHealAll), keyEquivalent: "")
-        heal.target = self
-        dm.addItem(heal)
-        let lvl = NSMenuItem(title: "활성 포켓몬 +1 레벨", action: #selector(debugLevelUp), keyEquivalent: "")
-        lvl.target = self
-        dm.addItem(lvl)
-        let evo = NSMenuItem(title: "활성 포켓몬 진화 레벨까지", action: #selector(debugLevelToEvolution), keyEquivalent: "")
-        evo.target = self
-        dm.addItem(evo)
-        let wander = NSMenuItem(title: "야생 스폰 (배회)", action: #selector(debugSpawn), keyEquivalent: "")
-        wander.target = self
-        dm.addItem(wander)
-        dm.addItem(.separator())
-        // Force a status on the active mon — it carries into the next battle,
-        // so the skip/residual visuals are testable without RNG.
-        for (title, key) in [("내 포켓몬: 마비", "paralysis"), ("내 포켓몬: 화상", "burn"),
-                             ("내 포켓몬: 독", "poison"), ("내 포켓몬: 수면", "sleep"),
-                             ("내 포켓몬: 얼음", "freeze"), ("내 포켓몬: 상태 해제", "")] {
-            let it = NSMenuItem(title: title, action: #selector(debugSetStatus(_:)), keyEquivalent: "")
-            it.target = self
-            it.representedObject = key
-            dm.addItem(it)
-        }
-        debug.submenu = dm
-        menu.addItem(debug)
         menu.addItem(.separator())
         let quit = NSMenuItem(title: L("menu.quit"), action: #selector(quit), keyEquivalent: "q")
         quit.target = self
