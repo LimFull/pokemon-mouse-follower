@@ -121,6 +121,7 @@ final class AppSettings {
     static let speedRange: ClosedRange<Double> = 2...25
     static let scaleRange: ClosedRange<Double> = 1...5
     static let sleepRange: ClosedRange<Double> = 5...120
+    static let encounterRange: ClosedRange<Double> = 5...90   // avg minutes (D9)
 
     private func get(_ key: String, _ def: Double) -> CGFloat {
         d.object(forKey: key) == nil ? CGFloat(def) : CGFloat(d.double(forKey: key))
@@ -159,6 +160,11 @@ final class AppSettings {
     var raisingMode: Bool {
         get { d.bool(forKey: "raisingMode") }   // defaults to false when unset
         set { d.set(newValue, forKey: "raisingMode") }
+    }
+    // Average minutes between wild encounters (D9: 빈도는 설정 조절).
+    var encounterMinutes: CGFloat {
+        get { get("encounterMinutes", 45) }
+        set { d.set(Double(newValue), forKey: "encounterMinutes") }
     }
 }
 
@@ -929,7 +935,7 @@ final class SettingsWindowController: NSObject {
 
     init(controller: CharacterController) {
         self.controller = controller
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 596),
+        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 640),
                           styleMask: [.titled, .closable], backing: .buffered, defer: false)
         window.title = L("settings.window.title")
         window.isReleasedWhenClosed = false
@@ -960,6 +966,9 @@ final class SettingsWindowController: NSObject {
         grid.addRow(with: [makeLabel(L("label.sleep")),
                            makeSlider(tag: 3, range: AppSettings.sleepRange, value: Double(s.sleepDelay)),
                            makeValueLabel(3, text: fmt(3, s.sleepDelay))])
+        grid.addRow(with: [makeLabel(L("label.encounter")),
+                           makeSlider(tag: 4, range: AppSettings.encounterRange, value: Double(s.encounterMinutes)),
+                           makeValueLabel(4, text: fmt(4, s.encounterMinutes))])
         grid.addRow(with: [makeLabel(L("label.altcolor")), makeAltColorCheckbox(), NSGridCell.emptyContentView])
         grid.addRow(with: [makeLabel(L("label.shadow")), makeShadowCheckbox(), NSGridCell.emptyContentView])
         grid.addRow(with: [makeLabel(L("label.launch")), makeLaunchCheckbox(), NSGridCell.emptyContentView])
@@ -1013,7 +1022,7 @@ final class SettingsWindowController: NSObject {
         // NOTE: pin only tops + fixed heights (never subview.bottom == content.bottom),
         // otherwise NSWindow shrink-wraps its height to the Auto Layout fitting size
         // and the window collapses to the title bar.
-        let contentH: CGFloat = 596
+        let contentH: CGFloat = 640
         NSLayoutConstraint.activate([
             leftColumn.leadingAnchor.constraint(equalTo: content.leadingAnchor),
             leftColumn.topAnchor.constraint(equalTo: content.topAnchor),
@@ -1172,6 +1181,7 @@ final class SettingsWindowController: NSObject {
         switch tag {
         case 2: return String(format: "%.1f×", v)
         case 3: return String(format: "%.0fs", v)
+        case 4: return String(format: "%.0fm", v)
         default: return String(format: "%.0f", v)
         }
     }
@@ -1214,6 +1224,7 @@ final class SettingsWindowController: NSObject {
         case 1: s.maxSpeed = v
         case 2: s.scale = v   // reflected on the next render tick
         case 3: s.sleepDelay = v
+        case 4: s.encounterMinutes = v   // picked up on the next spawn scheduling
         default: break
         }
         valueLabels[sender.tag]?.stringValue = fmt(sender.tag, v)
@@ -1251,6 +1262,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NotificationCenter.default.addObserver(
             self, selector: #selector(raisingEvolved), name: .raisingEvolved, object: nil)
         if CommandLine.arguments.contains("--show-settings") { showSettings() }
+        // Debug: preview the on-overlay prompts (C1) without earning them.
+        if ProcessInfo.processInfo.environment["PMF_TEST_PROMPT"] != nil,
+           let mon = RaisingState.shared.active {
+            PromptCenter.shared.enqueue(.learnMove(monIndex: 0, moveId: mon.moves.first ?? 154))
+            PromptCenter.shared.enqueue(.fullParty(captured: mon))
+        }
     }
 
     // The active raising mon (or the normal character) should be the follower.
@@ -1502,6 +1519,14 @@ if CommandLine.arguments.contains("--selftest-raising") {
         if r.captured { _ = st.addCaptured(from: w2); print("party after capture=\(st.party.count)") }
     }
     print("bag: pokeball=\(st.itemCount(.pokeBall)) potion=\(st.itemCount(.potion)) canUsePotionOnHurt=\(st.canUseItem(.potion, at: 0))")
+    // Overlay-prompt state ops (C1): full-party capture resolve + indexed learnMove.
+    if let w3 = Battler(wildDex: 25, level: 9), let cap = st.capturedMon(from: w3), let s16 = GameData.species[16] {
+        while st.partyHasRoom { _ = st.addToParty(st.makeMon(species: s16, level: 4)) }
+        st.resolveCapture(cap, releasing: 0)
+        print("fullparty resolve: party=\(st.party.count)/6 last=\(st.party.last!.dex) (expect 25)")
+        st.learnMove(999, replacing: 0, at: 1)
+        print("indexed learnMove: party[1].moves[0]=\(st.party[1].moves.first ?? -1) (expect 999)")
+    }
     // Headless battle playback: force a contact encounter and tick the
     // controller through the whole fight, counting effect frames drawn.
     do {

@@ -129,13 +129,11 @@ final class BattleController {
         let dist = max(0.001, hypot(dx, dy)); dx /= dist; dy /= dist
         wm.setPos(CGPoint(x: playerPos.x + dx * 75 * scale, y: playerPos.y + dy * 75 * scale))
         wm.faceStanding(toward: playerPos)
-        // Balls to throw (D11): only with party room; cheap balls go first.
-        var balls: [GameItem] = []
-        if RaisingState.shared.partyHasRoom {
-            let st = RaisingState.shared
-            balls += Array(repeating: .pokeBall, count: min(3, st.itemCount(.pokeBall)))
-            balls += Array(repeating: .greatBall, count: min(3 - balls.count, st.itemCount(.greatBall)))
-        }
+        // Balls to throw (D11); a full party still catches — the release-or-
+        // abandon prompt (D14) resolves it afterwards. Cheap balls go first.
+        let st = RaisingState.shared
+        var balls = Array(repeating: GameItem.pokeBall, count: min(3, st.itemCount(.pokeBall)))
+        balls += Array(repeating: .greatBall, count: min(3 - balls.count, st.itemCount(.greatBall)))
         result = BattleEngine.run(player: p, wild: w, balls: balls)
         events = result?.events ?? []
         evIdx = 0; evTick = 0; curPHP = 1.0; curWHP = 1.0; wildAlpha = 1.0; playerAlpha = 1.0
@@ -276,11 +274,23 @@ final class BattleController {
         let won = result?.playerWon ?? false
         var captured = false
         if let r = result {
-            for b in r.ballsUsed { RaisingState.shared.consumeItem(b) }
-            RaisingState.shared.applyBattleOutcome(playerHP: r.playerEndHP, status: r.playerEndStatus,
-                                                   won: r.playerWon, expGained: r.expGained)
+            let st = RaisingState.shared
+            for b in r.ballsUsed { st.consumeItem(b) }
+            let expIdx = st.save.activeIndex        // who fought (before faint swap)
+            let growth = st.applyBattleOutcome(playerHP: r.playerEndHP, status: r.playerEndStatus,
+                                               won: r.playerWon, expGained: r.expGained)
+            // A 5th move needs a replace decision — on-overlay prompt (C1/#5).
+            for moveId in growth.pendingMoves {
+                PromptCenter.shared.enqueue(.learnMove(monIndex: expIdx, moveId: moveId))
+            }
             if r.captured, let w = wild {
-                captured = RaisingState.shared.addCaptured(from: w)
+                captured = true
+                if st.partyHasRoom {
+                    _ = st.addCaptured(from: w)
+                } else if let mon = st.capturedMon(from: w) {
+                    // Full party: release someone or let the catch go (D14/#14).
+                    PromptCenter.shared.enqueue(.fullParty(captured: mon))
+                }
             }
         }
         if captured {
@@ -342,7 +352,11 @@ final class BattleController {
         return r.isNull ? CGRect(x: 0, y: 0, width: 1440, height: 900) : r
     }
 
+    /// Random delay around the user's average encounter interval (D9): the
+    /// setting is the mean in minutes; actual spawns land in ±25% of it.
     private func nextSpawnDelay() -> Int {
-        fast ? 60 * 4 : Int.random(in: (30 * 60)...(60 * 60)) * 60   // 4s (fast) or 30–60 min
+        if fast { return 60 * 4 }   // 4s for testing
+        let avg = Double(AppSettings.shared.encounterMinutes) * 60   // seconds
+        return Int(Double.random(in: (avg * 0.75)...(avg * 1.25))) * 60
     }
 }

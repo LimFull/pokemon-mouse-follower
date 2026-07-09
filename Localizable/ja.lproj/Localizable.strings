@@ -304,3 +304,7 @@
 "item.linkcord" = "つながりのヒモ";
 "item.friendcandy" = "なかよしキャンディ";
 "capture.caught" = "を捕まえた！";
+"label.encounter" = "野生の間隔";
+"prompt.full.title" = "手持ちがいっぱい！";
+"prompt.full.keep" = "新しいポケモンを逃がす";
+"prompt.caught.title" = "捕獲";

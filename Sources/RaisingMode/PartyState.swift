@@ -135,12 +135,11 @@ final class RaisingState {
         return true
     }
 
-    /// Add a wild mon caught in battle (D11) — keeps its battle HP, moves,
-    /// gender and status, like the mainline games.
-    @discardableResult
-    func addCaptured(from wild: Battler) -> Bool {
-        guard partyHasRoom, let s = GameData.species[wild.dex] else { return false }
-        let mon = OwnedPokemon(
+    /// A caught wild as an owned mon — keeps its battle HP, moves, gender and
+    /// status, like the mainline games (D11).
+    func capturedMon(from wild: Battler) -> OwnedPokemon? {
+        guard let s = GameData.species[wild.dex] else { return nil }
+        return OwnedPokemon(
             dex: wild.dex,
             level: wild.level,
             exp: s.expCurve.indices.contains(wild.level - 1) ? s.expCurve[wild.level - 1] : 0,
@@ -148,10 +147,27 @@ final class RaisingState {
             moves: wild.moves,
             gender: wild.gender,
             status: wild.status?.rawValue)
+    }
+
+    /// Add a wild mon caught in battle (party must have room).
+    @discardableResult
+    func addCaptured(from wild: Battler) -> Bool {
+        guard partyHasRoom, let mon = capturedMon(from: wild) else { return false }
         save.party.append(mon)
         persist()
         notifyChanged()
         return true
+    }
+
+    /// Full-party capture decision (D14/#14): release the member at `index`
+    /// and keep the catch, or pass nil to let the new mon go.
+    func resolveCapture(_ mon: OwnedPokemon, releasing index: Int?) {
+        guard let index, save.party.indices.contains(index) else { return }
+        save.party.remove(at: index)
+        if save.activeIndex >= save.party.count { save.activeIndex = max(0, save.party.count - 1) }
+        save.party.append(mon)
+        persist()
+        notifyChanged()
     }
 
     /// Release the party member at `index` (#14).
@@ -258,13 +274,15 @@ final class RaisingState {
     }
 
     /// Resolve a queued move: replace the move at `slot` (0–3) with `moveId`,
-    /// or pass slot = nil to decline learning it (#5).
-    func learnMove(_ moveId: Int, replacing slot: Int?) {
-        let i = save.activeIndex
+    /// or pass slot = nil to decline learning it (#5). `index` targets a
+    /// specific party member (default: the active one).
+    func learnMove(_ moveId: Int, replacing slot: Int?, at index: Int? = nil) {
+        let i = index ?? save.activeIndex
         guard save.party.indices.contains(i) else { return }
         if let slot, save.party[i].moves.indices.contains(slot) {
             save.party[i].moves[slot] = moveId
             persist()
+            notifyChanged()
         }
     }
 
