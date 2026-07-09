@@ -103,7 +103,6 @@ if [ "$NOTARIZED" = 1 ]; then
   NOTES="Pokémon Mouse Follower ${VERSION}
 
 macOS 13 (Ventura)+ · Apple Silicon / Intel universal.
-Apple Developer 서명 + 공증(notarized) 완료 — Gatekeeper 경고 없이 바로 실행됩니다.
 
 ${INSTALL}"
 else
