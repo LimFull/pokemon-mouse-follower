@@ -146,10 +146,8 @@ func platformScreensWorld() -> [CGRect] {
     return screens.isEmpty ? [CGRect(x: 0, y: 0, width: 1440, height: 900)] : screens
 }
 
-// MARK: - Item icons (Phase 5a seam). Windows gets the drawn icons in Phase
-// 5b (pre-rendered PNGs or an RGBABuffer port of the macOS drawing code);
-// until then balls/items render nothing.
-func platformItemIcon(_ item: GameItem) -> PMFImage? { nil }
+// MARK: - Item icons (Phase 5a seam): RGBABuffer port of the macOS drawings.
+func platformItemIcon(_ item: GameItem) -> PMFImage? { ItemIconsWin.icon(item) }
 
 // MARK: - Language list (W10)
 func platformPreferredLanguages() -> [String] {
