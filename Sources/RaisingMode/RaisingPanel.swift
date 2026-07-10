@@ -79,7 +79,7 @@ final class RaisingPanelView: NSView {
         if !RaisingState.shared.hasActiveGame {
             buildEmpty(root)
         } else if let i = detailIndex, RaisingState.shared.party.indices.contains(i) {
-            buildDetail(RaisingState.shared.party[i], into: root)
+            buildDetail(displayMon(RaisingState.shared.party[i], at: i), into: root)
         } else {
             buildList(root)
         }
@@ -118,6 +118,20 @@ final class RaisingPanelView: NSView {
         refresh()
     }
 
+    /// The mon as it should be DISPLAYED right now: while its battle plays,
+    /// the active member's HP and ailment come from the live playback gauge —
+    /// the save only updates when the battle ends, so rows/detail would lag
+    /// a whole fight behind otherwise.
+    private func displayMon(_ mon: OwnedPokemon, at index: Int) -> OwnedPokemon {
+        guard index == RaisingState.shared.save.activeIndex,
+              let bc = BattleController.current,
+              let frac = bc.playerGaugeFraction else { return mon }
+        var live = mon
+        live.currentHP = max(0, min(mon.maxHP, Int((frac * Double(mon.maxHP)).rounded())))
+        live.status = bc.playerLiveStatus
+        return live
+    }
+
     // MARK: party list (mainline party-menu style)
 
     private func buildList(_ root: NSStackView) {
@@ -127,7 +141,7 @@ final class RaisingPanelView: NSView {
         let activeIdx = RaisingState.shared.save.activeIndex
         let recallPending = BattleController.current?.recallPending ?? false
         for (i, mon) in party.enumerated() {
-            let row = PartyRowView(mon: mon, isActive: i == activeIdx,
+            let row = PartyRowView(mon: displayMon(mon, at: i), isActive: i == activeIdx,
                                    onClick: { [weak self] in
                                        self?.detailIndex = i
                                        self?.refresh()
