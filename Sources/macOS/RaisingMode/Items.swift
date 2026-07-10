@@ -11,6 +11,9 @@ import AppKit
 
 // MARK: drawn icon (16x16 points at 1x, pixel-art flavored)
 
+/// Core battle playback fetches item/ball icons through this seam (Phase 5a).
+func platformItemIcon(_ item: GameItem) -> PMFImage? { item.icon }
+
 private var gameItemIconCache: [GameItem: CGImage] = [:]
 
 extension GameItem {

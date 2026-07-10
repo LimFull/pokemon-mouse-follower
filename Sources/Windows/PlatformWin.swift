@@ -139,6 +139,18 @@ enum PlatformImageIO {
     }
 }
 
+// MARK: - Screens (Phase 5a): world-coordinate monitor rects for the core's
+// spawn/clamp logic.
+func platformScreensWorld() -> [CGRect] {
+    let screens = ScreenAdapter.screensWorld()
+    return screens.isEmpty ? [CGRect(x: 0, y: 0, width: 1440, height: 900)] : screens
+}
+
+// MARK: - Item icons (Phase 5a seam). Windows gets the drawn icons in Phase
+// 5b (pre-rendered PNGs or an RGBABuffer port of the macOS drawing code);
+// until then balls/items render nothing.
+func platformItemIcon(_ item: GameItem) -> PMFImage? { nil }
+
 // MARK: - Language list (W10)
 func platformPreferredLanguages() -> [String] {
     // GetUserPreferredUILanguages returns a double-null-terminated WCHAR list.

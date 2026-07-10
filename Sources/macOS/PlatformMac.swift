@@ -114,6 +114,13 @@ func platformPreferredLanguages() -> [String] {
     Locale.preferredLanguages
 }
 
+// MARK: - Screens (Phase 5a): global y-up frames, matching the core's world
+// coordinate space. NSScreen.main approximates as screens.first via callers.
+func platformScreensWorld() -> [CGRect] {
+    let frames = NSScreen.screens.map(\.frame)
+    return frames.isEmpty ? [CGRect(x: 0, y: 0, width: 1440, height: 900)] : frames
+}
+
 // MARK: - Launch-at-login (SMAppService, macOS 13+). The system owns the
 // state, so it defaults to off (not registered) until the user opts in.
 enum LoginItem {

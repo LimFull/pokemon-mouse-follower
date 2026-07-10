@@ -22,6 +22,39 @@ struct Vec2 {
     static let zero = Vec2(dx: 0, dy: 0)
 }
 
+/// Platform-neutral sRGB color (0...1 components) — NSColor/CGColor stay in
+/// the platform layers; the core's scene state (float tags, screen veils,
+/// type colors) carries these instead (design/windows-port.md Phase 5).
+struct RGBA {
+    var r: Double
+    var g: Double
+    var b: Double
+    var a: Double
+
+    init(r: Double, g: Double, b: Double, a: Double = 1) {
+        self.r = r; self.g = g; self.b = b; self.a = a
+    }
+
+    init(white: Double, alpha: Double = 1) {
+        self.init(r: white, g: white, b: white, a: alpha)
+    }
+
+    /// 0xRRGGBB
+    init(hex v: Int) {
+        self.init(r: Double((v >> 16) & 0xFF) / 255.0,
+                  g: Double((v >> 8) & 0xFF) / 255.0,
+                  b: Double(v & 0xFF) / 255.0)
+    }
+
+    func withAlpha(_ alpha: Double) -> RGBA { RGBA(r: r, g: g, b: b, a: alpha) }
+
+    /// Linear blend toward `other` by `fraction` (NSColor.blended mirror).
+    func blended(with other: RGBA, fraction f: Double) -> RGBA {
+        RGBA(r: r + (other.r - r) * f, g: g + (other.g - g) * f,
+             b: b + (other.b - b) * f, a: a + (other.a - a) * f)
+    }
+}
+
 /// Decoded raster: premultiplied RGBA bytes, row-major, top-left origin.
 /// The core does all pixel analysis (shadow markers, opaque bounds) on this;
 /// platforms convert it to their renderable PMFImage.

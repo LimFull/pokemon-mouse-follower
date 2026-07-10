@@ -5,13 +5,17 @@
 // and BattleEngine runs, the turns playing back on the overlay; the outcome
 // (EXP/HP/evolution) is applied and the wild despawns. Distances scale with the
 // sprite scale. Set PMF_FAST_BATTLE=1 for quick testing.
+//
+// Platform-neutral (Phase 5a): frames are PMFImage handles, colors are RGBA,
+// screens/prompts/item icons go through the platform seams
+// (platformScreensWorld / PromptRelay / platformItemIcon).
 
-import AppKit
+import Foundation
 
 
 /// What the overlay should draw for the current battle frame (nil = nothing).
 struct BattleScene {
-    let wildFrame: CGImage
+    let wildFrame: PMFImage
     let wildPos: CGPoint
     let playerPos: CGPoint
     let playerHP: Double
@@ -21,7 +25,7 @@ struct BattleScene {
     let playerAlpha: Double
     let wildAlpha: Double
     let showBars: Bool
-    let effectFrame: CGImage?    // move-effect sprite over the hit target (D22)
+    let effectFrame: PMFImage?   // move-effect sprite over the hit target (D22)
     let effectPos: CGPoint
     var playerPose: BattlePose = .stand   // battle pose for the follower (D2-1)
     var playerPoseTick: Int = 0
@@ -30,9 +34,9 @@ struct BattleScene {
     var floatText: String?                // floating combat tag ("Miss", "Super Effective!", ...)
     var floatPos: CGPoint = .zero
     var floatAlpha: Double = 0
-    var floatColor: CGColor = CGColor(gray: 1, alpha: 1)
+    var floatColor: RGBA = RGBA(white: 1)
     var screenFlash: Double = 0           // full-screen effect veil 0...1 (Psychic & co)
-    var screenColor: CGColor = CGColor(gray: 1, alpha: 1)
+    var screenColor: RGBA = RGBA(white: 1)
     var logLines: [(String, Double)] = [] // PMD-style log: (text, alpha), oldest first
     var logAnchor: CGPoint = .zero        // global top-center of the log box
     var playerSpriteDex: Int? = nil       // player Transformed: draw the follower as this species
@@ -66,7 +70,7 @@ final class BattleController: LiveBattleBridge {
     private var hitAt = 0                // tick where the HP drain may start (#9)
     private var drainEnd = 0             // tick where the HP drain finishes
     private var effects: [RunningEffect] = []   // phases: projectile, then hit
-    private var ballFrame: CGImage?      // thrown ball being drawn (D11)
+    private var ballFrame: PMFImage?     // thrown ball being drawn (D11)
     private var ballPos = CGPoint.zero
     private var playerPose: (BattlePose, Int) = (.stand, 0)   // pose + its tick
     private var playerDodge = CGPoint.zero
@@ -74,9 +78,9 @@ final class BattleController: LiveBattleBridge {
     private var floatText: String?
     private var floatPos = CGPoint.zero
     private var floatAlpha = 0.0
-    private var floatColor = CGColor(gray: 1, alpha: 1)
+    private var floatColor = RGBA(white: 1)
     private var screenFlash = 0.0
-    private var screenColor = CGColor(gray: 1, alpha: 1)
+    private var screenColor = RGBA(white: 1)
     private var lastTracedWildPose = BattlePose.stand   // PMF_TRACE_BATTLE only
     private var curPHP = 1.0, curWHP = 1.0
     private var pFrom = 1.0, pTo = 1.0, wFrom = 1.0, wTo = 1.0
@@ -425,14 +429,14 @@ final class BattleController: LiveBattleBridge {
 
     /// The moment an ailment is inflicted: (float label, color, status-clip
     /// key). Keyed by the engine's ailment names carried in statusApplied.
-    private static let ailmentLanding: [String: (String, NSColor, String)] = [
-        "paralysis": ("Paralyzed!", NSColor(srgbRed: 0.98, green: 0.85, blue: 0.25, alpha: 1), "paralyzed"),
-        "burn": ("Burned!", NSColor(srgbRed: 1.0, green: 0.55, blue: 0.25, alpha: 1), "burn"),
-        "poison": ("Poisoned!", NSColor(srgbRed: 0.75, green: 0.45, blue: 0.95, alpha: 1), "poison"),
-        "sleep": ("Fell asleep!", NSColor(srgbRed: 0.65, green: 0.72, blue: 0.95, alpha: 1), "asleep"),
-        "freeze": ("Frozen!", NSColor(srgbRed: 0.55, green: 0.85, blue: 0.95, alpha: 1), "frozen"),
-        "confusion": ("Confused!", NSColor(srgbRed: 0.9, green: 0.6, blue: 0.95, alpha: 1), "confused"),
-        "infatuation": ("In love!", NSColor(srgbRed: 0.98, green: 0.55, blue: 0.72, alpha: 1), "infatuated"),
+    private static let ailmentLanding: [String: (String, RGBA, String)] = [
+        "paralysis": ("Paralyzed!", RGBA(r: 0.98, g: 0.85, b: 0.25), "paralyzed"),
+        "burn": ("Burned!", RGBA(r: 1.0, g: 0.55, b: 0.25), "burn"),
+        "poison": ("Poisoned!", RGBA(r: 0.75, g: 0.45, b: 0.95), "poison"),
+        "sleep": ("Fell asleep!", RGBA(r: 0.65, g: 0.72, b: 0.95), "asleep"),
+        "freeze": ("Frozen!", RGBA(r: 0.55, g: 0.85, b: 0.95), "frozen"),
+        "confusion": ("Confused!", RGBA(r: 0.9, g: 0.6, b: 0.95), "confused"),
+        "infatuation": ("In love!", RGBA(r: 0.98, g: 0.55, b: 0.72), "infatuated"),
     ]
 
     /// Floating combat tag over the defender at impact: "Miss"/"No Effect" on
@@ -453,45 +457,45 @@ final class BattleController: LiveBattleBridge {
                 floatPos = CGPoint(x: anchor.x,
                                    y: anchor.y + (26 + CGFloat(t) * 14) * scale)
                 floatAlpha = 1.0 - t * 0.8
-                floatColor = color.cgColor
+                floatColor = color
                 return
             }
             if evTick >= drainEnd { return }   // window over — stay clear
         }
         var text: String?
-        var color = NSColor(srgbRed: 1.0, green: 0.85, blue: 0.3, alpha: 1)   // miss yellow
+        var color = RGBA(r: 1.0, g: 0.85, b: 0.3)   // miss yellow
         var overActor = false
         switch e.kind {
         case .miss where e.moveId > 0:
             text = e.effectiveness == 0 ? "No Effect" : "Miss"
         case .attack where e.crit && e.damage > 0:
             text = "Critical Hit!"
-            color = NSColor(srgbRed: 1.0, green: 0.5, blue: 0.15, alpha: 1)
+            color = RGBA(r: 1.0, g: 0.5, b: 0.15)
         case .attack where e.damage > 0 && e.effectiveness > 1:
             text = "Super Effective!"
-            color = NSColor(srgbRed: 1.0, green: 0.45, blue: 0.25, alpha: 1)
+            color = RGBA(r: 1.0, g: 0.45, b: 0.25)
         case .attack where e.damage > 0 && e.effectiveness > 0 && e.effectiveness < 1:
             text = "Not Very Effective.."
-            color = NSColor(srgbRed: 0.75, green: 0.78, blue: 0.85, alpha: 1)
+            color = RGBA(r: 0.75, g: 0.78, b: 0.85)
         case .skip:
             // Lost turn — say why, over the one who lost it.
             overActor = true
             switch e.moveName {
-            case "asleep": text = "Zzz.."; color = NSColor(srgbRed: 0.65, green: 0.72, blue: 0.95, alpha: 1)
-            case "frozen": text = "Frozen!"; color = NSColor(srgbRed: 0.55, green: 0.85, blue: 0.95, alpha: 1)
-            case "paralyzed": text = "Paralyzed!"; color = NSColor(srgbRed: 0.98, green: 0.85, blue: 0.25, alpha: 1)
-            case "infatuated": text = "In love!"; color = NSColor(srgbRed: 0.98, green: 0.55, blue: 0.72, alpha: 1)
-            case "charging": text = "Charging.."; color = NSColor(srgbRed: 0.98, green: 0.80, blue: 0.35, alpha: 1)
-            case "recharging": text = "Recharging.."; color = NSColor(srgbRed: 0.75, green: 0.78, blue: 0.85, alpha: 1)
-            case "storing": text = "Storing energy.."; color = NSColor(srgbRed: 0.75, green: 0.78, blue: 0.85, alpha: 1)
-            case "fled": text = "Fled!"; color = NSColor(srgbRed: 0.75, green: 0.78, blue: 0.85, alpha: 1)
+            case "asleep": text = "Zzz.."; color = RGBA(r: 0.65, g: 0.72, b: 0.95)
+            case "frozen": text = "Frozen!"; color = RGBA(r: 0.55, g: 0.85, b: 0.95)
+            case "paralyzed": text = "Paralyzed!"; color = RGBA(r: 0.98, g: 0.85, b: 0.25)
+            case "infatuated": text = "In love!"; color = RGBA(r: 0.98, g: 0.55, b: 0.72)
+            case "charging": text = "Charging.."; color = RGBA(r: 0.98, g: 0.80, b: 0.35)
+            case "recharging": text = "Recharging.."; color = RGBA(r: 0.75, g: 0.78, b: 0.85)
+            case "storing": text = "Storing energy.."; color = RGBA(r: 0.75, g: 0.78, b: 0.85)
+            case "fled": text = "Fled!"; color = RGBA(r: 0.75, g: 0.78, b: 0.85)
             default: break
             }
         case .item:
             // Name tag under the rising icon: "Potion" in heal green.
             overActor = true
             text = e.moveName
-            color = NSColor(srgbRed: 0.35, green: 0.85, blue: 0.45, alpha: 1)
+            color = RGBA(r: 0.35, g: 0.85, b: 0.45)
         case .attack where e.damage == 0:
             // Mechanic tags: stat stages ("DEF -1"), "transformed!", walls,
             // "nothing happened" — anything that isn't a persisted ailment.
@@ -499,8 +503,8 @@ final class BattleController: LiveBattleBridge {
                !["confusion", "infatuation"].contains(tag) {
                 overActor = e.targetIsPlayer == e.actorIsPlayer
                 text = tag
-                color = tag.contains("-") ? NSColor(srgbRed: 0.55, green: 0.65, blue: 0.95, alpha: 1)
-                                          : NSColor(srgbRed: 0.98, green: 0.72, blue: 0.30, alpha: 1)
+                color = tag.contains("-") ? RGBA(r: 0.55, g: 0.65, b: 0.95)
+                                          : RGBA(r: 0.98, g: 0.72, b: 0.30)
             }
         default:
             return
@@ -515,7 +519,7 @@ final class BattleController: LiveBattleBridge {
         floatPos = CGPoint(x: anchor.x,
                            y: anchor.y + (26 + CGFloat(t) * 14) * scale)
         floatAlpha = 1.0 - t * 0.8
-        floatColor = color.cgColor
+        floatColor = color
     }
 
     /// Full-screen move (Psychic & co): a brief type-colored veil over the
@@ -526,7 +530,7 @@ final class BattleController: LiveBattleBridge {
               evTick >= impactAt, evTick < impactAt + 20 else { return }
         let t = Double(evTick - impactAt) / 20.0
         screenFlash = sin(t * .pi)
-        screenColor = TypeStyle.color(GameData.moves[e.moveId]?.type).cgColor
+        screenColor = TypeStyle.rgba(GameData.moves[e.moveId]?.type)
         let scale = AppSettings.shared.scale
         let jitter = CGFloat(sin(Double(evTick) * 1.9)) * 3 * scale * CGFloat(1 - t)
         playerDodge.x += jitter
@@ -623,7 +627,7 @@ final class BattleController: LiveBattleBridge {
     /// Item-use beat: the used item's icon rises over the follower's head so
     /// there's no doubt WHAT the turn was spent on.
     private func tickItemUse(_ e: BattleEvent) {
-        guard let icon = GameItem(rawValue: e.ballId)?.icon else { return }
+        guard let icon = GameItem(rawValue: e.ballId).flatMap(platformItemIcon) else { return }
         let scale = AppSettings.shared.scale
         let anchor = e.targetIsPlayer ? playerPos : (wildMon?.pos ?? playerPos)
         let t = min(1.0, Double(evTick) / Double(max(1, drainEnd)))
@@ -636,7 +640,7 @@ final class BattleController: LiveBattleBridge {
     /// in, the ball wobbles once per passed shake check, then either clicks
     /// shut (caught — the wild stays in) or bursts open (the wild pops back).
     private func tickBall(_ e: BattleEvent) {
-        let icon = GameItem(rawValue: e.ballId)?.icon
+        let icon = GameItem(rawValue: e.ballId).flatMap(platformItemIcon)
         let scale = AppSettings.shared.scale
         let wpos = wildMon?.pos ?? playerPos
         let flight = 16
@@ -825,7 +829,7 @@ final class BattleController: LiveBattleBridge {
                                                won: r.playerWon, expGained: r.expGained)
             // A 5th move needs a replace decision — on-overlay prompt (C1/#5).
             for moveId in growth.pendingMoves {
-                PromptCenter.shared.enqueue(.learnMove(monIndex: expIdx, moveId: moveId))
+                PromptRelay.enqueue(.learnMove(monIndex: expIdx, moveId: moveId))
             }
             levelUpTo = growth.leveledTo
             let outcomeLines = BattleLog.outcome(
@@ -842,7 +846,7 @@ final class BattleController: LiveBattleBridge {
                     _ = st.addCaptured(from: caught)
                 } else if let mon = st.capturedMon(from: caught) {
                     // Full party: release someone or let the catch go (D14/#14).
-                    PromptCenter.shared.enqueue(.fullParty(captured: mon))
+                    PromptRelay.enqueue(.fullParty(captured: mon))
                 }
             }
         }
@@ -902,7 +906,7 @@ final class BattleController: LiveBattleBridge {
             floatPos = CGPoint(x: playerPos.x,
                                y: playerPos.y + (28 + CGFloat(t) * 16) * scale)
             floatAlpha = 1.0 - t * 0.8
-            floatColor = NSColor(srgbRed: 1.0, green: 0.84, blue: 0.25, alpha: 1).cgColor
+            floatColor = RGBA(r: 1.0, g: 0.84, b: 0.25)
         }
         if endTicks <= 0 { despawn() }
     }
@@ -987,7 +991,8 @@ final class BattleController: LiveBattleBridge {
         var p = CGPoint(x: (playerPos.x + wildPos.x) / 2,
                         y: min(playerPos.y, wildPos.y) - 34 * s)
         let estW: CGFloat = 340, estH: CGFloat = 88   // conservative box estimate
-        let screen = (NSScreen.screens.first { $0.frame.contains(p) } ?? NSScreen.main)?.frame
+        let screens = platformScreensWorld()
+        let screen = screens.first { $0.contains(p) } ?? screens.first
             ?? CGRect(x: 0, y: 0, width: 1440, height: 900)
         p.x = min(max(p.x, screen.minX + estW / 2 + 8), screen.maxX - estW / 2 - 8)
         p.y = min(max(p.y, screen.minY + estH + 8), screen.maxY - 8)
@@ -1001,7 +1006,7 @@ final class BattleController: LiveBattleBridge {
 
     private func screenBounds() -> CGRect {
         var r = CGRect.null
-        for s in NSScreen.screens { r = r.union(s.frame) }
+        for s in platformScreensWorld() { r = r.union(s) }
         return r.isNull ? CGRect(x: 0, y: 0, width: 1440, height: 900) : r
     }
 

@@ -181,7 +181,7 @@ final class SpriteView: NSView {
         if scene.screenFlash > 0 {
             screenFlashLayer.isHidden = false
             screenFlashLayer.frame = bounds
-            screenFlashLayer.backgroundColor = scene.screenColor
+            screenFlashLayer.backgroundColor = scene.screenColor.cgColor
             screenFlashLayer.opacity = Float(scene.screenFlash * 0.22)
         } else {
             screenFlashLayer.isHidden = true
@@ -195,7 +195,7 @@ final class SpriteView: NSView {
             floatLabel.font = NSFont.rounded(fs, .heavy)
             floatLabel.fontSize = fs
             floatLabel.string = text
-            floatLabel.foregroundColor = scene.floatColor
+            floatLabel.foregroundColor = scene.floatColor.cgColor
             floatLabel.bounds = CGRect(x: 0, y: 0,
                                        width: CGFloat(text.count) * fs * 0.62 + 12,
                                        height: fs + 4)

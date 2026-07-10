@@ -12,10 +12,8 @@
 
 import AppKit
 
-enum OverlayPrompt {
-    case learnMove(monIndex: Int, moveId: Int)
-    case fullParty(captured: OwnedPokemon)
-}
+// OverlayPrompt (the queued payload) lives in Core/Raising/PromptRelay.swift;
+// AppDelegate wires PromptRelay.handler to this center at launch.
 
 final class PromptCenter: NSObject {
     static let shared = PromptCenter()

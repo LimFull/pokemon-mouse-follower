@@ -24,6 +24,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var updateHUD: UpdateProgressWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Core battle playback hands decision prompts to the macOS card UI.
+        PromptRelay.handler = { PromptCenter.shared.enqueue($0) }
         setupWindows()
         setupStatusItem()
         setupTimer()

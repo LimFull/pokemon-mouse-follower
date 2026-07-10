@@ -4,19 +4,19 @@
 // wanders the screen (stop-and-go), and can turn to face a point (so it looks at
 // the player when a battle starts). Reuses the shared Sprite slicing helpers.
 
-import AppKit
+import Foundation
 
 final class WildMon {
-    private var walk: [[CGImage]] = []
-    private var idle: [[CGImage]] = []
-    private var attack: [[CGImage]] = []   // battle poses (D2-1); empty -> idle
-    private var shoot: [[CGImage]] = []
-    private var hurt: [[CGImage]] = []
-    private var sleep: [[CGImage]] = []
+    private var walk: [[PMFImage]] = []
+    private var idle: [[PMFImage]] = []
+    private var attack: [[PMFImage]] = []   // battle poses (D2-1); empty -> idle
+    private var shoot: [[PMFImage]] = []
+    private var hurt: [[PMFImage]] = []
+    private var sleep: [[PMFImage]] = []
     private let octantToRow = [2, 3, 4, 5, 6, 7, 0, 1]
 
     private(set) var pos: CGPoint = .zero
-    private(set) var currentFrame: CGImage?
+    private(set) var currentFrame: PMFImage?
     private var target: CGPoint = .zero
     private var pauseTicks = 0
     private var tick = 0
@@ -45,7 +45,7 @@ final class WildMon {
         let base = "characters/\(Characters.folder(dex: dex))"
         let subdir = Characters.spriteSubdir(Characters.folder(dex: dex))
         let xml = Sprite.loadText("AnimData", ext: "xml", subdir: subdir)
-        func load(_ png: String, _ anim: String) -> [[CGImage]] {
+        func load(_ png: String, _ anim: String) -> [[PMFImage]] {
             let sheet = Sprite.slicedSheet(png, anim: anim, subdir: subdir, xml: xml)
             guard sheet.isEmpty, subdir != base else { return sheet }
             let baseXml = Sprite.loadText("AnimData", ext: "xml", subdir: base)
@@ -117,7 +117,7 @@ final class WildMon {
     func faceStanding(toward point: CGPoint, pose: BattlePose = .stand, poseTick: Int = 0) {
         tick += 1
         faceVector(point.x - pos.x, point.y - pos.y)
-        let poseSheet: [[CGImage]]
+        let poseSheet: [[PMFImage]]
         switch pose {
         case .attack: poseSheet = attack
         case .shoot: poseSheet = shoot
