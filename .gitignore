@@ -5,7 +5,8 @@ MouseFollower.app/
 
 # Windows build output (spike + app)
 build-win/
-res/PokemonMouseFollower.rc   # generated from .rc.in by build.ps1
+# generated from res/PokemonMouseFollower.rc.in by build.ps1
+res/PokemonMouseFollower.rc
 *.exe
 *.exp
 *.lib
