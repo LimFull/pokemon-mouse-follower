@@ -120,4 +120,9 @@ final class AppSettings {
         get { d.object(forKey: "itemSpawnsEnabled") == nil ? true : d.bool(forKey: "itemSpawnsEnabled") }
         set { d.set(newValue, forKey: "itemSpawnsEnabled") }
     }
+    // PMD-style scrolling battle log under the fight (default on).
+    var battleLogEnabled: Bool {
+        get { d.object(forKey: "battleLogEnabled") == nil ? true : d.bool(forKey: "battleLogEnabled") }
+        set { d.set(newValue, forKey: "battleLogEnabled") }
+    }
 }

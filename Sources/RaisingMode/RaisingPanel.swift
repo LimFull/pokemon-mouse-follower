@@ -164,6 +164,11 @@ final class RaisingPanelView: NSView {
         itemCB.state = AppSettings.shared.itemSpawnsEnabled ? .on : .off
         itemCB.font = .rounded(12, .medium)
         root.addArrangedSubview(itemCB)
+        let logCB = NSButton(checkboxWithTitle: L("label.battlelog"), target: self,
+                             action: #selector(battleLogToggled(_:)))
+        logCB.state = AppSettings.shared.battleLogEnabled ? .on : .off
+        logCB.font = .rounded(12, .medium)
+        root.addArrangedSubview(logCB)
 
         root.setCustomSpacing(18, after: root.arrangedSubviews.last ?? root)
         let reset = NSButton(title: L("detail.reset"), target: self, action: #selector(resetTapped))
@@ -205,6 +210,10 @@ final class RaisingPanelView: NSView {
 
     @objc private func itemSpawnToggled(_ sender: NSButton) {
         AppSettings.shared.itemSpawnsEnabled = (sender.state == .on)
+    }
+
+    @objc private func battleLogToggled(_ sender: NSButton) {
+        AppSettings.shared.battleLogEnabled = (sender.state == .on)
     }
 
     // MARK: bag UI

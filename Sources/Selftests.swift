@@ -22,8 +22,55 @@ func runCommandLineHooks() {
     dumpEffectIfRequested()
     dumpIconsIfRequested()
     dumpEvolutionIfRequested()
+    dumpBattleLogIfRequested()
     selftestUIScaleIfRequested()
     selftestRaisingIfRequested()
+}
+
+private func dumpBattleLogIfRequested() {
+    // Debug hook: `--dump-battlelog <out.png>` renders a synthetic battle
+    // scene (sprites + HP bars + a 4-line log box) through the real
+    // SpriteView layer pipeline — visual check for the log layout.
+    if let i = CommandLine.arguments.firstIndex(of: "--dump-battlelog"),
+       CommandLine.arguments.count > i + 1 {
+        let out = URL(fileURLWithPath: CommandLine.arguments[i + 1])
+        guard let wildFrame = CharacterPreviewView.idleDownFrames("016").first,
+              let playerFrame = CharacterPreviewView.idleDownFrames("025").first else {
+            print("dump-battlelog: no sprite frames in bundle"); exit(2)
+        }
+        let size = NSSize(width: 640, height: 400)
+        let window = NSWindow(contentRect: NSRect(origin: .zero, size: size),
+                              styleMask: .borderless, backing: .buffered, defer: false)
+        let view = SpriteView(frame: NSRect(origin: .zero, size: size))
+        view.screenOrigin = .zero
+        window.contentView = view
+        let scene = BattleScene(
+            wildFrame: wildFrame,
+            wildPos: CGPoint(x: 240, y: 260), playerPos: CGPoint(x: 400, y: 260),
+            playerHP: 0.8, wildHP: 0.45, flashPlayer: false, flashWild: false,
+            playerAlpha: 1, wildAlpha: 1, showBars: true,
+            effectFrame: nil, effectPos: .zero,
+            wildLevel: 7,
+            logLines: [("앗! 야생의 구구가 튀어나왔다!", 0.4),
+                       ("피카츄의 전기쇼크!", 1.0),
+                       ("효과가 굉장했다!", 1.0),
+                       ("구구는 12의 데미지를 입었다!", 1.0)],
+            logAnchor: CGPoint(x: 320, y: 200))
+        view.render(playerFrame, globalPos: scene.playerPos,
+                    shadow: ShadowAnchor(offset: .zero, size: CGSize(width: 14, height: 6)))
+        view.renderBattle(scene)
+        view.layoutSubtreeIfNeeded()
+        window.display()
+        guard let ctx = CGContext(data: nil, width: Int(size.width * 2), height: Int(size.height * 2),
+                                  bitsPerComponent: 8, bytesPerRow: 0,
+                                  space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue) else { exit(2) }
+        ctx.scaleBy(x: 2, y: 2)
+        view.layer?.render(in: ctx)
+        if let img = ctx.makeImage() { writePNG(img, to: out) }
+        print("dumped battle-log scene → \(out.path)")
+        exit(0)
+    }
 }
 
 private func dumpEffectIfRequested() {
@@ -179,6 +226,19 @@ private func selftestRaisingIfRequested() {
             let statuses = r.events.compactMap { $0.statusApplied }
             let kinds = Set(r.events.map { "\($0.kind)" })
             print("status battle: Pikachu vs Pidgey → statuses=\(statuses) kinds=\(kinds.sorted())")
+            // Battle log composer (pure): every event yields at least one line,
+            // and no raw localization key may leak into the text.
+            var logs = [BattleLog.battleStart(wildName: w.name)]
+            logs += r.events.flatMap { BattleLog.lines(for: $0, playerName: p.name, wildName: w.name) }
+                            .map { $0.text }
+            logs += BattleLog.outcome(won: r.playerWon, expGained: r.expGained, levelUpTo: 21,
+                                      captured: false, wildFled: r.wildFled,
+                                      playerName: p.name, wildName: w.name)
+            logs.append(BattleLog.recallLine(playerName: p.name))
+            let unresolved = logs.filter { $0.contains("log.") }
+            print("battle log: \(logs.count) lines from \(r.events.count) events, unresolved keys=\(unresolved.count) (expect 0)")
+            for bad in unresolved.prefix(3) { print("  UNRESOLVED: \(bad)") }
+            for l in logs.prefix(5) { print("  log: \(l)") }
         }
         // Special move mechanics (MoveMechanics): the table resolves, Transform
         // fires and copies the foe, empty movesets Struggle, stat stages bend the
@@ -359,6 +419,7 @@ private func selftestRaisingIfRequested() {
             let p = CGPoint(x: 500, y: 500)
             bc.forceSpawn(at: CGPoint(x: 520, y: 500))    // inside battle range
             var effectFrames = 0, battleTicks = 0
+            var logTicks = 0, maxLogLines = 0
             let trace = ProcessInfo.processInfo.environment["PMF_TRACE_BATTLE"] != nil
             var hadFX = false, hadFlashP = false, hadFlashW = false
             var levelTagTicks = 0
@@ -367,6 +428,10 @@ private func selftestRaisingIfRequested() {
                 let scene = bc.update(playerGlobalPos: p)
                 if bc.isBattling { battleTicks += 1 }
                 if scene?.effectFrame != nil { effectFrames += 1 }
+                if let lines = scene?.logLines, !lines.isEmpty {
+                    logTicks += 1
+                    maxLogLines = max(maxLogLines, lines.count)
+                }
                 if scene?.floatText?.hasPrefix("Level Up") == true { levelTagTicks += 1 }
                 if trace, let sc = scene, bc.isBattling {
                     let fx = sc.effectFrame != nil
@@ -379,6 +444,7 @@ private func selftestRaisingIfRequested() {
             }
             let m = RaisingState.shared.active!
             print("playback: battleTicks=\(battleTicks) effectFrames=\(effectFrames) levelTagTicks=\(levelTagTicks) → \(Characters.displayName(dex: m.dex)) Lv\(m.level) HP \(m.currentHP)/\(m.maxHP) status=\(m.status ?? "none")")
+            print("playback log: shown \(logTicks) ticks, up to \(maxLogLines) lines (expect ticks>0, lines 1...4)")
             AppSettings.shared.raisingMode = hadRaising
         }
         // Wander legs are capped: a wild must never trek edge-to-edge (it kept

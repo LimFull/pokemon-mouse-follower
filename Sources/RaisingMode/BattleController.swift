@@ -33,6 +33,8 @@ struct BattleScene {
     var floatColor: CGColor = CGColor(gray: 1, alpha: 1)
     var screenFlash: Double = 0           // full-screen effect veil 0...1 (Psychic & co)
     var screenColor: CGColor = CGColor(gray: 1, alpha: 1)
+    var logLines: [(String, Double)] = [] // PMD-style log: (text, alpha), oldest first
+    var logAnchor: CGPoint = .zero        // global top-center of the log box
 }
 
 final class BattleController {
@@ -86,6 +88,12 @@ final class BattleController {
     private var recallTurn: Int?         // flee after this simulated turn ends
     private var levelUpTo: Int?          // show a level-up tag while ending
     private var curPStatus: String?      // ailment the playback has shown on the follower
+    // PMD-style battle log: visible lines (oldest first) and lines scheduled
+    // for later ticks of the current event's beat, so text tracks the action.
+    private var logLines: [(text: String, age: Int)] = []
+    private var pendingLog: [(tick: Int, text: String)] = []
+    private let logHoldTicks = 300       // fully readable span (~5s at 60fps)
+    private let logFadeTicks = 30
 
     init() {
         spawnCooldown = nextSpawnDelay()
@@ -163,6 +171,11 @@ final class BattleController {
 
     func update(playerGlobalPos: CGPoint) -> BattleScene? {
         playerPos = playerGlobalPos
+        // Age the battle log everywhere (fades keep running after a flee).
+        if !logLines.isEmpty {
+            for i in logLines.indices { logLines[i].age += 1 }
+            logLines.removeAll { $0.age > logHoldTicks + logFadeTicks }
+        }
         // Abort any encounter if raising mode was turned off or the party was
         // reset/emptied. A recall mid-battle is deferred to the turn boundary
         // (requestRecall) and only cancels the battle — the wild stays and
@@ -270,6 +283,8 @@ final class BattleController {
         evIdx = 0; evTick = 0; curPHP = startPHP; curWHP = startWHP
         wildAlpha = 1.0; playerAlpha = 1.0
         flashP = false; flashW = false
+        pendingLog = []
+        pushLog(BattleLog.battleStart(wildName: w.name))
         phase = .battling
     }
 
@@ -315,6 +330,10 @@ final class BattleController {
                 return
             }
             beginEvent(e)
+        }
+        while let next = pendingLog.first, next.tick <= evTick {
+            pushLog(next.text)
+            pendingLog.removeFirst()
         }
         // Battle poses (D2-1): attacker lunges/shoots, the hit side flinches.
         let (pPose, wPose) = poses(for: e)
@@ -597,6 +616,13 @@ final class BattleController {
         }
     }
 
+    /// Append a battle-log line (newest last, capped at 4 visible lines).
+    private func pushLog(_ text: String) {
+        guard AppSettings.shared.battleLogEnabled else { return }
+        logLines.append((text, 0))
+        if logLines.count > 4 { logLines.removeFirst(logLines.count - 4) }
+    }
+
     /// Set up one event beat (#8/#9 pacing): the attack (poses + projectile +
     /// hit effect) plays out first, THEN the HP bar drains, then a clear pause
     /// before the next combatant acts. Misses run the same attack but resolve
@@ -720,6 +746,23 @@ final class BattleController {
             drainEnd = hitAt + 24
             curTicks = drainEnd + 18
         }
+
+        // Battle log: schedule this event's lines inside its beat (start now,
+        // impact/resolve when the hit lands / the drain finishes).
+        pendingLog = []
+        if AppSettings.shared.battleLogEnabled, let w = wild {
+            let impactTick = e.kind == .ball ? 16 + e.shakes * 14 : hitAt
+            for entry in BattleLog.lines(for: e, playerName: session?.player.name ?? "",
+                                         wildName: w.name) {
+                switch entry.phase {
+                case .start: pushLog(entry.text)
+                case .impact: pendingLog.append((impactTick, entry.text))
+                case .resolve: pendingLog.append((e.kind == .ball ? impactTick : drainEnd,
+                                                  entry.text))
+                }
+            }
+            pendingLog.sort { $0.tick < $1.tick }
+        }
     }
 
     private func finishBattle() {
@@ -736,6 +779,11 @@ final class BattleController {
                 PromptCenter.shared.enqueue(.learnMove(monIndex: expIdx, moveId: moveId))
             }
             levelUpTo = growth.leveledTo
+            let outcomeLines = BattleLog.outcome(
+                won: r.playerWon, expGained: r.expGained, levelUpTo: growth.leveledTo,
+                captured: r.captured, wildFled: r.wildFled,
+                playerName: session?.player.name ?? "", wildName: wild?.name ?? "")
+            outcomeLines.forEach { pushLog($0) }
             if r.captured, let w = wild {
                 captured = true
                 if st.partyHasRoom {
@@ -753,8 +801,10 @@ final class BattleController {
             phase = .ending
         } else if won {
             ballFrame = nil
-            // A level-up tag needs a beat longer to read (mainline jingle).
+            // A level-up tag needs a beat longer to read (mainline jingle);
+            // so do the EXP/level-up log lines.
             endTicks = levelUpTo != nil ? (fast ? 60 : 130) : (fast ? 40 : 90)
+            if AppSettings.shared.battleLogEnabled { endTicks += 40 }
             endTotal = endTicks
             phase = .ending                 // the beaten wild fades away
         } else if result?.wildFled == true {
@@ -806,6 +856,8 @@ final class BattleController {
     /// HP (resumes wandering), the follower its HP and shown ailment. No EXP,
     /// nothing consumed; fleeing is never a free heal and never faints.
     private func cancelBattle() {
+        pushLog(BattleLog.recallLine(playerName: session?.player.name ?? ""))
+        pendingLog = []
         if let w = wild { w.currentHP = max(1, Int(curWHP * Double(w.maxHP))) }
         if let mon = RaisingState.shared.active {
             RaisingState.shared.applyFleeState(
@@ -825,6 +877,8 @@ final class BattleController {
     }
 
     private func despawn() {
+        logLines = []
+        pendingLog = []
         recallTurn = nil
         session = nil
         pendingItem = nil
@@ -855,7 +909,28 @@ final class BattleController {
             playerDodge: playerDodge,
             floatText: floatText, floatPos: floatPos,
             floatAlpha: floatAlpha, floatColor: floatColor,
-            screenFlash: screenFlash, screenColor: screenColor)
+            screenFlash: screenFlash, screenColor: screenColor,
+            logLines: logLines.map { ($0.text, logAlpha($0.age)) },
+            logAnchor: logAnchor(wildPos: wm.pos))
+    }
+
+    private func logAlpha(_ age: Int) -> Double {
+        min(1, max(0, Double(logHoldTicks + logFadeTicks - age) / Double(logFadeTicks)))
+    }
+
+    /// Top-center of the log box: under the pair, clamped to the screen that
+    /// hosts the midpoint. Clamped HERE (not per view) so every monitor's
+    /// SpriteView draws the box at the same global spot.
+    private func logAnchor(wildPos: CGPoint) -> CGPoint {
+        let s = AppSettings.shared.scale
+        var p = CGPoint(x: (playerPos.x + wildPos.x) / 2,
+                        y: min(playerPos.y, wildPos.y) - 34 * s)
+        let estW: CGFloat = 340, estH: CGFloat = 88   // conservative box estimate
+        let screen = (NSScreen.screens.first { $0.frame.contains(p) } ?? NSScreen.main)?.frame
+            ?? CGRect(x: 0, y: 0, width: 1440, height: 900)
+        p.x = min(max(p.x, screen.minX + estW / 2 + 8), screen.maxX - estW / 2 - 8)
+        p.y = min(max(p.y, screen.minY + estH + 8), screen.maxY - 8)
+        return p
     }
 
     // MARK: helpers

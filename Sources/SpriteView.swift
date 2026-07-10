@@ -23,6 +23,10 @@ final class SpriteView: NSView {
     private let screenFlashLayer = CALayer() // full-screen veil (Psychic-class moves)
     // Evolution burst: radial white glow over the follower (design D8/#9).
     private let glowLayer = CAGradientLayer()
+    // PMD-style battle log: a dark rounded box + up to 4 stacked text lines.
+    private let logBox = CALayer()
+    private var logLabels: [CATextLayer] = []
+    private var logWidthCache: [String: CGFloat] = [:]   // measured line widths
     var screenOrigin: CGPoint = .zero
 
     override init(frame frameRect: NSRect) {
@@ -66,6 +70,20 @@ final class SpriteView: NSView {
         levelLabel.isHidden = true
         layer?.addSublayer(levelLabel)
 
+        logBox.cornerRadius = 6
+        logBox.backgroundColor = CGColor(gray: 0.08, alpha: 0.62)   // levelLabel pill style
+        logBox.anchorPoint = CGPoint(x: 0.5, y: 1)                  // positioned by top-center
+        logBox.isHidden = true
+        layer?.addSublayer(logBox)
+        for _ in 0..<4 {
+            let l = CATextLayer()
+            l.alignmentMode = .left
+            l.truncationMode = .end
+            l.foregroundColor = CGColor(gray: 1, alpha: 0.95)
+            logBox.addSublayer(l)
+            logLabels.append(l)
+        }
+
         screenFlashLayer.isHidden = true
         layer?.addSublayer(screenFlashLayer)
 
@@ -105,6 +123,8 @@ final class SpriteView: NSView {
             floatLabel.isHidden = true
             screenFlashLayer.isHidden = true
             [pHPTrack, pHPFill, wHPTrack, wHPFill].forEach { $0.isHidden = true }
+            logBox.isHidden = true
+            logWidthCache.removeAll()
             spriteLayer.opacity = 1
             return
         }
@@ -185,7 +205,50 @@ final class SpriteView: NSView {
         } else {
             floatLabel.isHidden = true
         }
+
+        layoutLog(scene, s: s, backingScale: bs)
         CATransaction.commit()
+    }
+
+    /// PMD-style battle log: up to 4 lines in a dark rounded box anchored by
+    /// its top-center at scene.logAnchor (global coords). Oldest line on top,
+    /// new lines enter at the bottom; each carries its own fade alpha.
+    private func layoutLog(_ scene: BattleScene, s: CGFloat, backingScale: CGFloat) {
+        let lines = scene.logLines.filter { $0.1 > 0 }
+        guard !lines.isEmpty else { logBox.isHidden = true; return }
+        let fs = min(14, max(9, 5 * s))
+        let font = NSFont.rounded(fs, .semibold)
+        let lineH = fs + 4
+        // Measured widths — the count*0.62 heuristic underestimates CJK badly.
+        // A line repeats across hundreds of frames, so cache per text+size.
+        var maxW: CGFloat = 0
+        for (text, _) in lines {
+            let key = "\(Int(fs * 10))|\(text)"
+            let w = logWidthCache[key]
+                ?? (text as NSString).size(withAttributes: [.font: font]).width
+            logWidthCache[key] = w
+            maxW = max(maxW, w)
+        }
+        if logWidthCache.count > 256 { logWidthCache.removeAll() }   // bound the cache
+        let boxW = min(340, maxW + 16)
+        let boxH = CGFloat(lines.count) * lineH + 10
+        logBox.isHidden = false
+        logBox.bounds = CGRect(x: 0, y: 0, width: boxW, height: boxH)
+        logBox.position = CGPoint(x: scene.logAnchor.x - screenOrigin.x,
+                                  y: scene.logAnchor.y - screenOrigin.y)
+        for (i, label) in logLabels.enumerated() {
+            guard i < lines.count else { label.isHidden = true; continue }
+            let (text, alpha) = lines[i]
+            label.isHidden = false
+            label.contentsScale = backingScale
+            label.font = font
+            label.fontSize = fs
+            label.string = text
+            label.opacity = Float(alpha)
+            // Oldest (i=0) on top; layer coords are y-up, so top = larger y.
+            label.frame = CGRect(x: 8, y: boxH - 5 - CGFloat(i + 1) * lineH,
+                                 width: boxW - 16, height: lineH)
+        }
     }
 
     private func layoutHP(_ track: CALayer, _ fill: CALayer, center: CGPoint, frac: Double) {
