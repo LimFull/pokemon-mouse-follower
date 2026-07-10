@@ -86,7 +86,12 @@ if [ "${1:-}" != "publish" ]; then
   exit 0
 fi
 
-# 6. Tag the release (skip if the tag already exists) and push it.
+# 6. Tag the release (skip if the tag already exists) and push it. The tag may
+# already exist remotely (created by CI or the Windows release flow) — adopt it
+# instead of minting a conflicting local one.
+if ! git rev-parse "$TAG" >/dev/null 2>&1; then
+  git fetch origin "refs/tags/${TAG}:refs/tags/${TAG}" 2>/dev/null || true
+fi
 if ! git rev-parse "$TAG" >/dev/null 2>&1; then
   echo "==> Tagging $TAG..."
   git tag "$TAG"
