@@ -269,12 +269,13 @@ final class BattleController {
         wm.faceStanding(toward: playerPos)
         // Balls to throw (D11) — only when the bag's capture toggle is on; a
         // full party still catches (the release-or-abandon prompt resolves it
-        // afterwards). Cheap balls go first.
+        // afterwards). The stronger ball goes first (2026-07-10, was cheapest
+        // first): if a Great Ball is in the bag, lead with it.
         let st = RaisingState.shared
         var balls: [GameItem] = []
         if st.captureEnabled {
-            balls = Array(repeating: GameItem.pokeBall, count: min(3, st.itemCount(.pokeBall)))
-            balls += Array(repeating: .greatBall, count: min(3 - balls.count, st.itemCount(.greatBall)))
+            balls = Array(repeating: GameItem.greatBall, count: min(3, st.itemCount(.greatBall)))
+            balls += Array(repeating: .pokeBall, count: min(3 - balls.count, st.itemCount(.pokeBall)))
         }
         // Gauges start at the REAL current/max ratio (a hurt mon enters hurt;
         // a rematched wild keeps its damage) — captured before the first
