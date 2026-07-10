@@ -31,6 +31,9 @@ var quitRequested = false
 tray.onQuit = { quitRequested = true }
 tray.onPauseToggle = { if tray.paused { overlay.hide() } }
 tray.onSettings = { SettingsDialog.show() }
+tray.onCheckUpdate = { [weak tray] in
+    UpdaterWin.checkForUpdate { tray?.requestQuit() }
+}
 SettingsDialog.onCharacterChanged = {
     controller.setCharacter(RaisingState.shared.followerFolder)   // raising mon keeps priority
 }

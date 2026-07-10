@@ -28,17 +28,26 @@ Dock にはアイコンを表示せず、上部メニューバーにアイコン
 
 ## 動作要件
 
-- macOS 13（Ventura）以降
-- Apple Silicon / Intel の両対応（universal ビルド）
-- Xcode Command Line Tools（`swiftc`）— **ソースからビルドする場合のみ** 必要（`xcode-select --install`）
+- **macOS**: macOS 13（Ventura）以降、Apple Silicon / Intel の両対応（universal ビルド）
+- **Windows**: Windows 10 1809 以降（x64）
+- ソースからビルドする場合のみ: macOS は Xcode Command Line Tools（`xcode-select --install`）、Windows は [Swift ツールチェーン](https://www.swift.org/install/windows/) + VS Build Tools
 
-## インストール（開発者ツール不要）
+## インストール — macOS（開発者ツール不要）
 
 [Releases](https://github.com/LimFull/pokemon-mouse-follower/releases/latest) から `.dmg` をダウンロードします。Xcode / Swift は不要です。
 
 1. `PokemonMouseFollower-<version>.dmg` をダウンロードして開く
 2. **Pokémon Mouse Follower** アイコンを **Applications** フォルダへドラッグ
 3. Launchpad / アプリケーションから起動
+
+## インストール — Windows
+
+[Releases](https://github.com/LimFull/pokemon-mouse-follower/releases/latest) から `PokemonMouseFollower-Setup.exe`（インストーラー）または `PokemonMouseFollower-<version>-windows.zip`（ポータブル）をダウンロードします。
+
+- コード署名がないため SmartScreen の警告が表示されることがあります — **詳細情報 → 実行** を選んでください。
+- インストールはユーザー単位（管理者権限不要）で、スタートメニューに登録されます。アプリはシステムトレイに常駐します。
+- 設定 / 一時停止 / アップデート確認はトレイアイコンの右クリックメニューにあります。
+- 注意: *排他的フルスクリーン* のゲーム上にはオーバーレイを表示できません（ボーダーレスウィンドウは可）。育成モードは今後の Windows リリースで対応予定です。
 
 ## インストール（ソースからビルド）
 

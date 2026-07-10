@@ -10,6 +10,7 @@ private let kTrayCallback = UINT(0x8000 + 1)   // WM_APP + 1
 private let kCmdPause: UINT_PTR = 1
 private let kCmdQuit: UINT_PTR = 2
 private let kCmdSettings: UINT_PTR = 3
+private let kCmdUpdate: UINT_PTR = 4
 
 private let trayClassName = Array("PMFTray".utf16) + [0]
 
@@ -45,6 +46,13 @@ final class TrayIcon {
     var onPauseToggle: (() -> Void)?
     var onQuit: (() -> Void)?
     var onSettings: (() -> Void)?
+    var onCheckUpdate: (() -> Void)?
+
+    /// Thread-safe quit: posts the Quit command to the tray window, so worker
+    /// threads (the updater) can end the app from the main loop.
+    func requestQuit() {
+        PostMessageW(hwnd, UINT(WM_COMMAND), WPARAM(kCmdQuit), 0)
+    }
 
     init?() {
         var wc = WNDCLASSW()
@@ -68,7 +76,10 @@ final class TrayIcon {
         nid.uID = 1
         nid.uFlags = DWORD(NIF_MESSAGE | NIF_ICON | NIF_TIP)
         nid.uCallbackMessage = kTrayCallback
-        nid.hIcon = LoadIconW(nil, UnsafePointer<WCHAR>(bitPattern: 32512))  // IDI_APPLICATION (custom .ico: Phase 4)
+        // Embedded app icon (res/app.ico, resource id 1); stock icon fallback
+        // for resource-less dev builds.
+        nid.hIcon = LoadIconW(GetModuleHandleW(nil), UnsafePointer<WCHAR>(bitPattern: 1))
+            ?? LoadIconW(nil, UnsafePointer<WCHAR>(bitPattern: 32512))   // IDI_APPLICATION
         setTip(&nid, "Pokémon Mouse Follower \(AppVersion.string)")
         added = Shell_NotifyIconW(DWORD(NIM_ADD), &nid)
         if !added { return nil }
@@ -93,6 +104,7 @@ final class TrayIcon {
         appendItem(menu, id: kCmdPause, text: paused ? L("menu.resume") : L("menu.pause"))
         appendSeparator(menu)
         appendItem(menu, id: 0, text: "\(L("menu.version")) \(AppVersion.string)", enabled: false)
+        appendItem(menu, id: kCmdUpdate, text: L("menu.checkUpdate"))
         appendSeparator(menu)
         appendItem(menu, id: kCmdQuit, text: L("menu.quit"))
 
@@ -113,6 +125,8 @@ final class TrayIcon {
             onQuit?()
         case kCmdSettings:
             onSettings?()
+        case kCmdUpdate:
+            onCheckUpdate?()
         default:
             break
         }

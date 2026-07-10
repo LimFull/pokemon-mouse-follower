@@ -1,0 +1,27 @@
+// Template — build.ps1 replaces @VERSION@ / @VERSION_COMMA@ from
+// Sources/Core/Version.swift (W16) and compiles with rc.exe.
+
+1 ICON "app.ico"
+1 24 "app.manifest"
+
+1 VERSIONINFO
+FILEVERSION @VERSION_COMMA@,0
+PRODUCTVERSION @VERSION_COMMA@,0
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "040904B0"
+    BEGIN
+      VALUE "FileDescription", "Pokemon Mouse Follower"
+      VALUE "FileVersion", "@VERSION@"
+      VALUE "ProductName", "Pokemon Mouse Follower"
+      VALUE "ProductVersion", "@VERSION@"
+      VALUE "OriginalFilename", "PokemonMouseFollower.exe"
+      VALUE "LegalCopyright", "MIT License - github.com/LimFull/pokemon-mouse-follower"
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x409, 1200
+  END
+END

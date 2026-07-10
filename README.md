@@ -27,17 +27,26 @@ A macOS menu-bar app: a Pokémon character wanders your screen and follows the m
 
 ## Requirements
 
-- macOS 13 (Ventura) or later
-- Apple Silicon / Intel (universal build)
-- Xcode Command Line Tools (`swiftc`) — **only for building from source** (`xcode-select --install`)
+- **macOS**: macOS 13 (Ventura) or later, Apple Silicon / Intel (universal build)
+- **Windows**: Windows 10 1809 or later (x64)
+- Building from source only: Xcode Command Line Tools on macOS (`xcode-select --install`), or the [Swift toolchain](https://www.swift.org/install/windows/) + VS Build Tools on Windows
 
-## Install (no developer tools needed)
+## Install — macOS (no developer tools needed)
 
 Download the `.dmg` from [Releases](https://github.com/LimFull/pokemon-mouse-follower/releases/latest). No Xcode / Swift required.
 
 1. Download and open `PokemonMouseFollower-<version>.dmg`
 2. Drag **Pokémon Mouse Follower** into the **Applications** folder
 3. Launch it from Launchpad / Applications
+
+## Install — Windows
+
+Download `PokemonMouseFollower-Setup.exe` (installer) or `PokemonMouseFollower-<version>-windows.zip` (portable) from [Releases](https://github.com/LimFull/pokemon-mouse-follower/releases/latest).
+
+- The app is not code-signed, so SmartScreen may warn "Windows protected your PC" — click **More info → Run anyway**.
+- The installer is per-user (no admin rights) and adds a Start Menu entry; the app lives in the system tray.
+- Settings, pause and update-check are in the tray icon's right-click menu.
+- Heads-up: overlays can't draw over *exclusive-fullscreen* games (borderless-windowed is fine), and raising mode is coming in a later Windows release.
 
 ## Install (build from source)
 
