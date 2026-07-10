@@ -11,3 +11,7 @@ MouseFollower.app/
 
 # Icon build intermediate
 icon/AppIcon.iconset/
+
+# ROM-extracted sprite assets — copyrighted, never committed (rebuild locally
+# with rom-extract/build_effects.py). See gamedata/README.md.
+gamedata/effects/

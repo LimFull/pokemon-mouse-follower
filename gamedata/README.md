@@ -20,5 +20,8 @@ rom-extract/.venv/bin/python rom-extract/build_gamedata.py
 
 - **사실 데이터(수치/타입/이름)만** 포함합니다. 저작권이 있는 **설명문(flavor text)은 넣지 않습니다.**
 - ROM 자체나 `rom-extract/out/`의 대량 추출물(스프라이트/이펙트/문자열 덤프)은 번들하지 않습니다.
+- **`effects/`는 ROM 추출 스프라이트라 git에 올리지 않습니다** (.gitignore). 로컬 빌드에는 필요하므로
+  본인 ROM에서 직접 생성하세요: `rom-extract/.venv/bin/python rom-extract/build_effects.py`
+  (앱은 `effects/`가 없으면 이펙트 없이 동작합니다 — EffectPlayer가 클립 없음으로 폴백).
 - 포획률·기초경험치·성비·기술 상태이상 등 **본가 기준 값**은 전투/포획을 만드는 단계에서
   PokéAPI 1회 수집분으로 별도 추가됩니다(설계 문서 `design/raising-mode.md` 2.2-H 참고).
