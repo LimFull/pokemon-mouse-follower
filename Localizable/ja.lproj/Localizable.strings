@@ -1223,3 +1223,8 @@
 "log.levelup" = "%1$@は レベル%2$@に あがった!";
 "log.wildfled" = "やせいの %@は にげてしまった!";
 "log.recalled" = "%@を ひきあげた!";
+
+/* Language picker (Windows settings; design/windows-port.md W10) */
+"label.language" = "言語";
+"language.auto" = "システムの言語";
+"language.note" = "再起動後に適用";

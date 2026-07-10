@@ -9,6 +9,7 @@ import Foundation
 private let kTrayCallback = UINT(0x8000 + 1)   // WM_APP + 1
 private let kCmdPause: UINT_PTR = 1
 private let kCmdQuit: UINT_PTR = 2
+private let kCmdSettings: UINT_PTR = 3
 
 private let trayClassName = Array("PMFTray".utf16) + [0]
 
@@ -43,6 +44,7 @@ final class TrayIcon {
     var paused = false
     var onPauseToggle: (() -> Void)?
     var onQuit: (() -> Void)?
+    var onSettings: (() -> Void)?
 
     init?() {
         var wc = WNDCLASSW()
@@ -87,6 +89,7 @@ final class TrayIcon {
         defer { DestroyMenu(menu) }
         appendItem(menu, id: 0, text: "Pokémon Mouse Follower", enabled: false)
         appendSeparator(menu)
+        appendItem(menu, id: kCmdSettings, text: L("menu.settings"))
         appendItem(menu, id: kCmdPause, text: paused ? L("menu.resume") : L("menu.pause"))
         appendSeparator(menu)
         appendItem(menu, id: 0, text: "\(L("menu.version")) \(AppVersion.string)", enabled: false)
@@ -108,6 +111,8 @@ final class TrayIcon {
             onPauseToggle?()
         case kCmdQuit:
             onQuit?()
+        case kCmdSettings:
+            onSettings?()
         default:
             break
         }

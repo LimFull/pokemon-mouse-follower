@@ -30,6 +30,11 @@ guard let tray = TrayIcon() else {
 var quitRequested = false
 tray.onQuit = { quitRequested = true }
 tray.onPauseToggle = { if tray.paused { overlay.hide() } }
+tray.onSettings = { SettingsDialog.show() }
+SettingsDialog.onCharacterChanged = {
+    controller.setCharacter(RaisingState.shared.followerFolder)   // raising mon keeps priority
+}
+if CommandLine.arguments.contains("--show-settings") { SettingsDialog.show() }
 
 // --smoke <ticks>: run headless-ish for N ticks then exit 0 (dev/CI check).
 var smokeTicks = -1

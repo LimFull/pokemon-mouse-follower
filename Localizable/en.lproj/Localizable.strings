@@ -159,3 +159,8 @@
 "log.levelup" = "%1$@ grew to level %2$@!";
 "log.wildfled" = "The wild %@ fled!";
 "log.recalled" = "%@ was recalled!";
+
+/* Language picker (Windows settings; design/windows-port.md W10) */
+"label.language" = "Language";
+"language.auto" = "Auto (system)";
+"language.note" = "Applies after restart";

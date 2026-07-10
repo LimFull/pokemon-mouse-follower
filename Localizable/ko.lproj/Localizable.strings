@@ -1223,3 +1223,8 @@
 "log.levelup" = "%1$@는(은) 레벨 %2$@로 올랐다!";
 "log.wildfled" = "야생의 %@는(은) 도망쳐버렸다!";
 "log.recalled" = "%@를(을) 되돌렸다!";
+
+/* Language picker (Windows settings; design/windows-port.md W10) */
+"label.language" = "언어";
+"language.auto" = "시스템 언어";
+"language.note" = "재시작 후 적용";
