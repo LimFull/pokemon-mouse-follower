@@ -30,14 +30,20 @@ func registerOverlayClass() {
     if RegisterClassW(&wc) != 0 { overlayClassRegistered = true }
 }
 
+/// Every live overlay window — the virtual-desktop fallback moves these to
+/// the active desktop when the user switches (design/windows-port.md §6-2).
+private(set) var allOverlayWindows: [HWND] = []
+
 /// A borderless click-through topmost layered window (shared by the sprite
 /// overlays and the battle chrome).
 func createOverlayWindow() -> HWND? {
     registerOverlayClass()
-    return overlayClassName.withUnsafeBufferPointer { cls in
+    let hwnd = overlayClassName.withUnsafeBufferPointer { cls in
         CreateWindowExW(kWS_EX_OVERLAY, cls.baseAddress, nil, kWS_POPUP,
                         0, 0, 1, 1, nil, nil, GetModuleHandleW(nil), nil)
     }
+    if let hwnd { allOverlayWindows.append(hwnd) }
+    return hwnd
 }
 
 final class OverlaySprite {

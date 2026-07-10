@@ -234,6 +234,9 @@ while !quitRequested {
             tick += 1
             if tick == encounterAtTick { battle.forceEncounter() }
             tickFrame()
+            // Virtual-desktop fallback (§6-2): twice a second, pull the
+            // overlays onto the desktop the user switched to.
+            if tick % 30 == 0 { VirtualDesktop.keepOverlaysOnCurrentDesktop() }
         }
         if smokeTicks > 0, tick >= smokeTicks { quitRequested = true }
     } else {
