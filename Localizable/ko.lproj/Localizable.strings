@@ -317,6 +317,7 @@
 "item.friendcandy" = "우정의사탕";
 "capture.caught" = "를(을) 잡았다!";
 "label.encounter" = "야생 포켓몬 출현 간격";
+"label.uiscale" = "UI 배율";
 "prompt.full.title" = "파티가 가득 찼어요!";
 "prompt.full.keep" = "새 포켓몬 놓아주기";
 "prompt.caught.title" = "포획";

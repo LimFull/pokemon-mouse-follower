@@ -122,6 +122,7 @@ final class AppSettings {
     static let scaleRange: ClosedRange<Double> = 1...5
     static let sleepRange: ClosedRange<Double> = 5...120
     static let encounterRange: ClosedRange<Double> = 5...90   // avg minutes (D9)
+    static let uiScaleSteps: [Double] = [1.0, 1.25, 1.5, 1.75, 2.0]
 
     private func get(_ key: String, _ def: Double) -> CGFloat {
         d.object(forKey: key) == nil ? CGFloat(def) : CGFloat(d.double(forKey: key))
@@ -165,6 +166,12 @@ final class AppSettings {
     var encounterMinutes: CGFloat {
         get { get("encounterMinutes", 45) }
         set { d.set(Double(newValue), forKey: "encounterMinutes") }
+    }
+    // Zoom for the app's own windows/prompts — 4K-at-1x screens render the
+    // fixed point sizes tiny. Menus and NSAlerts are system-drawn and exempt.
+    var uiScale: CGFloat {
+        get { get("uiScale", 1) }
+        set { d.set(Double(newValue), forKey: "uiScale") }
     }
     // Master switches for wild encounters / item spawns (default on).
     var wildSpawnsEnabled: Bool {
@@ -894,6 +901,35 @@ final class SpriteView: NSView {
 }
 
 // MARK: - UI style (cute, Pokémon-flavored settings look)
+/// Renders a 1x-laid-out document view zoomed by AppSettings.uiScale, via
+/// NSScrollView magnification — the OS zoom path (pinch-zoom), so it stays
+/// vector-crisp and correct with layer-backed views (scaleUnitSquare is not:
+/// its bounds transform scales about the wrong corner once AppKit hoists the
+/// hierarchy into layers). The magnification is pinned so the user's own
+/// pinch gesture can't change it.
+final class UIZoomHost: NSScrollView {
+    init(document: NSView) {
+        super.init(frame: .zero)
+        drawsBackground = false
+        hasVerticalScroller = false
+        hasHorizontalScroller = false
+        verticalScrollElasticity = .none
+        horizontalScrollElasticity = .none
+        allowsMagnification = true
+        documentView = document
+    }
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    /// Size the document to its 1x size and the host to the zoomed size.
+    func layoutZoomed(size1x: CGSize, _ k: CGFloat) {
+        documentView?.frame = CGRect(origin: .zero, size: size1x)
+        minMagnification = k
+        maxMagnification = k
+        magnification = k
+        frame = CGRect(x: 0, y: 0, width: size1x.width * k, height: size1x.height * k)
+        contentView.scroll(to: .zero)
+    }
+}
 extension NSFont {
     /// Friendly rounded system font; falls back to the default if unavailable.
     static func rounded(_ size: CGFloat, _ weight: NSFont.Weight = .regular) -> NSFont {
@@ -1042,6 +1078,8 @@ final class SettingsWindowController: NSObject {
     private var grid: NSGridView!
     private var topStack: NSStackView!      // character preview area (normal mode only)
     private var outer: NSStackView!
+    private var zoomRoot: NSView!           // 1x document all content lays out in
+    private var zoomHost: UIZoomHost!       // renders zoomRoot at the UI scale
     private var leftHeightC: NSLayoutConstraint!
     private var dividerHeightC: NSLayoutConstraint!
     private var panelHeightC: NSLayoutConstraint!
@@ -1082,6 +1120,7 @@ final class SettingsWindowController: NSObject {
         grid.addRow(with: [makeLabel(L("label.altcolor")), makeAltColorCheckbox(), NSGridCell.emptyContentView])
         grid.addRow(with: [makeLabel(L("label.shadow")), makeShadowCheckbox(), NSGridCell.emptyContentView])
         grid.addRow(with: [makeLabel(L("label.launch")), makeLaunchCheckbox(), NSGridCell.emptyContentView])
+        grid.addRow(with: [makeLabel(L("label.uiscale")), makeUIScalePopup(), NSGridCell.emptyContentView])
         grid.addRow(with: [makeLabel(L("label.raising")), makeRaisingCheckbox(), NSGridCell.emptyContentView])
 
         grid.column(at: 0).xPlacement = .trailing
@@ -1112,21 +1151,27 @@ final class SettingsWindowController: NSObject {
 
         let content = window.contentView!
 
+        // Everything lays out in zoomRoot at 1x coordinates; zoomHost renders
+        // it at the UI scale (applyWindowSize sizes both and the window).
+        zoomRoot = NSView(frame: content.bounds)
+        zoomHost = UIZoomHost(document: zoomRoot)
+        content.addSubview(zoomHost)
+
         // Left column holds the existing settings at a fixed width; the raising
         // panel lives to its right and is revealed by widening the window.
         let leftColumn = NSView()
         leftColumn.translatesAutoresizingMaskIntoConstraints = false
-        content.addSubview(leftColumn)
+        zoomRoot.addSubview(leftColumn)
         leftColumn.addSubview(outer)
 
         let divider = NSBox()
         divider.boxType = .separator
         divider.translatesAutoresizingMaskIntoConstraints = false
-        content.addSubview(divider)
+        zoomRoot.addSubview(divider)
 
         let panel = RaisingPanelView(frame: .zero)
         panel.translatesAutoresizingMaskIntoConstraints = false
-        content.addSubview(panel)
+        zoomRoot.addSubview(panel)
         raisingPanel = panel
 
         // NOTE: pin only tops + fixed heights (never subview.bottom == content.bottom),
@@ -1137,20 +1182,20 @@ final class SettingsWindowController: NSObject {
         dividerHeightC = divider.heightAnchor.constraint(equalToConstant: 572)
         panelHeightC = panel.heightAnchor.constraint(equalToConstant: 596)
         NSLayoutConstraint.activate([
-            leftColumn.leadingAnchor.constraint(equalTo: content.leadingAnchor),
-            leftColumn.topAnchor.constraint(equalTo: content.topAnchor),
+            leftColumn.leadingAnchor.constraint(equalTo: zoomRoot.leadingAnchor),
+            leftColumn.topAnchor.constraint(equalTo: zoomRoot.topAnchor),
             leftColumn.widthAnchor.constraint(equalToConstant: 400),
             leftHeightC,
             outer.centerXAnchor.constraint(equalTo: leftColumn.centerXAnchor),
             outer.topAnchor.constraint(equalTo: leftColumn.topAnchor, constant: 26),
 
             divider.leadingAnchor.constraint(equalTo: leftColumn.trailingAnchor),
-            divider.topAnchor.constraint(equalTo: content.topAnchor, constant: 12),
+            divider.topAnchor.constraint(equalTo: zoomRoot.topAnchor, constant: 12),
             dividerHeightC,
             divider.widthAnchor.constraint(equalToConstant: 1),
 
             panel.leadingAnchor.constraint(equalTo: divider.trailingAnchor),
-            panel.topAnchor.constraint(equalTo: content.topAnchor),
+            panel.topAnchor.constraint(equalTo: zoomRoot.topAnchor),
             panel.widthAnchor.constraint(equalToConstant: raisingPanelWidth),
             panelHeightC,
         ])
@@ -1186,13 +1231,32 @@ final class SettingsWindowController: NSObject {
         leftHeightC.constant = h
         dividerHeightC.constant = h - 24
         panelHeightC.constant = h
+        // Window and zoomRoot take the zoomed size; the content above keeps
+        // laying out in 1x coordinates inside zoomRoot's scaled bounds.
+        let k = AppSettings.shared.uiScale
         let width: CGFloat = 400 + (raising ? raisingPanelWidth + 1 : 0)
         var f = window.frame
-        let newH = h + (window.frame.height - (window.contentView?.frame.height ?? h))
+        let newH = h * k + (window.frame.height - (window.contentView?.frame.height ?? h * k))
         f.origin.y += f.size.height - newH     // keep the top edge where it was
         f.size.height = newH
-        f.size.width = width
+        f.size.width = width * k
         window.setFrame(f, display: true, animate: animate)
+        zoomHost.layoutZoomed(size1x: CGSize(width: width, height: h), k)
+    }
+
+    private func makeUIScalePopup() -> NSPopUpButton {
+        let p = NSPopUpButton(frame: .zero, pullsDown: false)
+        p.target = self
+        p.action = #selector(uiScaleChanged(_:))
+        for s in AppSettings.uiScaleSteps { p.addItem(withTitle: "\(Int(s * 100))%") }
+        let cur = Double(AppSettings.shared.uiScale)
+        p.selectItem(at: AppSettings.uiScaleSteps.firstIndex { abs($0 - cur) < 0.01 } ?? 0)
+        return p
+    }
+
+    @objc private func uiScaleChanged(_ sender: NSPopUpButton) {
+        AppSettings.shared.uiScale = CGFloat(AppSettings.uiScaleSteps[sender.indexOfSelectedItem])
+        applyWindowSize(animate: false)
     }
 
 
@@ -1864,6 +1928,46 @@ if let i = CommandLine.arguments.firstIndex(of: "--dump-evolution"),
 
 // Debug hook: `--selftest-raising` exercises the raising-mode data/state layer
 // against the bundled game data, prints a report, and exits. Harmless otherwise.
+// Headless check for the UI-scale zoom: the settings window / update HUD
+// must grow by the factor while their content keeps its 1x layout.
+if CommandLine.arguments.contains("--selftest-uiscale") {
+    let saved = AppSettings.shared.uiScale
+    for k in [1.0, 1.5, 2.0] {
+        AppSettings.shared.uiScale = k
+        let sc = SettingsWindowController(controller: CharacterController())
+        let f = sc.window.frame
+        let hud = UpdateProgressWindow()
+        print(String(format: "uiscale %.2f: settings=%.0fx%.0f hud=%@",
+                     k, f.width, f.height, hud.debugFrameString))
+        // Visual dump for eyeballing the zoom. Render the LAYER tree — the
+        // same thing the window server composites; cacheDisplay draws through
+        // the view path, which mishandles the bounds transform.
+        if let cv = sc.window.contentView {
+            cv.layoutSubtreeIfNeeded()
+            sc.window.display()
+            let sz = cv.bounds.size
+            if let ctx = CGContext(data: nil, width: Int(sz.width * 2), height: Int(sz.height * 2),
+                                   bitsPerComponent: 8, bytesPerRow: 0,
+                                   space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                   bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue) {
+                ctx.scaleBy(x: 2, y: 2)
+                NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: false)
+                cv.layer?.render(in: ctx)
+                NSGraphicsContext.current = nil
+                if let img = ctx.makeImage() {
+                    let url = URL(fileURLWithPath: "/tmp/pmf-uiscale-\(Int(k * 100)).png")
+                    if let d = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil) {
+                        CGImageDestinationAddImage(d, img, nil)
+                        CGImageDestinationFinalize(d)
+                    }
+                }
+            }
+        }
+    }
+    AppSettings.shared.uiScale = saved
+    exit(0)
+}
+
 if CommandLine.arguments.contains("--selftest-raising") {
     // The selftest RESETS the party. Refuse to touch the real save: it only
     // runs against a scratch directory (PMF_SAVE_DIR redirects persistence).

@@ -213,7 +213,9 @@ final class UpdateProgressWindow {
     private let bar: NSProgressIndicator
 
     init() {
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 340, height: 92),
+        // The content lays out in 1x coordinates and renders at the UI scale.
+        let k = AppSettings.shared.uiScale
+        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 340 * k, height: 92 * k),
                           styleMask: [.titled], backing: .buffered, defer: false)
         window.title = "Pokémon Mouse Follower"
         window.isReleasedWhenClosed = false
@@ -223,8 +225,12 @@ final class UpdateProgressWindow {
         bar.isIndeterminate = false
         bar.minValue = 0
         bar.maxValue = 1
-        window.contentView?.addSubview(label)
-        window.contentView?.addSubview(bar)
+        let doc = NSView()
+        doc.addSubview(label)
+        doc.addSubview(bar)
+        let host = UIZoomHost(document: doc)
+        host.layoutZoomed(size1x: CGSize(width: 340, height: 92), k)
+        window.contentView = host
     }
 
     func show(_ text: String) {
@@ -247,4 +253,10 @@ final class UpdateProgressWindow {
     }
 
     func close() { window.orderOut(nil) }
+
+    /// Selftest: window size + content bounds ("WxH bounds WxH").
+    var debugFrameString: String {
+        let f = window.frame, b = window.contentView?.bounds ?? .zero
+        return String(format: "%.0fx%.0f bounds %.0fx%.0f", f.width, f.height, b.width, b.height)
+    }
 }

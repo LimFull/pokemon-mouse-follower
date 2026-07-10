@@ -65,6 +65,7 @@
 "item.friendcandy" = "Friend Candy";
 "capture.caught" = " was caught!";
 "label.encounter" = "Wild encounter interval";
+"label.uiscale" = "UI scale";
 "prompt.full.title" = "Party is full!";
 "prompt.full.keep" = "Let the new one go";
 "prompt.caught.title" = "Caught";

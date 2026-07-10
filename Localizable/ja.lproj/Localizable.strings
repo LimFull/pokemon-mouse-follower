@@ -317,6 +317,7 @@
 "item.friendcandy" = "なかよしキャンディ";
 "capture.caught" = "を捕まえた！";
 "label.encounter" = "野生ポケモン出現間隔";
+"label.uiscale" = "UI倍率";
 "prompt.full.title" = "手持ちがいっぱい！";
 "prompt.full.keep" = "新しいポケモンを逃がす";
 "prompt.caught.title" = "捕獲";

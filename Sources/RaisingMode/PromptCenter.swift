@@ -128,7 +128,10 @@ final class PromptCenter: NSObject {
             stack.trailingAnchor.constraint(equalTo: card.trailingAnchor),
         ])
         card.layoutSubtreeIfNeeded()
-        let size = stack.fittingSize
+        let fit = stack.fittingSize
+        // The card renders zoomed (UI scale); the stack keeps its 1x layout.
+        let k = AppSettings.shared.uiScale
+        let size = CGSize(width: fit.width * k, height: fit.height * k)
 
         // Bottom-center of the screen the cursor is on (visible but out of the way).
         let mouse = NSEvent.mouseLocation
@@ -145,8 +148,9 @@ final class PromptCenter: NSObject {
         w.hasShadow = true
         w.level = .init(rawValue: Int(CGWindowLevelForKey(.overlayWindow)) + 1)
         w.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        card.frame = CGRect(origin: .zero, size: size)
-        w.contentView = card
+        let host = UIZoomHost(document: card)
+        host.layoutZoomed(size1x: fit, k)
+        w.contentView = host
         w.orderFrontRegardless()
         window = w
     }
