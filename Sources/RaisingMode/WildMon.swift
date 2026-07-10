@@ -24,7 +24,7 @@ final class WildMon {
     private let speed: CGFloat = 1.5
 
     init?(dex: Int) {
-        let subdir = "characters/\(String(format: "%03d", dex))"
+        let subdir = "characters/\(Characters.folder(dex: dex))"
         let xml = Sprite.loadText("AnimData", ext: "xml", subdir: subdir)
         walk = Self.sheet("Walk-Anim", "Walk", subdir, xml)
         idle = Self.sheet("Idle-Anim", "Idle", subdir, xml)
@@ -116,9 +116,7 @@ final class WildMon {
 
     private func faceVector(_ vx: CGFloat, _ vy: CGFloat) {
         guard abs(vx) > 0.01 || abs(vy) > 0.01 else { return }
-        var deg = atan2(vy, vx) * 180 / .pi
-        if deg < 0 { deg += 360 }
-        row = octantToRow[Int((deg / 45).rounded()) % 8]
+        row = octantToRow[Sprite.octant(dx: vx, dy: vy)]
     }
 
     private func frame(moving: Bool) {

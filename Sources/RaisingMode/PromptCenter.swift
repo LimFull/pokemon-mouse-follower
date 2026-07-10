@@ -54,7 +54,7 @@ final class PromptCenter: NSObject {
         guard RaisingState.shared.party.indices.contains(monIndex) else { dismiss(); return }
         let mon = RaisingState.shared.party[monIndex]
         let newName = GameData.moves[moveId]?.displayName ?? "Move \(moveId)"
-        var subtitle = Characters.displayName(String(format: "%03d", mon.dex))
+        var subtitle = Characters.displayName(dex: mon.dex)
         if let m = GameData.moves[moveId] {
             subtitle += "  ·  \(m.type ?? "—")"
             if m.effectivePower > 0 { subtitle += "  \(L("move.power")) \(m.effectivePower)" }
@@ -72,9 +72,9 @@ final class PromptCenter: NSObject {
     }
 
     private func showFullParty(captured mon: OwnedPokemon) {
-        let caughtName = Characters.displayName(String(format: "%03d", mon.dex))
+        let caughtName = Characters.displayName(dex: mon.dex)
         var buttons: [(String, () -> Void)] = RaisingState.shared.party.enumerated().map { (i, member) in
-            let name = Characters.displayName(String(format: "%03d", member.dex))
+            let name = Characters.displayName(dex: member.dex)
             return ("\(L("detail.release")): \(name)  Lv\(member.level)", {
                 RaisingState.shared.resolveCapture(mon, releasing: i)
             })

@@ -26,8 +26,8 @@ final class EvolutionAnimator {
     private let revealEnd = 350          // sparkly reveal of the new form
 
     func start(fromDex: Int, toDex: Int, at pos: CGPoint) {
-        let oldFrame = CharacterPreviewView.idleDownFrames(String(format: "%03d", fromDex)).first
-        let newFrame = CharacterPreviewView.idleDownFrames(String(format: "%03d", toDex)).first
+        let oldFrame = CharacterPreviewView.idleDownFrames(Characters.folder(dex: fromDex)).first
+        let newFrame = CharacterPreviewView.idleDownFrames(Characters.folder(dex: toDex)).first
         guard let oldFrame, let newFrame else { return }
         oldColored = oldFrame
         newColored = newFrame

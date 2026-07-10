@@ -641,13 +641,9 @@ final class BattleController {
             let travel = 18, windup = 20
             var total = 0
             // Travel direction picks the projectile's facing (8-dir ROM sets).
-            var octant = 6
             let ddx = target.x - attacker.x, ddy = target.y - attacker.y
-            if abs(ddx) > 0.01 || abs(ddy) > 0.01 {
-                var deg = atan2(ddy, ddx) * 180 / .pi
-                if deg < 0 { deg += 360 }
-                octant = Int((deg / 45).rounded()) % 8
-            }
+            let octant = (abs(ddx) > 0.01 || abs(ddy) > 0.01)
+                ? Sprite.octant(dx: ddx, dy: ddy) : 6
             let proj = e.moveId > 0 ? EffectPlayer.projectile(forMove: e.moveId, octant: octant) : nil
             if let proj {
                 effects.append(RunningEffect(clip: proj, from: attacker, to: target, maxTicks: travel))

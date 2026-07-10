@@ -552,7 +552,7 @@ final class RaisingPanelView: NSView {
         let evolved = RaisingState.shared.useItem(item, at: i)
         if let to = evolved {
             let a = NSAlert()
-            a.messageText = Characters.displayName(String(format: "%03d", to))
+            a.messageText = Characters.displayName(dex: to)
             a.informativeText = L("evo.suffix")
             a.runModal()
         }
@@ -565,7 +565,7 @@ final class RaisingPanelView: NSView {
         let mon = RaisingState.shared.party[i]
         let a = NSAlert()
         a.messageText = L("detail.release")
-        a.informativeText = Characters.displayName(String(format: "%03d", mon.dex))
+        a.informativeText = Characters.displayName(dex: mon.dex)
         a.addButton(withTitle: "OK")
         a.addButton(withTitle: "Cancel")
         if a.runModal() == .alertFirstButtonReturn {
@@ -582,8 +582,8 @@ final class RaisingPanelView: NSView {
         for moveId in result.pendingMoves { promptLearn(moveId) }
         if let from = result.evolvedFrom, let to = result.evolvedTo {
             let a = NSAlert()
-            a.messageText = Characters.displayName(String(format: "%03d", from)) + L("evo.suffix")
-            a.informativeText = "→ \(Characters.displayName(String(format: "%03d", to)))"
+            a.messageText = Characters.displayName(dex: from) + L("evo.suffix")
+            a.informativeText = "→ \(Characters.displayName(dex: to))"
             a.runModal()
         }
         refresh()
@@ -850,7 +850,7 @@ final class PartyRowView: NSView {
         layer?.borderWidth = isActive ? 2 : 1
         layer?.borderColor = isActive ? Palette.accent.cgColor : Palette.cardBorder.cgColor
 
-        let folder = String(format: "%03d", mon.dex)
+        let folder = Characters.folder(dex: mon.dex)
 
         let sprite = NSImageView(frame: NSRect(x: 6, y: 5, width: 40, height: 40))
         sprite.image = CharacterPreviewView.stillImage(folder)

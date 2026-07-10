@@ -84,6 +84,12 @@ struct SpeciesData: Codable {
         return Array(learned.suffix(4))
     }
 
+    /// Total EXP a mon of this species starts `level` with (0 if the curve is
+    /// missing that level — corrupt/partial data).
+    func expAt(level: Int) -> Int {
+        expCurve.indices.contains(level - 1) ? expCurve[level - 1] : 0
+    }
+
     /// The evolution that triggers at `level` (LEVEL method only), if any.
     func levelEvolution(atLevel level: Int) -> Evolution? {
         evolutions.first { $0.method == "LEVEL" && $0.param1 <= level }

@@ -115,7 +115,7 @@ final class RaisingState {
     /// raising mode is on, otherwise the normal selected character.
     var followerFolder: String {
         if AppSettings.shared.raisingMode, let m = active {
-            return String(format: "%03d", m.dex)
+            return Characters.folder(dex: m.dex)
         }
         return AppSettings.shared.selectedCharacter
     }
@@ -150,7 +150,7 @@ final class RaisingState {
         return OwnedPokemon(
             dex: s.dex,
             level: level,
-            exp: s.expCurve.indices.contains(level - 1) ? s.expCurve[level - 1] : 0,
+            exp: s.expAt(level: level),
             currentHP: hp,
             moves: s.initialMoves(atLevel: level),
             gender: Gender.random(genderRate: s.genderRate),
@@ -178,7 +178,7 @@ final class RaisingState {
         return OwnedPokemon(
             dex: wild.dex,
             level: wild.level,
-            exp: s.expCurve.indices.contains(wild.level - 1) ? s.expCurve[wild.level - 1] : 0,
+            exp: s.expAt(level: wild.level),
             currentHP: max(1, wild.currentHP),
             moves: wild.moves,
             gender: wild.gender,
