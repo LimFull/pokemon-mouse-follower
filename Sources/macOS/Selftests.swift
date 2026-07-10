@@ -19,6 +19,7 @@ private func writePNG(_ image: CGImage, to url: URL) -> Bool {
 /// process after it runs; with no flag present this returns immediately and
 /// the normal app bootstrap continues.
 func runCommandLineHooks() {
+    runCoreSelftestsIfRequested()   // shared with Windows (Core/SelftestsCore.swift)
     dumpEffectIfRequested()
     dumpIconsIfRequested()
     dumpEvolutionIfRequested()

@@ -24,7 +24,7 @@ enum TypeChart {
     }
 
     private static func load() -> [String: [String: Double]] {
-        guard let u = Bundle.main.url(forResource: "typechart", withExtension: "json", subdirectory: "gamedata"),
+        guard let u = Resources.url("typechart", ext: "json", subdir: "gamedata"),
               let d = try? Data(contentsOf: u),
               let j = try? JSONDecoder().decode([String: [String: Double]].self, from: d)
         else { NSLog("[TypeChart] load failed"); return [:] }

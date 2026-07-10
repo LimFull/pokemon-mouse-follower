@@ -228,7 +228,7 @@ final class RaisingState {
     func setActive(_ index: Int) {
         guard save.party.indices.contains(index) else { return }
         // Sending someone out supersedes a flee that was waiting on the turn.
-        BattleController.current?.cancelRecallRequest()
+        LiveBattle.current?.cancelRecallRequest()
         save.activeIndex = index
         persist()
         notifyChanged()
@@ -240,7 +240,7 @@ final class RaisingState {
     /// here at the turn boundary, or after the outcome if the battle ends
     /// first); only then is the battle broken off and the follower recalled.
     func recall() {
-        if BattleController.current?.requestRecall() == true {
+        if LiveBattle.current?.requestRecall() == true {
             notifyChanged()   // panels show the pending state (buttons disable)
             return
         }
@@ -427,7 +427,7 @@ final class RaisingState {
         if item.healAmount > 0 {
             // Mid-battle the panel's saved HP is stale — gate potions on the
             // LIVE gauge, one queued item at a time (an item costs the turn).
-            if index == save.activeIndex, let bc = BattleController.current,
+            if index == save.activeIndex, let bc = LiveBattle.current,
                let gauge = bc.playerGaugeFraction {
                 return !bc.itemPending && gauge < 1.0
             }
@@ -436,7 +436,7 @@ final class RaisingState {
         if item.curesStatus {
             // Mid-battle the saved status is stale too — gate on the ailment
             // the playback has actually shown so far.
-            if index == save.activeIndex, let bc = BattleController.current,
+            if index == save.activeIndex, let bc = LiveBattle.current,
                bc.playerGaugeFraction != nil {
                 return !bc.itemPending && bc.playerLiveStatus != nil
             }
@@ -456,7 +456,7 @@ final class RaisingState {
         // the item spends the turn). The controller consumes it from the bag
         // when the round simulates; the icon floats overhead during playback.
         if item.healAmount > 0 || item.curesStatus, index == save.activeIndex,
-           BattleController.current?.requestItem(item) == true {
+           LiveBattle.current?.requestItem(item) == true {
             notifyChanged()   // panels show the queued state
             return nil
         }

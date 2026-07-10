@@ -9,9 +9,10 @@ cd "$(dirname "$0")"
 
 APP_NAME="PokemonMouseFollower"
 BUNDLE="${APP_NAME}.app"
-# Compile every .swift under Sources/ (main + RaisingMode modules).
+# Compile the platform-neutral core + the macOS layer (Sources/Windows is
+# built by build.ps1 on Windows — design/windows-port.md W1).
 SWIFT_SOURCES=()
-while IFS= read -r f; do SWIFT_SOURCES+=("$f"); done < <(find Sources -name '*.swift' | sort)
+while IFS= read -r f; do SWIFT_SOURCES+=("$f"); done < <(find Sources/Core Sources/macOS -name '*.swift' | sort)
 
 echo "==> Compiling (universal binary): ${#SWIFT_SOURCES[@]} source files..."
 rm -rf "$BUNDLE"

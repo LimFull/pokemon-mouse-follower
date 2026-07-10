@@ -1,7 +1,9 @@
 // The follower "brain": position/velocity steering after the cursor and
 // the current animation frame (walk/idle/sleep/faint/battle poses).
+// Platform-neutral: frames are opaque PMFImage handles, all math runs in
+// global y-up world coordinates (design/windows-port.md W2/W4).
 
-import Cocoa
+import Foundation
 
 // MARK: - Character Controller
 // The "brain": tracks the character in GLOBAL screen coordinates and picks the
@@ -17,13 +19,13 @@ enum BattlePose {
 }
 
 final class CharacterController {
-    private var idle: [[CGImage]] = []
-    private var walk: [[CGImage]] = []
-    private var sleep: [[CGImage]] = []
-    private var faint: [[CGImage]] = []       // Faint-Anim (may be absent -> rotate fallback)
-    private var attack: [[CGImage]] = []      // battle poses (D2-1); empty -> idle fallback
-    private var shoot: [[CGImage]] = []
-    private var hurt: [[CGImage]] = []
+    private var idle: [[PMFImage]] = []
+    private var walk: [[PMFImage]] = []
+    private var sleep: [[PMFImage]] = []
+    private var faint: [[PMFImage]] = []       // Faint-Anim (may be absent -> rotate fallback)
+    private var attack: [[PMFImage]] = []      // battle poses (D2-1); empty -> idle fallback
+    private var shoot: [[PMFImage]] = []
+    private var hurt: [[PMFImage]] = []
     private var faintTick = 0
     private(set) var faintRotation: CGFloat = 0   // z-rotation for the fallback faint pose
     // Shadow anchor per frame, parallel to the sheets above (position + size).
@@ -37,7 +39,7 @@ final class CharacterController {
     private(set) var loaded = false
 
     private var pos = CGPoint.zero        // global screen coordinates (y-up)
-    private var vel = CGVector.zero
+    private var vel = Vec2.zero
     private var started = false
 
     private var tickCounter = 0
@@ -60,7 +62,7 @@ final class CharacterController {
     private let octantToRow = [2, 3, 4, 5, 6, 7, 0, 1]
 
     // Latest frame + its global position, consumed by the per-screen views.
-    private(set) var currentFrame: CGImage?
+    private(set) var currentFrame: PMFImage?
     private(set) var shadowSize = 1       // 0=small, 1=medium, 2=large (from AnimData.xml)
     private(set) var currentShadow = ShadowAnchor(offset: .zero, size: CGSize(width: 14, height: 6))
     var position: CGPoint { pos }
@@ -78,9 +80,14 @@ final class CharacterController {
         loadedSubdir = subdir
         let xml = Sprite.loadText("AnimData", ext: "xml", subdir: subdir)
         shadowSize = xml.map { Sprite.shadowSize(in: $0) } ?? 1
-        walk = Sprite.slicedSheet("Walk-Anim", anim: "Walk", subdir: subdir, xml: xml)
-        idle = Sprite.slicedSheet("Idle-Anim", anim: "Idle", subdir: subdir, xml: xml)
-        sleep = Sprite.slicedSheet("Sleep-Anim", anim: "Sleep", subdir: subdir, xml: xml)
+        // walk/idle/sleep keep their sliced buffers around long enough to
+        // compute shadow anchors (marker sheet or alpha fallback).
+        let walkCells = Sprite.slicedSheetBuffers("Walk-Anim", anim: "Walk", subdir: subdir, xml: xml)
+        let idleCells = Sprite.slicedSheetBuffers("Idle-Anim", anim: "Idle", subdir: subdir, xml: xml)
+        let sleepCells = Sprite.slicedSheetBuffers("Sleep-Anim", anim: "Sleep", subdir: subdir, xml: xml)
+        walk = Sprite.images(walkCells)
+        idle = Sprite.images(idleCells)
+        sleep = Sprite.images(sleepCells)
         // Prefer the current (alt-color) folder's battle sheets; fall back to
         // the base folder when the variant doesn't ship them.
         faint = Sprite.slicedSheet("Faint-Anim", anim: "Faint", subdir: subdir, xml: xml)
@@ -99,9 +106,9 @@ final class CharacterController {
         // Shadow anchors from the matching -Shadow marker sheet (alpha fallback
         // if a marker sheet is missing). Computed before the sheet fallbacks so
         // each maps to its own frames.
-        walkShadow = markerShadow("Walk-Shadow", anim: "Walk", subdir: subdir, xml: xml, fallback: walk)
-        idleShadow = idle.isEmpty ? [] : markerShadow("Idle-Shadow", anim: "Idle", subdir: subdir, xml: xml, fallback: idle)
-        sleepShadow = sleep.isEmpty ? [] : markerShadow("Sleep-Shadow", anim: "Sleep", subdir: subdir, xml: xml, fallback: sleep)
+        walkShadow = markerShadow("Walk-Shadow", anim: "Walk", subdir: subdir, xml: xml, fallback: walkCells)
+        idleShadow = idleCells.isEmpty ? [] : markerShadow("Idle-Shadow", anim: "Idle", subdir: subdir, xml: xml, fallback: idleCells)
+        sleepShadow = sleepCells.isEmpty ? [] : markerShadow("Sleep-Shadow", anim: "Sleep", subdir: subdir, xml: xml, fallback: sleepCells)
         if idle.isEmpty { idle = walk; idleShadow = walkShadow }     // some characters ship Walk only
         if sleep.isEmpty { sleep = idle; sleepShadow = idleShadow }  // fall back when no sleep animation
         loaded = !walk.isEmpty
@@ -114,8 +121,8 @@ final class CharacterController {
     // offset from the tile center) and footprint size, both read from the marker
     // regions. Falls back to alpha-based feet detection if the sheet is absent.
     private func markerShadow(_ png: String, anim: String, subdir: String,
-                              xml: String?, fallback: [[CGImage]]) -> [[ShadowAnchor]] {
-        let cells = Sprite.slicedSheet(png, anim: anim, subdir: subdir, xml: xml)
+                              xml: String?, fallback: [[RGBABuffer]]) -> [[ShadowAnchor]] {
+        let cells = Sprite.slicedSheetBuffers(png, anim: anim, subdir: subdir, xml: xml)
         guard !cells.isEmpty else { return shadowAnchors(fallback) }
         let templateSize = shadowTemplate[max(0, min(shadowTemplate.count - 1, shadowSize))]
         return cells.map { row in
@@ -133,7 +140,7 @@ final class CharacterController {
     // Fallback anchor when a marker sheet is missing: position from alpha-based
     // feet detection (bottom-center of opaque pixels, grounded across the sheet),
     // size from the fixed PMD template for this character's ShadowSize.
-    private func shadowAnchors(_ sheet: [[CGImage]]) -> [[ShadowAnchor]] {
+    private func shadowAnchors(_ sheet: [[RGBABuffer]]) -> [[ShadowAnchor]] {
         let size = shadowTemplate[max(0, min(shadowTemplate.count - 1, shadowSize))]
         var sheetBottomIY = -1        // lowest opaque row over all frames
         var frameW = 0, frameH = 0
@@ -178,11 +185,11 @@ final class CharacterController {
         let dist = (dx * dx + dy * dy).squareRoot()
         let remaining = dist - gap
 
-        var desired = CGVector.zero
+        var desired = Vec2.zero
         if remaining > 0.001 && dist > 0.001 {
-            let dir = CGVector(dx: dx / dist, dy: dy / dist)
+            let dir = Vec2(dx: dx / dist, dy: dy / dist)
             let speedWanted = remaining < slowRadius ? maxSpeed * (remaining / slowRadius) : maxSpeed
-            desired = CGVector(dx: dir.dx * speedWanted, dy: dir.dy * speedWanted)
+            desired = Vec2(dx: dir.dx * speedWanted, dy: dir.dy * speedWanted)
         }
 
         var sdx = desired.dx - vel.dx
@@ -210,7 +217,7 @@ final class CharacterController {
         let sleeping = !moving && CGFloat(idleTicks) / fps >= AppSettings.shared.sleepDelay
         isSleeping = sleeping
 
-        let sheet: [[CGImage]]
+        let sheet: [[PMFImage]]
         let shadow: [[ShadowAnchor]]
         let step: Int
         if moving { sheet = walk; shadow = walkShadow; step = walkStepTicks }
@@ -237,7 +244,7 @@ final class CharacterController {
         guard loaded else { return }
         faintRotation = 0   // healed/awake — clear the fallback faint tilt
         face(dx: point.x - pos.x, dy: point.y - pos.y)
-        let poseSheet: [[CGImage]]
+        let poseSheet: [[PMFImage]]
         switch pose {
         case .attack: poseSheet = attack
         case .shoot: poseSheet = shoot

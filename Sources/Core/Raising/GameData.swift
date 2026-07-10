@@ -219,7 +219,7 @@ enum GameData {
     // MARK: private
 
     private static func url(_ name: String) -> URL? {
-        Bundle.main.url(forResource: name, withExtension: "json", subdirectory: "gamedata")
+        Resources.url(name, ext: "json", subdir: "gamedata")
     }
 
     private static func load(_ name: String) -> [Int: SpeciesData] {

@@ -3,6 +3,14 @@ PokemonMouseFollower.app/
 MouseFollower.app/
 *.dmg
 
+# Windows build output (spike + app)
+*.exe
+*.exp
+*.lib
+*.pdb
+spike/**/gamedata/
+spike/**/save-scratch/
+
 # macOS
 .DS_Store
 

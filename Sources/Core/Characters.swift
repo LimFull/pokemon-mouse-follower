@@ -55,7 +55,7 @@ enum Characters {
     static let all: [CharacterInfo] = discover()
 
     private static func discover() -> [CharacterInfo] {
-        guard let root = Bundle.main.resourceURL?.appendingPathComponent("characters") else { return [] }
+        let root = Resources.root.appendingPathComponent("characters")
         let fm = FileManager.default
         let subs = (try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: nil,
                                                 options: [.skipsHiddenFiles])) ?? []
@@ -92,8 +92,7 @@ enum Characters {
     static func spriteSubdir(_ folder: String) -> String {
         let base = "characters/\(folder)"
         guard AppSettings.shared.altColor,
-              Bundle.main.url(forResource: "AnimData", withExtension: "xml",
-                              subdirectory: "\(base)/altcolor") != nil else { return base }
+              Resources.url("AnimData", ext: "xml", subdir: "\(base)/altcolor") != nil else { return base }
         return "\(base)/altcolor"
     }
 }

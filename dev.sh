@@ -26,7 +26,7 @@ cp -R gamedata "$BUNDLE/Contents/Resources/gamedata"
 
 echo "==> Compiling (arm64, debug)..."
 SWIFT_SOURCES=()
-while IFS= read -r f; do SWIFT_SOURCES+=("$f"); done < <(find Sources -name '*.swift' | sort)
+while IFS= read -r f; do SWIFT_SOURCES+=("$f"); done < <(find Sources/Core Sources/macOS -name '*.swift' | sort)
 swiftc -Onone -g "${SWIFT_SOURCES[@]}" -o "$BUNDLE/Contents/MacOS/${APP_NAME}"
 
 echo "==> Running in foreground (Ctrl+C to quit). Logs below:"

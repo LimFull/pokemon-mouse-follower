@@ -1,32 +1,31 @@
-// Sprite sheet loading/slicing and the PMD marker-sheet readers
-// (shadow anchors, AnimData frame sizes).
+// Sprite sheet loading/slicing and the PMD marker-sheet readers (shadow
+// anchors, AnimData frame sizes). Platform-neutral (design/windows-port.md
+// W2): decoding lands in an RGBABuffer, all pixel analysis happens on the
+// buffer, and PlatformImageIO converts cells to renderable PMFImages.
 
-import Cocoa
-import ImageIO
+import Foundation
 
 // MARK: - Sprite loading / slicing
 enum Sprite {
-    static func loadCG(_ name: String, subdir: String) -> CGImage? {
-        guard let url = Bundle.main.url(forResource: name, withExtension: "png", subdirectory: subdir),
-              let data = try? Data(contentsOf: url),
-              let src = CGImageSourceCreateWithData(data as CFData, nil),
-              let img = CGImageSourceCreateImageAtIndex(src, 0, nil) else { return nil }
-        return img
+    static func loadBuffer(_ name: String, subdir: String) -> RGBABuffer? {
+        guard let url = Resources.url(name, ext: "png", subdir: subdir) else { return nil }
+        return PlatformImageIO.decodePNG(url)
     }
 
     static func loadText(_ name: String, ext: String, subdir: String) -> String? {
-        guard let url = Bundle.main.url(forResource: name, withExtension: ext, subdirectory: subdir) else { return nil }
+        guard let url = Resources.url(name, ext: ext, subdir: subdir) else { return nil }
         return try? String(contentsOf: url, encoding: .utf8)
     }
 
-    // Slice into [row][col] frames (top-left origin). Cells may be non-square.
-    static func slice(_ image: CGImage, cols: Int, rows: Int, cellW: Int, cellH: Int) -> [[CGImage]] {
-        var out: [[CGImage]] = []
+    // Slice into [row][col] cells (top-left origin). Cells may be non-square.
+    static func slice(_ buffer: RGBABuffer, cols: Int, rows: Int, cellW: Int, cellH: Int) -> [[RGBABuffer]] {
+        var out: [[RGBABuffer]] = []
         for r in 0..<rows {
-            var rowArr: [CGImage] = []
+            var rowArr: [RGBABuffer] = []
             for c in 0..<cols {
-                let rect = CGRect(x: c * cellW, y: r * cellH, width: cellW, height: cellH)
-                if let cg = image.cropping(to: rect) { rowArr.append(cg) }
+                if let cell = buffer.cropped(x: c * cellW, y: r * cellH, w: cellW, h: cellH) {
+                    rowArr.append(cell)
+                }
             }
             out.append(rowArr)
         }
@@ -35,13 +34,24 @@ enum Sprite {
 
     // Load a sheet PNG and slice it into [row][col] cells using AnimData frame
     // sizes (falling back to square cells across 8 direction rows).
-    static func slicedSheet(_ png: String, anim: String, subdir: String, xml: String?) -> [[CGImage]] {
-        guard let img = loadCG(png, subdir: subdir) else { return [] }
+    static func slicedSheetBuffers(_ png: String, anim: String, subdir: String, xml: String?) -> [[RGBABuffer]] {
+        guard let img = loadBuffer(png, subdir: subdir) else { return [] }
         var cw = img.height / 8, ch = img.height / 8
         if let xml, let (w, h) = frameSize(anim, in: xml) { cw = w; ch = h }
         guard cw > 0, ch > 0 else { return [] }
         return slice(img, cols: max(1, img.width / cw), rows: max(1, img.height / ch),
                      cellW: cw, cellH: ch)
+    }
+
+    /// Renderable frames for a sheet (the pre-W2 slicedSheet signature — macOS
+    /// callers keep receiving CGImages through the PMFImage typealias).
+    static func slicedSheet(_ png: String, anim: String, subdir: String, xml: String?) -> [[PMFImage]] {
+        images(slicedSheetBuffers(png, anim: anim, subdir: subdir, xml: xml))
+    }
+
+    /// Convert sliced cells to renderable frames.
+    static func images(_ cells: [[RGBABuffer]]) -> [[PMFImage]] {
+        cells.map { $0.compactMap { PlatformImageIO.makeImage($0) } }
     }
 
     /// 8-direction octant of a movement vector (0=E,1=NE,2=N,...,7=SE) — the
@@ -52,24 +62,15 @@ enum Sprite {
         return Int((deg / 45).rounded()) % 8
     }
 
-    // Shadow marker center from a PMD "-Shadow" sheet cell, in image (top-left
-    // origin) pixel coords. The sheet marks the shadow center with a single white
-    // pixel (inside nested blue/red/green size regions); prefer that, else fall
-    // back to the centroid of all opaque pixels. Returns nil if the cell is empty.
     // Shadow marker read from a PMD "-Shadow" cell: the ground-contact center
     // (white pixel) and the footprint size for the given ShadowSize, taken from
     // the nested color regions (green = small, red = medium, blue = large; each
     // encloses the smaller ones). All in image (top-left origin) pixels; nil if
     // the cell has no marker.
-    static func shadowMarker(_ img: CGImage, shadowSize: Int) -> (center: CGPoint, size: CGSize)? {
-        let w = img.width, h = img.height
+    static func shadowMarker(_ cell: RGBABuffer, shadowSize: Int) -> (center: CGPoint, size: CGSize)? {
+        let w = cell.width, h = cell.height
         guard w > 0, h > 0 else { return nil }
-        var buf = [UInt8](repeating: 0, count: w * h * 4)
-        guard let ctx = CGContext(data: &buf, width: w, height: h,
-                                  bitsPerComponent: 8, bytesPerRow: w * 4,
-                                  space: CGColorSpaceCreateDeviceRGB(),
-                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
-        ctx.draw(img, in: CGRect(x: 0, y: 0, width: w, height: h))
+        let buf = cell.pixels
         var wx = 0.0, wy = 0.0, wn = 0                  // white center pixel(s)
         var cx = 0.0, cy = 0.0, cn = 0                  // any marker pixel (fallback center)
         var sMinX = w, sMinY = h, sMaxX = -1, sMaxY = -1  // footprint for selected size
@@ -108,20 +109,14 @@ enum Sprite {
 
     // Bounding box of non-transparent pixels, in image (top-left origin) pixel
     // coords. Returns nil if the frame is fully transparent.
-    static func opaqueBBox(_ img: CGImage, alphaThreshold: UInt8 = 12) -> CGRect? {
-        let w = img.width, h = img.height
+    static func opaqueBBox(_ cell: RGBABuffer, alphaThreshold: UInt8 = 12) -> CGRect? {
+        let w = cell.width, h = cell.height
         guard w > 0, h > 0 else { return nil }
-        var alpha = [UInt8](repeating: 0, count: w * h)
-        guard let ctx = CGContext(data: &alpha, width: w, height: h,
-                                  bitsPerComponent: 8, bytesPerRow: w,
-                                  space: CGColorSpaceCreateDeviceGray(),
-                                  bitmapInfo: CGImageAlphaInfo.alphaOnly.rawValue) else { return nil }
-        ctx.draw(img, in: CGRect(x: 0, y: 0, width: w, height: h))
-        // Buffer row 0 is the top of the image (top-left origin).
+        let buf = cell.pixels
         var minX = w, minY = h, maxX = -1, maxY = -1
         for y in 0..<h {
-            let base = y * w
-            for x in 0..<w where alpha[base + x] >= alphaThreshold {
+            let base = y * w * 4
+            for x in 0..<w where buf[base + x * 4 + 3] >= alphaThreshold {
                 if x < minX { minX = x }
                 if x > maxX { maxX = x }
                 if y < minY { minY = y }

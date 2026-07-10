@@ -39,9 +39,10 @@ struct BattleScene {
     var wildSpriteDex: Int? = nil         // wild Transformed: the species it currently shows
 }
 
-final class BattleController {
+final class BattleController: LiveBattleBridge {
     /// The live controller (owned by the app delegate) so PartyState can route
-    /// a mid-battle recall through the turn machinery.
+    /// a mid-battle recall through the turn machinery (via the platform-neutral
+    /// LiveBattle.current seam registered in init).
     private(set) static weak var current: BattleController?
 
     private enum Phase { case idle, present, battling, ending }
@@ -107,6 +108,7 @@ final class BattleController {
     init() {
         spawnCooldown = nextSpawnDelay()
         BattleController.current = self
+        LiveBattle.current = self
     }
 
     var isBattling: Bool { phase == .battling || phase == .ending }
