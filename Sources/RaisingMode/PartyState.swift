@@ -517,22 +517,37 @@ final class RaisingState {
     }
 
     private static func loadFromDisk() -> RaisingSave? {
-        guard let data = try? Data(contentsOf: saveURL()) else { return nil }
+        if let data = try? Data(contentsOf: saveURL()) {
+            return try? JSONDecoder().decode(RaisingSave.self, from: data)
+        }
+        // First dev run: read the release save as a starting snapshot (never
+        // written back — persist() targets the dev file). PMF_SAVE_DIR runs
+        // stay fully isolated and get no seed.
+        guard PMF.isDevRun,
+              ProcessInfo.processInfo.environment["PMF_SAVE_DIR"] == nil,
+              let data = try? Data(contentsOf: saveURL(dev: false))
+        else { return nil }
         return try? JSONDecoder().decode(RaisingSave.self, from: data)
     }
 
-    private static func saveURL() -> URL {
+    private static func saveURL() -> URL { saveURL(dev: PMF.isDevRun) }
+
+    private static func saveURL(dev: Bool) -> URL {
         let fm = FileManager.default
         // PMF_SAVE_DIR redirects ALL persistence. Selftests must set it: a
         // debug run resets the party, and without the override it writes to
         // the real save (overriding $HOME does NOT move applicationSupport).
+        // Dev runs without the override write under a dev/ subfolder so the
+        // release save is never touched.
         let dir: URL
         if let scratch = ProcessInfo.processInfo.environment["PMF_SAVE_DIR"] {
             dir = URL(fileURLWithPath: scratch, isDirectory: true)
         } else {
-            dir = (fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-                   ?? fm.temporaryDirectory)
+            var base = (fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+                        ?? fm.temporaryDirectory)
                 .appendingPathComponent("PokemonMouseFollower", isDirectory: true)
+            if dev { base = base.appendingPathComponent("dev", isDirectory: true) }
+            dir = base
         }
         try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir.appendingPathComponent("raising.json")

@@ -112,10 +112,32 @@ enum Characters {
     }
 }
 
+// MARK: - Dev-run detection
+enum PMF {
+    // Dev runs (dev.sh sets PMF_DEV; PMF_FAST_BATTLE test harnesses imply it)
+    // keep their own settings + raising save so experiments never touch the
+    // release profile. Release builds launched normally have neither set.
+    static let isDevRun = ProcessInfo.processInfo.environment["PMF_DEV"] != nil
+        || ProcessInfo.processInfo.environment["PMF_FAST_BATTLE"] != nil
+}
+
 // MARK: - Settings (persisted in UserDefaults)
 final class AppSettings {
     static let shared = AppSettings()
-    private let d = UserDefaults.standard
+    private let d: UserDefaults = {
+        guard PMF.isDevRun,
+              let dev = UserDefaults(suiteName: "com.local.pokemonmousefollower.dev")
+        else { return .standard }
+        // First dev run: seed from the release settings so behavior matches,
+        // then diverge — dev tweaks never write back to the release domain.
+        if !dev.bool(forKey: "pmfDevSeeded") {
+            let release = UserDefaults.standard
+                .persistentDomain(forName: Bundle.main.bundleIdentifier ?? "com.local.pokemonmousefollower")
+            for (key, value) in release ?? [:] { dev.set(value, forKey: key) }
+            dev.set(true, forKey: "pmfDevSeeded")
+        }
+        return dev
+    }()
 
     static let gapRange: ClosedRange<Double> = 0...500   // px; 200 feels close on 4K-at-1x
     static let speedRange: ClosedRange<Double> = 2...25
@@ -1558,8 +1580,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // exercises a status/effect path), plus item/EXP/heal shortcuts.
         // Dev runs only — dev.sh sets PMF_DEV, and PMF_FAST_BATTLE test runs
         // imply it; the release build never shows it.
-        let env = ProcessInfo.processInfo.environment
-        if env["PMF_DEV"] != nil || env["PMF_FAST_BATTLE"] != nil {
+        if PMF.isDevRun {
             let debug = NSMenuItem(title: "디버그", action: nil, keyEquivalent: "")
             let dm = NSMenu()
             func encounter(_ title: String, _ dex: Int) {
