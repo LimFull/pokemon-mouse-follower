@@ -54,6 +54,7 @@ final class Battler {
     let baseExp: Int
     var currentHP: Int
     var moves: [Int]             // var: Mimic/Sketch rewrite a slot battle-locally
+    var disabledMoves: Set<Int> = []   // PMD-style OFF toggles (player's mon only)
 
     // Status state (D19). `status` persists across battles for the player's mon;
     // everything below it is battle-local.
@@ -139,6 +140,7 @@ final class Battler {
                   gender: mon.gender, baseExp: s.baseExp ?? 60,
                   currentHP: mon.currentHP, moves: mon.moves,
                   status: mon.status.flatMap(Ailment.init(rawValue:)))
+        disabledMoves = Set(mon.disabledMoves ?? [])
     }
 
     /// A wild encounter of `dex` at `level`, full HP, level-appropriate moveset,
@@ -776,6 +778,7 @@ final class BattleSession {
             case .metronome:
                 let pool = GameData.moves.values.filter {
                     $0.effectivePower > 0 && MoveMechanics.mechanic(for: $0.moveId) == nil
+                        && $0.moveId != MoveMechanics.basicAttackId   // synthetic, not a real move
                 }
                 guard let pick = pool.randomElement() else {
                     emit(.miss, actorIsPlayer: isPlayer, move: m); return
@@ -1374,8 +1377,12 @@ enum BattleEngine {
 
     /// Mainline wild behavior: a uniformly random pick from the usable moves
     /// (no PP, by design). Nothing usable → Struggle, exactly like the games.
+    /// PMD-style OFF toggles narrow the pool first; every move toggled OFF →
+    /// the weak typeless regular attack instead of Struggle.
     static func chooseMove(attacker: Battler, defender: Battler) -> Int {
-        let pool = attacker.moves.filter { id in
+        let enabled = attacker.moves.filter { !attacker.disabledMoves.contains($0) }
+        if enabled.isEmpty { return MoveMechanics.basicAttackId }
+        let pool = enabled.filter { id in
             if id == attacker.disabledMove { return false }
             if defender.imprisonActive, defender.moves.contains(id) { return false }
             if attacker.tauntRounds > 0, !isDamaging(id) { return false }

@@ -79,3 +79,7 @@
 "label.wildspawn" = "Wild encounters";
 "label.itemspawn" = "Item spawns";
 "detail.recall" = "Recall";
+
+/* Move ON/OFF toggles (PMD-style) */
+"detail.move.toggle.tip" = "Use this move in battle (OFF: kept, but never picked)";
+"detail.moves.alloff" = "All moves OFF — uses a weak Basic Attack";

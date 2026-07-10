@@ -443,11 +443,33 @@ final class RaisingPanelView: NSView {
                                            width: Self.contentWidth - 28, color: .systemBlue))
 
         // Moves (click a row to expand/collapse its type + description inline).
+        // Each row carries a PMD-style ON/OFF switch: OFF moves stay known but
+        // the battle AI skips them; all OFF -> the weak typeless regular attack.
         inner.addArrangedSubview(divider())
         inner.addArrangedSubview(monoLabel("▶ \(L("detail.moves"))", 12, .bold))
         for id in mon.moves {
-            inner.addArrangedSubview(moveRow(id))
+            let enabled = mon.isMoveEnabled(id)
+            let name = moveRow(id, enabled: enabled)
+            name.setContentHuggingPriority(.defaultLow, for: .horizontal)
+            let toggle = NSSwitch()
+            toggle.controlSize = .mini
+            toggle.state = enabled ? .on : .off
+            toggle.target = self
+            toggle.action = #selector(moveToggled(_:))
+            toggle.tag = id
+            toggle.toolTip = L("detail.move.toggle.tip")
+            let row = NSStackView(views: [name, toggle])
+            row.orientation = .horizontal
+            row.alignment = .centerY
+            row.spacing = 8
+            row.widthAnchor.constraint(equalToConstant: Self.contentWidth - 28).isActive = true
+            inner.addArrangedSubview(row)
             if expandedMove == id { inner.addArrangedSubview(moveDetailInline(id)) }
+        }
+        if !mon.moves.isEmpty, mon.moves.allSatisfy({ !mon.isMoveEnabled($0) }) {
+            let hint = monoLabel(L("detail.moves.alloff"), 11, .regular)
+            hint.textColor = .secondaryLabelColor
+            inner.addArrangedSubview(hint)
         }
 
         // Usable items on this mon (Phase 3c): potions when hurt, a revive
@@ -584,8 +606,9 @@ final class RaisingPanelView: NSView {
         RaisingState.shared.learnMove(moveId, replacing: slot < mon.moves.count ? slot : nil)
     }
 
-    // A clickable move line (monospace, retro) that expands/collapses its detail.
-    private func moveRow(_ id: Int) -> NSButton {
+    // A clickable move line (monospace, retro) that expands/collapses its
+    // detail. A toggled-OFF move renders dimmed.
+    private func moveRow(_ id: Int, enabled: Bool = true) -> NSButton {
         let m = GameData.moves[id]
         let name = m?.displayName ?? "Move \(id)"
         let arrow = expandedMove == id ? "▾" : "▸"
@@ -595,13 +618,19 @@ final class RaisingPanelView: NSView {
         b.alignment = .left
         b.attributedTitle = NSAttributedString(string: "\(arrow) \(name)", attributes: [
             .font: NSFont.monospacedSystemFont(ofSize: 12, weight: .regular),
-            .foregroundColor: Palette.label])
+            .foregroundColor: enabled ? Palette.label : NSColor.tertiaryLabelColor])
         return b
     }
 
     @objc private func moveTapped(_ sender: NSButton) {
         expandedMove = (expandedMove == sender.tag) ? nil : sender.tag
         refresh()
+    }
+
+    @objc private func moveToggled(_ sender: NSSwitch) {
+        guard let i = detailIndex else { return }
+        RaisingState.shared.setMoveEnabled(sender.tag, sender.state == .on, at: i)
+        refresh()   // re-dim the row / show or hide the all-OFF hint
     }
 
     // Inline expansion under a move row: type badge, category/PP/power, description.

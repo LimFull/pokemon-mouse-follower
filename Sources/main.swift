@@ -2198,6 +2198,31 @@ if CommandLine.arguments.contains("--selftest-raising") {
         st.learnMove(999, replacing: 0, at: 1)
         print("indexed learnMove: party[1].moves[0]=\(st.party[1].moves.first ?? -1) (expect 999)")
     }
+    // Move ON/OFF toggles (PMD-style): all OFF -> the weak typeless regular
+    // attack; partial OFF narrows the AI pool to the enabled moves.
+    do {
+        let ba = GameData.moves[MoveMechanics.basicAttackId]!
+        print("basic attack: id=\(ba.moveId) power=\(ba.effectivePower) type=\(ba.type ?? "typeless") acc=\(ba.accuracy) (expect power 20 < Tackle 40, typeless)")
+        func playerMoveIds(_ mon: OwnedPokemon) -> Set<Int> {
+            let p = Battler(mon: mon)!, w = Battler(wildDex: 16, level: 5)!
+            let r = BattleEngine.run(player: p, wild: w)
+            return Set(r.events.filter { $0.actorIsPlayer && $0.moveId > 0 }.map { $0.moveId })
+        }
+        var allOff = st.makeMon(species: GameData.species[25]!, level: 20)
+        allOff.disabledMoves = allOff.moves
+        let usedOff = playerMoveIds(allOff)
+        print("toggles all-OFF: used=\(usedOff.sorted()) (expect [\(MoveMechanics.basicAttackId)] only)")
+        var oneOn = st.makeMon(species: GameData.species[25]!, level: 20)
+        let keep = oneOn.moves.first(where: { BattleEngine.isDamaging($0) }) ?? oneOn.moves[0]
+        oneOn.disabledMoves = oneOn.moves.filter { $0 != keep }
+        let usedOn = playerMoveIds(oneOn)
+        print("toggles one-ON: kept=\(keep) used=\(usedOn.sorted()) onlyKept=\(usedOn.isSubset(of: [keep]))")
+        let m0 = st.party[0].moves[0]
+        st.setMoveEnabled(m0, false, at: 0)
+        print("toggles persist: disabled=\(st.party[0].disabledMoves ?? []) enabled(\(m0))=\(st.party[0].isMoveEnabled(m0)) (expect false)")
+        st.setMoveEnabled(m0, true, at: 0)
+        print("toggles persist: back on -> disabledMoves=\(st.party[0].disabledMoves?.description ?? "nil") (expect nil)")
+    }
     // Headless battle playback: force a contact encounter and tick the
     // controller through the whole fight, counting effect frames drawn.
     do {

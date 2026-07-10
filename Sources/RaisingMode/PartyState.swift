@@ -33,6 +33,7 @@ struct OwnedPokemon: Codable {
     var exp: Int              // total accumulated experience
     var currentHP: Int
     var moves: [Int]          // up to 4 move ids
+    var disabledMoves: [Int]? // PMD-style OFF toggles — still known, AI won't pick them
     var gender: Gender
     var status: String?       // volatile/major status (nil = healthy); detailed in Phase 2
 
@@ -40,6 +41,13 @@ struct OwnedPokemon: Codable {
     var stats: Stats? { species.map { GameData.stats($0, level: level) } }
     var maxHP: Int { stats?.hp ?? max(currentHP, 1) }
     var isFainted: Bool { currentHP <= 0 }
+
+    /// PMD-style toggle: an OFF move stays known, the battle AI just never
+    /// picks it. All OFF -> the mon falls back to the weak typeless
+    /// regular attack (MoveMechanics.basicAttackId).
+    func isMoveEnabled(_ moveId: Int) -> Bool {
+        !(disabledMoves ?? []).contains(moveId)
+    }
 
     /// Fully restore HP and clear status.
     mutating func heal() {
@@ -339,9 +347,24 @@ final class RaisingState {
         guard save.party.indices.contains(i) else { return }
         if let slot, save.party[i].moves.indices.contains(slot) {
             save.party[i].moves[slot] = moveId
+            // The forgotten move's OFF toggle must not linger (or shadow the
+            // same move if relearned later).
+            save.party[i].disabledMoves?.removeAll { !save.party[i].moves.contains($0) }
             persist()
             notifyChanged()
         }
+    }
+
+    /// PMD-style move toggle (per member): OFF moves stay known but the
+    /// battle AI never picks them; all OFF -> the weak regular attack.
+    func setMoveEnabled(_ moveId: Int, _ on: Bool, at index: Int) {
+        guard save.party.indices.contains(index),
+              save.party[index].moves.contains(moveId) else { return }
+        var off = Set(save.party[index].disabledMoves ?? [])
+        if on { off.remove(moveId) } else { off.insert(moveId) }
+        off.formIntersection(save.party[index].moves)   // drop stale ids
+        save.party[index].disabledMoves = off.isEmpty ? nil : off.sorted()
+        persist()
     }
 
     // MARK: capture toggle (balls only fly when the player wants a catch)

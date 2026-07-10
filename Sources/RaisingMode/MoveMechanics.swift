@@ -248,6 +248,11 @@ enum MoveMechanics {
         GameData.moves.first(where: { $0.value.englishName == "Struggle" })?.key ?? 154
     }()
 
+    /// Synthetic id of the PMD "regular attack" — thrown when the player has
+    /// toggled every move OFF. Injected into GameData.moves at load; the id
+    /// sits far above the real EoS move-id range.
+    static let basicAttackId = 9999
+
     static func mechanic(for moveId: Int) -> MoveMechanic? { byMoveId[moveId] }
     static func priority(of moveId: Int) -> Int { priorityByMoveId[moveId] ?? 0 }
 

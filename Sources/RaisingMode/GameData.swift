@@ -235,6 +235,16 @@ enum GameData {
         }
         var out: [Int: MoveData] = [:]
         for (_, v) in dict { out[v.moveId] = v }
+        // The PMD "regular attack": what a mon uses when every move is toggled
+        // OFF. Typeless (nil type -> the empty Neutral chart row: no STAB, no
+        // resist/immunity, hits Ghost), physical, weaker than Tackle (40).
+        out[MoveMechanics.basicAttackId] = MoveData(
+            moveId: MoveMechanics.basicAttackId,
+            names: ["e": "Basic Attack"],
+            type: nil, category: "Physical",
+            power: 0, pp: 0, accuracy: 100,
+            desc: "A plain typeless attack, used when every move is switched off.",
+            ailment: nil, ailmentChance: nil, powerMain: 20)
         return out
     }
 }
