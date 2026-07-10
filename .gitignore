@@ -4,6 +4,7 @@ MouseFollower.app/
 *.dmg
 
 # Windows build output (spike + app)
+build-win/
 *.exe
 *.exp
 *.lib
