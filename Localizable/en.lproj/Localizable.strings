@@ -63,7 +63,7 @@
 "item.linkcord" = "Link Cord";
 "item.friendcandy" = "Friend Candy";
 "capture.caught" = " was caught!";
-"label.encounter" = "Wild interval";
+"label.encounter" = "Wild encounter interval";
 "prompt.full.title" = "Party is full!";
 "prompt.full.keep" = "Let the new one go";
 "prompt.caught.title" = "Caught";

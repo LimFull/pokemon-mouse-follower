@@ -46,6 +46,7 @@ final class BattleController {
     private let fast = ProcessInfo.processInfo.environment["PMF_FAST_BATTLE"] != nil
     private let eventTicks = 20
     private var spawnCooldown = 0
+    private var cooldownBasisMinutes: CGFloat = 0   // setting the cooldown was rolled from
     private var despawnTicks = 0
 
     private var wild: Battler?
@@ -184,6 +185,12 @@ final class BattleController {
     private func tickIdle() {
         guard AppSettings.shared.raisingMode, AppSettings.shared.wildSpawnsEnabled,
               let a = RaisingState.shared.active, !a.isFainted else { return }
+        // The pending delay was rolled from the interval setting at the time —
+        // re-roll when the slider moves, or a 45m→5m change would still sit
+        // out the rest of the old (up to ~56m) countdown.
+        if AppSettings.shared.encounterMinutes != cooldownBasisMinutes {
+            spawnCooldown = nextSpawnDelay()
+        }
         spawnCooldown -= 1
         if spawnCooldown <= 0 { spawn(near: a) }
     }
@@ -859,6 +866,7 @@ final class BattleController {
     /// Random delay around the user's average encounter interval (D9): the
     /// setting is the mean in minutes; actual spawns land in ±25% of it.
     private func nextSpawnDelay() -> Int {
+        cooldownBasisMinutes = AppSettings.shared.encounterMinutes
         if fast { return 60 * 4 }   // 4s for testing
         let avg = Double(AppSettings.shared.encounterMinutes) * 60   // seconds
         return Int(Double.random(in: (avg * 0.75)...(avg * 1.25))) * 60
