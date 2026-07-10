@@ -117,7 +117,7 @@ final class AppSettings {
     static let shared = AppSettings()
     private let d = UserDefaults.standard
 
-    static let gapRange: ClosedRange<Double> = 0...200
+    static let gapRange: ClosedRange<Double> = 0...500   // px; 200 feels close on 4K-at-1x
     static let speedRange: ClosedRange<Double> = 2...25
     static let scaleRange: ClosedRange<Double> = 1...5
     static let sleepRange: ClosedRange<Double> = 5...120
