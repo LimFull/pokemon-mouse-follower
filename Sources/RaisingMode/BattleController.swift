@@ -35,6 +35,8 @@ struct BattleScene {
     var screenColor: CGColor = CGColor(gray: 1, alpha: 1)
     var logLines: [(String, Double)] = [] // PMD-style log: (text, alpha), oldest first
     var logAnchor: CGPoint = .zero        // global top-center of the log box
+    var playerSpriteDex: Int? = nil       // player Transformed: draw the follower as this species
+    var wildSpriteDex: Int? = nil         // wild Transformed: the species it currently shows
 }
 
 final class BattleController {
@@ -92,6 +94,13 @@ final class BattleController {
     // for later ticks of the current event's beat, so text tracks the action.
     private var logLines: [(text: String, age: Int)] = []
     private var pendingLog: [(tick: Int, text: String)] = []
+    // Transform (D2): the engine copies stats/moves/types on the Battler; the
+    // LOOK is playback state, applied at the transform event's impact tick.
+    // The follower reverts when the battle ends (its Battler is rebuilt from
+    // the save each fight); the WILD keeps it while it stays out — consistent
+    // with its persisting HP/stat stages — and only a capture resets it.
+    private var playerTransformedDex: Int?   // follower shown as this species
+    private var wildTransformedDex: Int?     // wild shown as this species
     private let logHoldTicks = 300       // fully readable span (~5s at 60fps)
     private let logFadeTicks = 30
 
@@ -284,6 +293,7 @@ final class BattleController {
         wildAlpha = 1.0; playerAlpha = 1.0
         flashP = false; flashW = false
         pendingLog = []
+        playerTransformedDex = nil   // the follower always re-enters as itself
         pushLog(BattleLog.battleStart(wildName: w.name))
         phase = .battling
     }
@@ -334,6 +344,15 @@ final class BattleController {
         while let next = pendingLog.first, next.tick <= evTick {
             pushLog(next.text)
             pendingLog.removeFirst()
+        }
+        // Transform: swap the shown sprite the moment the copy lands.
+        if e.statusApplied == "transformed!", evTick == impactAt {
+            if e.actorIsPlayer, let w = wild {
+                playerTransformedDex = w.dex
+            } else if let p = session?.player {
+                wildTransformedDex = p.dex
+                wildMon?.setSpecies(dex: p.dex)
+            }
         }
         // Battle poses (D2-1): attacker lunges/shoots, the hit side flinches.
         let (pPose, wPose) = poses(for: e)
@@ -497,11 +516,24 @@ final class BattleController {
         wildDodge.x -= jitter
     }
 
+    /// A move that should be delivered from range (Shoot pose, no lunge).
+    /// Only genuine contact moves ram the foe: the mainline "makes contact"
+    /// flag decides (merged via rom-extract/fetch_contact.py), so Thunder
+    /// Shock casts from range and non-contact physical moves (Earthquake)
+    /// don't body-slam either. A ROM projectile clip always means ranged;
+    /// EoS-only moves without a flag fall back to category (Special = ranged).
+    static func rangedVisual(_ moveId: Int) -> Bool {
+        if EffectPlayer.hasProjectile(moveId) { return true }
+        guard let m = GameData.moves[moveId] else { return false }
+        if let contact = m.contact { return !contact }
+        return m.category == "Special"
+    }
+
     /// Contact-move lunge: the attacker physically darts at the defender,
     /// peaking exactly at the impact tick, then springs back. Makes a Tackle
     /// read as a body blow on BOTH sides regardless of how animated the
-    /// species' Attack sheet is. Projectile moves stay put (they shoot);
-    /// full-screen moves neither lunge nor shoot.
+    /// species' Attack sheet is. Ranged moves (projectile or special) stay
+    /// put; full-screen moves neither lunge nor shoot.
     private func tickLunge(_ e: BattleEvent) {
         // Only a landed hit (or a whiffed DAMAGING move) is a body blow —
         // status moves (Leer, Defense Curl, ...) play their effect clip and
@@ -509,7 +541,7 @@ final class BattleController {
         guard e.kind == .attack || e.kind == .miss, e.moveId > 0,
               e.damage > 0 || (e.kind == .miss && BattleEngine.isDamaging(e.moveId)),
               !EffectPlayer.isScreen(e.moveId),
-              !EffectPlayer.hasProjectile(e.moveId) else { return }
+              !Self.rangedVisual(e.moveId) else { return }
         let scale = AppSettings.shared.scale
         let attackerPos = e.actorIsPlayer ? playerPos : (wildMon?.pos ?? playerPos)
         let defenderPos = e.actorIsPlayer ? (wildMon?.pos ?? playerPos) : playerPos
@@ -539,11 +571,11 @@ final class BattleController {
         var w: (BattlePose, Int) = e.wildAsleep ? (.sleep, evTick) : (.stand, 0)
         switch e.kind {
         case .attack, .miss:
-            let hasProj = EffectPlayer.hasProjectile(e.moveId)
+            let ranged = Self.rangedVisual(e.moveId)
             // Attack anim runs through the impact (holding its last frame just
             // past it), so a lunge isn't cut off mid-swing.
             if evTick < min(36, impactAt + 12) {
-                let atk = (hasProj ? BattlePose.shoot : .attack, evTick)
+                let atk = (ranged ? BattlePose.shoot : .attack, evTick)
                 if e.actorIsPlayer { p = atk } else { w = atk }
             }
             if e.kind == .attack, e.damage > 0, evTick >= impactAt, evTick < impactAt + 18 {
@@ -786,9 +818,12 @@ final class BattleController {
             outcomeLines.forEach { pushLog($0) }
             if r.captured, let w = wild {
                 captured = true
+                // Battle-local state (Transform, Mimic, stages) ends with the
+                // battle — a transformed Ditto is caught as a plain Ditto.
+                let caught = Battler(resetting: w) ?? w
                 if st.partyHasRoom {
-                    _ = st.addCaptured(from: w)
-                } else if let mon = st.capturedMon(from: w) {
+                    _ = st.addCaptured(from: caught)
+                } else if let mon = st.capturedMon(from: caught) {
                     // Full party: release someone or let the catch go (D14/#14).
                     PromptCenter.shared.enqueue(.fullParty(captured: mon))
                 }
@@ -818,9 +853,13 @@ final class BattleController {
             ballFrame = nil
             // My mon fainted (it now stays down where it fell). The wild is NOT
             // defeated — it lingers/wanders so I can send out another mon and keep
-            // challenging it; it leaves on its own despawn timer.
+            // challenging it; it leaves on its own despawn timer. Its battle
+            // state — stat stages AND Transform (look included) — persists
+            // while it stays out, consistent with the wild keeping its HP;
+            // only a capture resets it (see the captured branch above).
             phase = .present
         }
+        playerTransformedDex = nil
         // The battle ended during the turn the flee was waiting on — the
         // outcome stands (applied above), THEN the recall goes through.
         if recallTurn != nil {
@@ -858,6 +897,7 @@ final class BattleController {
     private func cancelBattle() {
         pushLog(BattleLog.recallLine(playerName: session?.player.name ?? ""))
         pendingLog = []
+        playerTransformedDex = nil
         if let w = wild { w.currentHP = max(1, Int(curWHP * Double(w.maxHP))) }
         if let mon = RaisingState.shared.active {
             RaisingState.shared.applyFleeState(
@@ -879,6 +919,8 @@ final class BattleController {
     private func despawn() {
         logLines = []
         pendingLog = []
+        playerTransformedDex = nil
+        wildTransformedDex = nil
         recallTurn = nil
         session = nil
         pendingItem = nil
@@ -911,7 +953,9 @@ final class BattleController {
             floatAlpha: floatAlpha, floatColor: floatColor,
             screenFlash: screenFlash, screenColor: screenColor,
             logLines: logLines.map { ($0.text, logAlpha($0.age)) },
-            logAnchor: logAnchor(wildPos: wm.pos))
+            logAnchor: logAnchor(wildPos: wm.pos),
+            playerSpriteDex: playerTransformedDex,
+            wildSpriteDex: wildTransformedDex)
     }
 
     private func logAlpha(_ age: Int) -> Double {

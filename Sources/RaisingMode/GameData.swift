@@ -108,11 +108,13 @@ struct MoveData: Codable {
     let ailment: String?        // mainline status it can inflict (D19-1), if any
     let ailmentChance: Int?     // %; 0 on a Status-category move = always
     let powerMain: Int?         // mainline base power (nil: status/variable/EoS-only)
+    let contact: Bool?          // mainline "makes contact" (nil: EoS-only move)
     enum CodingKeys: String, CodingKey {
         case moveId = "move_id", names, type, category, power, pp, accuracy, desc
         case ailment
         case ailmentChance = "ailment_chance"
         case powerMain = "power_main"
+        case contact
     }
     /// English JSON name — the key for the engine's name-keyed tables
     /// (MoveMechanics & co), which must not follow the UI language.
@@ -250,7 +252,7 @@ enum GameData {
             type: nil, category: "Physical",
             power: 0, pp: 0, accuracy: 100,
             desc: "A plain typeless attack, used when every move is switched off.",
-            ailment: nil, ailmentChance: nil, powerMain: 20)
+            ailment: nil, ailmentChance: nil, powerMain: 20, contact: true)
         return out
     }
 }

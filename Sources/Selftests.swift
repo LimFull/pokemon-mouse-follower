@@ -248,8 +248,17 @@ private func selftestRaisingIfRequested() {
             print("mechanics: \(mapped) moves mapped, struggle=\(GameData.moves[MoveMechanics.struggleId]?.displayName ?? "?")")
             if let ditto = Battler(wildDex: 132, level: 20), let bird = Battler(wildDex: 16, level: 18) {
                 let r = BattleEngine.run(player: ditto, wild: bird)
-                let transformed = r.events.contains { $0.statusApplied == "transformed!" }
-                print("ditto: transformed=\(transformed) in \(r.events.count) events (expect true)")
+                let ev = r.events.first { $0.statusApplied == "transformed!" }
+                // Self-directed: effect/tag/log must anchor on the TRANSFORMER.
+                let selfTargeted = ev.map { $0.targetIsPlayer == $0.actorIsPlayer }
+                print("ditto: transformed=\(ev != nil) selfTargeted=\(selfTargeted.map(String.init) ?? "n/a") in \(r.events.count) events (expect true true)")
+                // End-of-battle reset: Transform ends with the battle — the
+                // reset copy is a plain Ditto again (moves/types recomputed),
+                // keeping only identity, HP and major status.
+                if ev != nil, let reset = Battler(resetting: ditto),
+                   let orig = Battler(wildDex: 132, level: 20) {
+                    print("ditto reset: movesReverted=\(reset.moves == orig.moves) typeReverted=\(reset.type1 == "Normal") wasTransformed=\(ditto.moves != orig.moves) (expect true true true)")
+                }
             }
             if let sm = Battler(wildDex: 235, level: 10), let d = Battler(wildDex: 16, level: 10) {
                 let pick = BattleEngine.chooseMove(attacker: sm, defender: d)
@@ -365,6 +374,31 @@ private func selftestRaisingIfRequested() {
             wm.faceStanding(toward: CGPoint(x: 10, y: 0), pose: .hurt, poseTick: 6)
             let hurtDistinct = wm.currentFrame !== idleFrame
             print("wild pose sheets: attack distinct=\(atkDistinct) hurt distinct=\(hurtDistinct) (expect true true)")
+        }
+        // Ranged-visual classification (mainline contact flag): only contact
+        // moves lunge — Thunder Shock (special, no ROM projectile) and even
+        // Earthquake (physical but non-contact) cast from range; Tackle and
+        // the synthetic basic attack still ram the foe.
+        do {
+            func flag(_ name: String) -> String {
+                guard let id = GameData.moves.first(where: { $0.value.englishName == name })?.key
+                else { return "\(name)=?" }
+                return "\(name)=\(BattleController.rangedVisual(id))"
+            }
+            print("ranged visual: \(flag("ThunderShock")) \(flag("Earthquake")) \(flag("Bubble")) \(flag("Tackle")) basicAttack=\(BattleController.rangedVisual(MoveMechanics.basicAttackId)) (expect true true true false false)")
+        }
+        // Wilds honor the alt-color setting (species 001 ships a variant):
+        // the same first frame must have different pixels with the toggle on.
+        do {
+            let had = AppSettings.shared.altColor
+            func firstFrameBytes(altColor: Bool) -> Data? {
+                AppSettings.shared.altColor = altColor
+                return WildMon(dex: 1)?.currentFrame?.dataProvider?.data as Data?
+            }
+            let normal = firstFrameBytes(altColor: false)
+            let alt = firstFrameBytes(altColor: true)
+            AppSettings.shared.altColor = had
+            print("wild altcolor: frames loaded=\(normal != nil && alt != nil) differ=\(normal != alt) (expect true true)")
         }
         // Over-leveled capture evolves on the next level (#11): Lv20 Caterpie -> Metapod at 21.
         let caterpie = st.makeMon(species: GameData.species[10]!, level: 20)
@@ -574,6 +608,44 @@ private func selftestRaisingIfRequested() {
                 }
             }
             if !checked { print("flee damage: no damaged-flee scenario arose in 8 battles") }
+            AppSettings.shared.raisingMode = hadRaising
+        }
+        // Transform playback: a wild Ditto's shown sprite must swap to the
+        // player's species at the transform beat (scene.wildSpriteDex) and
+        // PERSIST after the battle while the wild stays out (it despawns on a
+        // player win; only a capture resets it).
+        do {
+            let hadRaising = AppSettings.shared.raisingMode
+            AppSettings.shared.raisingMode = true
+            if st.active?.isFainted != false, let alive = st.party.firstIndex(where: { !$0.isFainted }) {
+                st.setActive(alive)
+            }
+            if let playerDex = st.active?.dex {
+                let bc = BattleController()
+                bc.forceEncounter(dex: 132)   // Ditto: Transform is its only move
+                var swappedTicks = 0, battleTicks = 0
+                var recalled = false
+                var after = "gone"
+                for _ in 0..<20_000 {
+                    let scene = bc.update(playerGlobalPos: .zero)
+                    if bc.isBattling {
+                        battleTicks += 1
+                        if scene?.wildSpriteDex == playerDex { swappedTicks += 1 }
+                        // Once the swap showed, flee — the surviving wild must
+                        // KEEP the transformed look while it wanders.
+                        if swappedTicks == 1, !recalled { recalled = true; RaisingState.shared.recall() }
+                    } else if battleTicks > 0 {
+                        if let sc = scene {
+                            after = sc.wildSpriteDex == playerDex ? "persisted" : "reverted"
+                        }
+                        break
+                    }
+                }
+                print("transform sprite: wild shown as player dex=\(playerDex) for \(swappedTicks) ticks, after flee=\(after) (expect >0, persisted)")
+                if st.save.activeIndex == -1, let alive = st.party.firstIndex(where: { !$0.isFainted }) {
+                    st.setActive(alive)   // undo the test recall
+                }
+            }
             AppSettings.shared.raisingMode = hadRaising
         }
         if let s7 = GameData.species[7] { _ = st.addToParty(st.makeMon(species: s7, level: 5)) }

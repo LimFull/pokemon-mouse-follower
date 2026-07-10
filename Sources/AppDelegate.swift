@@ -9,6 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let battle = BattleController()
     private let items = ItemSpawner()
     private var wasFainted = false
+    private var followerSpriteOverridden = false   // Transform is showing another species
     private let evolution = EvolutionAnimator()   // mainline evolution scene (D8/#9)
     private var regenCounter = 0            // out-of-battle +1 HP tick (~30s)
     private var dailyHealCounter = 0        // ~10s date-change poll (D23 midnight heal)
@@ -142,7 +143,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                              ("즉시 배틀: 식스테일 (화상)", 37),
                              ("즉시 배틀: 아보 (독)", 23),
                              ("즉시 배틀: 루주라 (얼음·헤롱헤롱)", 124),
-                             ("즉시 배틀: 별가사리 (물대포)", 120)] {
+                             ("즉시 배틀: 별가사리 (물대포)", 120),
+                             ("즉시 배틀: 메타몽 (변신)", 132)] {
             dm.addItem(menuItem(title, action: #selector(debugEncounter(_:)), tag: dex))
         }
         dm.addItem(.separator())
@@ -206,6 +208,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         let playerPos = evolving ? evolution.position : controller.position
         let scene = battle.update(playerGlobalPos: playerPos)
+        // Transform (D2): while the battle shows the follower as another
+        // species, load that species' sheets; restore the real follower the
+        // tick the override ends (setCharacter dedupes repeated calls).
+        if let dex = scene?.playerSpriteDex {
+            controller.setCharacter(Characters.folder(dex: dex))
+            followerSpriteOverridden = true
+        } else if followerSpriteOverridden {
+            followerSpriteOverridden = false
+            controller.setCharacter(RaisingState.shared.followerFolder)
+        }
         if battle.isBattling, !evolving, let sc = scene {
             // Face the wild; play the battle pose the controller picked.
             controller.face(sc.wildPos, pose: sc.playerPose, poseTick: sc.playerPoseTick)

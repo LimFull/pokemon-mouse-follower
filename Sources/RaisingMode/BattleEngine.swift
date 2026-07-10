@@ -154,6 +154,22 @@ final class Battler {
                   gender: Gender.random(genderRate: s.genderRate), baseExp: s.baseExp ?? 60,
                   currentHP: st.hp, moves: mv)
     }
+
+    /// A wild battler at the END of a battle: same identity (species, level,
+    /// gender), carried HP and major ailment — every battle-local effect gone.
+    /// Transform/Mimic overwrote stats/types/moves in place, so they are
+    /// recomputed from species data — mainline behavior, where Transform ends
+    /// with the battle. Used for rematches and for the caught mon.
+    convenience init?(resetting w: Battler) {
+        guard let s = GameData.species[w.dex] else { return nil }
+        let st = GameData.stats(s, level: w.level)
+        let mv = Array(s.levelUpMoves.filter { $0.level <= w.level }.map { $0.moveId }.suffix(4))
+        self.init(dex: w.dex, name: w.name, level: w.level,
+                  type1: s.type1, type2: s.type2, stats: st,
+                  gender: w.gender, baseExp: w.baseExp,
+                  currentHP: min(w.currentHP, st.hp), moves: mv,
+                  status: w.status)
+    }
 }
 
 // MARK: - Result
@@ -653,7 +669,7 @@ final class BattleSession {
             case .wish:
                 guard atk.healBlockRounds == 0 else { emit(.miss, actorIsPlayer: isPlayer, move: m); return }
                 pending.append((turn + 1, -max(1, atk.maxHP / 2), isPlayer, m.displayName))
-                emit(.attack, actorIsPlayer: isPlayer, move: m, status: "made a wish")
+                emit(.attack, actorIsPlayer: isPlayer, move: m, targetIsPlayer: isPlayer, status: "made a wish")
 
             case .cureStatus:
                 guard atk.status != nil else { emit(.miss, actorIsPlayer: isPlayer, move: m); return }
@@ -751,7 +767,7 @@ final class BattleSession {
             case .futureSight:
                 let dmg = BattleEngine.computeDamage(attacker: atk, defender: def, move: m, eff: 1, powerOverride: 80)
                 pending.append((turn + 2, dmg, !isPlayer, m.displayName))
-                emit(.attack, actorIsPlayer: isPlayer, move: m, status: "foresaw an attack")
+                emit(.attack, actorIsPlayer: isPlayer, move: m, targetIsPlayer: isPlayer, status: "foresaw an attack")
 
             case .perishSong:
                 guard atk.perishCount < 0, def.perishCount < 0 else {
@@ -773,7 +789,7 @@ final class BattleSession {
                 atk.moves = def.moves
                 atk.stages = def.stages
                 atk.transformed = true
-                emit(.attack, actorIsPlayer: isPlayer, move: m, status: "transformed!")
+                emit(.attack, actorIsPlayer: isPlayer, move: m, targetIsPlayer: isPlayer, status: "transformed!")
 
             case .metronome:
                 let pool = GameData.moves.values.filter {
@@ -802,7 +818,7 @@ final class BattleSession {
                     emit(.miss, actorIsPlayer: isPlayer, move: m); return
                 }
                 atk.moves[slot] = lastId
-                emit(.attack, actorIsPlayer: isPlayer, move: m,
+                emit(.attack, actorIsPlayer: isPlayer, move: m, targetIsPlayer: isPlayer,
                      status: "copied \(GameData.moves[lastId]?.displayName ?? "a move")")
 
             case .fleeSelf:
@@ -814,7 +830,7 @@ final class BattleSession {
                 if isPlayer { wildFled = true } else { playerFled = true }
 
             case .splash:
-                emit(.attack, actorIsPlayer: isPlayer, move: m, status: "nothing happened")
+                emit(.attack, actorIsPlayer: isPlayer, move: m, targetIsPlayer: isPlayer, status: "nothing happened")
 
             // ---- wave 2 -------------------------------------------------
             case .acupressure:

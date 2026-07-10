@@ -24,18 +24,44 @@ final class WildMon {
     private let speed: CGFloat = 1.5
 
     init?(dex: Int) {
-        let subdir = "characters/\(Characters.folder(dex: dex))"
+        guard loadSheets(dex: dex) else { return nil }
+        frame(moving: false)
+    }
+
+    /// Swap to another species' sheets in place — Transform (D2): position,
+    /// facing and wander state stay put, only the look changes. Keeps the
+    /// current look when the target's sheets are missing.
+    @discardableResult
+    func setSpecies(dex: Int) -> Bool {
+        guard loadSheets(dex: dex) else { return false }
+        frame(moving: false)
+        return true
+    }
+
+    private func loadSheets(dex: Int) -> Bool {
+        // Honor the alt-color setting like the follower does; the variant may
+        // ship only some sheets, so fall back per-sheet to the base folder
+        // (same pattern as CharacterController.setCharacter).
+        let base = "characters/\(Characters.folder(dex: dex))"
+        let subdir = Characters.spriteSubdir(Characters.folder(dex: dex))
         let xml = Sprite.loadText("AnimData", ext: "xml", subdir: subdir)
-        walk = Self.sheet("Walk-Anim", "Walk", subdir, xml)
-        idle = Self.sheet("Idle-Anim", "Idle", subdir, xml)
-        attack = Self.sheet("Attack-Anim", "Attack", subdir, xml)
-        shoot = Self.sheet("Shoot-Anim", "Shoot", subdir, xml)
-        hurt = Self.sheet("Hurt-Anim", "Hurt", subdir, xml)
-        sleep = Self.sheet("Sleep-Anim", "Sleep", subdir, xml)
+        func load(_ png: String, _ anim: String) -> [[CGImage]] {
+            let sheet = Sprite.slicedSheet(png, anim: anim, subdir: subdir, xml: xml)
+            guard sheet.isEmpty, subdir != base else { return sheet }
+            let baseXml = Sprite.loadText("AnimData", ext: "xml", subdir: base)
+            return Sprite.slicedSheet(png, anim: anim, subdir: base, xml: baseXml)
+        }
+        let newWalk = load("Walk-Anim", "Walk")
+        guard !newWalk.isEmpty else { return false }
+        walk = newWalk
+        idle = load("Idle-Anim", "Idle")
+        attack = load("Attack-Anim", "Attack")
+        shoot = load("Shoot-Anim", "Shoot")
+        hurt = load("Hurt-Anim", "Hurt")
+        sleep = load("Sleep-Anim", "Sleep")
         if idle.isEmpty { idle = walk }
         if shoot.isEmpty { shoot = attack }
-        guard !walk.isEmpty else { return nil }
-        frame(moving: false)
+        return true
     }
 
     func place(at p: CGPoint) {
@@ -128,12 +154,4 @@ final class WildMon {
         currentFrame = frames[(tick / (moving ? 6 : 10)) % frames.count]
     }
 
-    private static func sheet(_ png: String, _ anim: String, _ subdir: String, _ xml: String?) -> [[CGImage]] {
-        guard let img = Sprite.loadCG(png, subdir: subdir) else { return [] }
-        var cw = img.height / 8, ch = img.height / 8
-        if let xml, let (w, h) = Sprite.frameSize(anim, in: xml) { cw = w; ch = h }
-        guard cw > 0, ch > 0 else { return [] }
-        let rows = max(1, img.height / ch), cols = max(1, img.width / cw)
-        return Sprite.slice(img, cols: cols, rows: rows, cellW: cw, cellH: ch)
-    }
 }
