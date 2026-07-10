@@ -1,4 +1,4 @@
-# CI (design/windows-port.md W15): every push builds both platforms and runs
+﻿# CI (design/windows-port.md W15): every push builds both platforms and runs
 # the shared core selftest; a v* tag additionally packages the Windows zip +
 # installer and attaches them to the GitHub release. macOS release stays
 # manual (release.sh needs the signing/notarization credentials).
@@ -32,7 +32,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: compnerd/gha-setup-swift@v3
+      - uses: compnerd/gha-setup-swift@v0.4.0
         with:
           branch: swift-6.3.3-release
           tag: 6.3.3-RELEASE
@@ -59,7 +59,7 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - uses: compnerd/gha-setup-swift@v3
+      - uses: compnerd/gha-setup-swift@v0.4.0
         with:
           branch: swift-6.3.3-release
           tag: 6.3.3-RELEASE
