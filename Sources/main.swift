@@ -923,6 +923,10 @@ final class UIZoomHost: NSScrollView {
     /// Size the document to its 1x size and the host to the zoomed size.
     func layoutZoomed(size1x: CGSize, _ k: CGFloat) {
         documentView?.frame = CGRect(origin: .zero, size: size1x)
+        // Re-pin in an order that keeps min <= max at every step — going up
+        // from an already-pinned factor, setting min first throws (and going
+        // down, max first would).
+        maxMagnification = max(k, maxMagnification)
         minMagnification = k
         maxMagnification = k
         magnification = k
@@ -1255,7 +1259,12 @@ final class SettingsWindowController: NSObject {
     }
 
     @objc private func uiScaleChanged(_ sender: NSPopUpButton) {
-        AppSettings.shared.uiScale = CGFloat(AppSettings.uiScaleSteps[sender.indexOfSelectedItem])
+        setUIScale(CGFloat(AppSettings.uiScaleSteps[sender.indexOfSelectedItem]))
+    }
+
+    /// Live UI-scale change (popup + selftest hook).
+    func setUIScale(_ k: CGFloat) {
+        AppSettings.shared.uiScale = k
         applyWindowSize(animate: false)
     }
 
@@ -1931,6 +1940,30 @@ if let i = CommandLine.arguments.firstIndex(of: "--dump-evolution"),
 // Headless check for the UI-scale zoom: the settings window / update HUD
 // must grow by the factor while their content keeps its 1x layout.
 if CommandLine.arguments.contains("--selftest-uiscale") {
+    // Visual dump for eyeballing the zoom. Render the LAYER tree — the
+    // same thing the window server composites; cacheDisplay draws through
+    // the view path, which mishandles the bounds transform.
+    func dump(_ sc: SettingsWindowController, _ name: String) {
+        guard let cv = sc.window.contentView else { return }
+        cv.layoutSubtreeIfNeeded()
+        sc.window.display()
+        let sz = cv.bounds.size
+        guard let ctx = CGContext(data: nil, width: Int(sz.width * 2), height: Int(sz.height * 2),
+                                  bitsPerComponent: 8, bytesPerRow: 0,
+                                  space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue) else { return }
+        ctx.scaleBy(x: 2, y: 2)
+        NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: false)
+        cv.layer?.render(in: ctx)
+        NSGraphicsContext.current = nil
+        if let img = ctx.makeImage(),
+           let d = CGImageDestinationCreateWithURL(
+                URL(fileURLWithPath: "/tmp/pmf-uiscale-\(name).png") as CFURL,
+                UTType.png.identifier as CFString, 1, nil) {
+            CGImageDestinationAddImage(d, img, nil)
+            CGImageDestinationFinalize(d)
+        }
+    }
     let saved = AppSettings.shared.uiScale
     for k in [1.0, 1.5, 2.0] {
         AppSettings.shared.uiScale = k
@@ -1939,31 +1972,16 @@ if CommandLine.arguments.contains("--selftest-uiscale") {
         let hud = UpdateProgressWindow()
         print(String(format: "uiscale %.2f: settings=%.0fx%.0f hud=%@",
                      k, f.width, f.height, hud.debugFrameString))
-        // Visual dump for eyeballing the zoom. Render the LAYER tree — the
-        // same thing the window server composites; cacheDisplay draws through
-        // the view path, which mishandles the bounds transform.
-        if let cv = sc.window.contentView {
-            cv.layoutSubtreeIfNeeded()
-            sc.window.display()
-            let sz = cv.bounds.size
-            if let ctx = CGContext(data: nil, width: Int(sz.width * 2), height: Int(sz.height * 2),
-                                   bitsPerComponent: 8, bytesPerRow: 0,
-                                   space: CGColorSpace(name: CGColorSpace.sRGB)!,
-                                   bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue) {
-                ctx.scaleBy(x: 2, y: 2)
-                NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: false)
-                cv.layer?.render(in: ctx)
-                NSGraphicsContext.current = nil
-                if let img = ctx.makeImage() {
-                    let url = URL(fileURLWithPath: "/tmp/pmf-uiscale-\(Int(k * 100)).png")
-                    if let d = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil) {
-                        CGImageDestinationAddImage(d, img, nil)
-                        CGImageDestinationFinalize(d)
-                    }
-                }
-            }
-        }
+        dump(sc, String(Int(k * 100)))
     }
+    // Live change: the popup path must re-render at the new factor without
+    // recreating the window (no relaunch needed).
+    AppSettings.shared.uiScale = 1
+    let sc = SettingsWindowController(controller: CharacterController())
+    sc.setUIScale(2.0)
+    let f = sc.window.frame
+    print(String(format: "uiscale live 1->2: settings=%.0fx%.0f", f.width, f.height))
+    dump(sc, "live")
     AppSettings.shared.uiScale = saved
     exit(0)
 }
