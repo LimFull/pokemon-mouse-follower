@@ -14,6 +14,8 @@ private let idValueBase: Int32 = 120
 private let idAltColor: Int32 = 130
 private let idShadow: Int32 = 131
 private let idLaunch: Int32 = 132
+private let idRaising: Int32 = 133
+private let idCharLabel: Int32 = 134
 private let idLanguage: Int32 = 140
 private let idPrev: Int32 = 150
 private let idNext: Int32 = 151
@@ -60,23 +62,43 @@ private let settingsClassName = wide("PMFSettings")
 private let previewClassName = wide("PMFSettingsPreview")
 private var settingsClassRegistered = false
 
+private let kWM_CTLCOLORSTATIC: UINT = 0x0138
+
 private func settingsWndProc(_ hwnd: HWND?, _ msg: UINT, _ wParam: WPARAM, _ lParam: LPARAM) -> LRESULT {
     guard let dlg = SettingsDialog.shared else { return DefWindowProcW(hwnd, msg, wParam, lParam) }
     switch msg {
     case kWM_COMMAND:
-        dlg.handleCommand(id: Int32(wParam & 0xFFFF), code: UInt32((wParam >> 16) & 0xFFFF))
+        let id = Int32(wParam & 0xFFFF)
+        if dlg.panel?.handleCommand(id) == true { return 0 }
+        dlg.handleCommand(id: id, code: UInt32((wParam >> 16) & 0xFFFF))
         return 0
     case kWM_HSCROLL:
-        if let bar = HWND(bitPattern: UInt(bitPattern: Int(lParam))) { dlg.handleSlider(bar) }
+        if let bar = HWND(bitPattern: UInt(bitPattern: Int(lParam))) {
+            if dlg.panel?.handleHScroll(bar) == true { return 0 }
+            dlg.handleSlider(bar)
+        }
         return 0
     case kWM_TIMER:
-        dlg.tickPreview()
+        if wParam == 2 { dlg.panel?.secondTick() } else { dlg.tickPreview() }
         return 0
+    case kWM_CTLCOLORSTATIC:
+        // Labels sit on the white dialog background, not the default gray.
+        // (wParam carries the HDC; convert via bit pattern — handle values can
+        // exceed Int.max as unsigned, so Int(wParam) would trap.)
+        if let hdc = HDC(bitPattern: UInt(wParam)) {
+            SetBkMode(hdc, TRANSPARENT)
+        }
+        if let brush = GetSysColorBrush(COLOR_WINDOW) {
+            return LRESULT(Int(bitPattern: UnsafeRawPointer(brush)))
+        }
+        return DefWindowProcW(hwnd, msg, wParam, lParam)
     case kWM_CLOSE:
         DestroyWindow(hwnd)
         return 0
     case kWM_DESTROY:
         KillTimer(hwnd, 1)
+        KillTimer(hwnd, 2)
+        dlg.panel = nil
         SettingsDialog.shared = nil
         return 0
     default:
@@ -111,7 +133,11 @@ final class SettingsDialog {
     private var controls: [Int32: HWND] = [:]
     private var previewHwnd: HWND?
     private var font: HFONT?
+    private var smallFont: HFONT?
+    private var monoFont: HFONT?
     private var k: Double = 1   // DPI scale (96 = 1x)
+    /// The raising panel on the right (nil while raising mode is off).
+    var panel: RaisingPanelWin?
 
     // Preview animation state (idle-down frames of the selected character).
     private var previewFrames: [RGBABuffer] = []
@@ -146,12 +172,50 @@ final class SettingsDialog {
         guard let hwnd else { return }
         k = Double(GetDpiForWindow(hwnd)) / 96.0
         font = makeFont(13)
+        smallFont = makeFont(11)
+        monoFont = makeMonoFont(11)
         buildControls()
-        sizeWindow()
+        updateModeVisibility()
+        applyWindowSize()
         reloadPreview()
         SetTimer(hwnd, 1, 150, nil)
+        SetTimer(hwnd, 2, 1000, nil)   // raising panel: battle/fainted refresh
         ShowWindow(hwnd, SW_SHOW)
         SetForegroundWindow(hwnd)
+    }
+
+    /// Show/hide the character-picker block and the raising panel per the
+    /// raising-mode setting (macOS updateModeVisibility + panel host mirror).
+    func updateModeVisibility() {
+        let raising = AppSettings.shared.raisingMode
+        for id in [idCombo, idPrev, idNext, idRandom, idCharLabel] {
+            ShowWindow(controls[id], raising ? SW_HIDE : SW_SHOW)
+        }
+        ShowWindow(previewHwnd, raising ? SW_HIDE : SW_SHOW)
+        if raising {
+            if panel == nil, let hwnd {
+                let p = RaisingPanelWin(parent: hwnd, k: k, font: font,
+                                        smallFont: smallFont, monoFont: monoFont)
+                p.onContentChanged = { [weak self] in self?.applyWindowSize() }
+                panel = p
+            }
+        } else {
+            panel = nil   // deinit tears the child controls down
+        }
+        applyWindowSize()
+    }
+
+    /// Window sized to its content: the base column, widened by the panel and
+    /// stretched to the taller of the two in raising mode.
+    private func applyWindowSize() {
+        let raising = AppSettings.shared.raisingMode && panel != nil
+        let width = raising ? RaisingPanelWin.panelX + 320 : 400
+        let height = raising ? max(contentHeight, panel?.contentHeight ?? 0) : contentHeight
+        var rc = RECT(left: 0, top: 0, right: px(width), bottom: px(height))
+        AdjustWindowRect(&rc, DWORD(WS_CAPTION | WS_SYSMENU), false)
+        SetWindowPos(hwnd, nil, 0, 0, rc.right - rc.left, rc.bottom - rc.top,
+                     UINT(SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE))
+        InvalidateRect(hwnd, nil, true)
     }
 
     private func px(_ v: Double) -> Int32 { Int32((v * k).rounded()) }
@@ -164,6 +228,17 @@ final class SettingsDialog {
                         DWORD(DEFAULT_CHARSET), DWORD(OUT_DEFAULT_PRECIS),
                         DWORD(CLIP_DEFAULT_PRECIS), DWORD(CLEARTYPE_QUALITY),
                         DWORD(DEFAULT_PITCH), buf.baseAddress)
+        }
+    }
+
+    private func makeMonoFont(_ size: Double) -> HFONT? {
+        let name = wide("Consolas")
+        let height: Int32 = -px(size)
+        return name.withUnsafeBufferPointer { buf -> HFONT? in
+            CreateFontW(height, 0, 0, 0, 400, 0, 0, 0,
+                        DWORD(DEFAULT_CHARSET), DWORD(OUT_DEFAULT_PRECIS),
+                        DWORD(CLIP_DEFAULT_PRECIS), DWORD(CLEARTYPE_QUALITY),
+                        DWORD(FIXED_PITCH), buf.baseAddress)
         }
     }
 
@@ -204,8 +279,10 @@ final class SettingsDialog {
             _ = child("STATIC", text, id: 0, x: 8, y: rowY + 5, w: labelW, h: 20, style: DWORD(SS_RIGHT))
         }
 
-        // Character dropdown (droplist keeps it read-only).
-        label(L("label.character"), y)
+        // Character dropdown (droplist keeps it read-only). The label carries
+        // an id so raising mode can hide the whole picker block.
+        _ = child("STATIC", L("label.character"), id: idCharLabel, x: 8, y: y + 5,
+                  w: labelW, h: 20, style: DWORD(SS_RIGHT))
         let combo = child("COMBOBOX", "", id: idCombo, x: ctrlX, y: y, w: ctrlW + 60, h: 400,
                           style: DWORD(CBS_DROPDOWNLIST | WS_VSCROLL))
         for info in Characters.all { sendString(combo, kCB_ADDSTRING, 0, info.name) }
@@ -237,7 +314,8 @@ final class SettingsDialog {
         // Toggles.
         for (id, text, on) in [(idAltColor, L("label.altcolor"), s.altColor),
                                (idShadow, L("label.shadow"), s.showShadow),
-                               (idLaunch, L("label.launch"), LoginItem.isEnabled)] {
+                               (idLaunch, L("label.launch"), LoginItem.isEnabled),
+                               (idRaising, L("label.raising"), s.raisingMode)] {
             _ = child("BUTTON", text, id: id, x: ctrlX, y: y, w: 240, h: 22,
                       style: DWORD(BS_AUTOCHECKBOX))
             send(controls[id], kBM_SETCHECK, on ? 1 : 0)
@@ -262,14 +340,6 @@ final class SettingsDialog {
     }
 
     private var contentHeight = 480.0
-
-    private func sizeWindow() {
-        var rc = RECT(left: 0, top: 0, right: px(400), bottom: Int32(Double(px(1)) * contentHeight))
-        rc.bottom = px(contentHeight)
-        AdjustWindowRect(&rc, DWORD(WS_CAPTION | WS_SYSMENU), false)
-        SetWindowPos(hwnd, nil, 0, 0, rc.right - rc.left, rc.bottom - rc.top,
-                     UINT(SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE))
-    }
 
     private func fmt(_ tag: Int32, _ v: Double) -> String {
         switch tag {
@@ -303,6 +373,10 @@ final class SettingsDialog {
             if !LoginItem.setEnabled(wantOn) {
                 send(controls[idLaunch], kBM_SETCHECK, wantOn ? 0 : 1)   // revert on failure
             }
+        case idRaising:
+            s.raisingMode = send(controls[idRaising], kBM_GETCHECK) == 1
+            updateModeVisibility()
+            NotificationCenter.default.post(name: .raisingChanged, object: nil)   // switch follower
         case idLanguage where code == kCBN_SELCHANGE:
             let i = Int(send(controls[idLanguage], kCB_GETCURSEL))
             s.language = ["auto", "en", "ko", "ja"][max(0, min(3, i))]

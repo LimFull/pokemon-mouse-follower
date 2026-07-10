@@ -68,10 +68,13 @@ let evolvedObserver = NotificationCenter.default.addObserver(
           let to = note.userInfo?["to"] as? Int else { return }
     evolution.start(fromDex: from, toDex: to, at: controller.position)
 }
-// Decision prompts need the Phase 5c panel UI; log-drop until then (the
-// pending decision re-derives from the save, so nothing wedges).
-PromptRelay.handler = { prompt in
-    print("PokemonMouseFollower: prompt pending (\(prompt)) — panel UI arrives in Phase 5c")
+// Decision prompts (learn move / full party) show as clickable cards.
+PromptRelay.handler = { PromptCenterWin.shared.enqueue($0) }
+// Debug: preview the on-overlay prompts without earning them (AppDelegate mirror).
+if ProcessInfo.processInfo.environment["PMF_TEST_PROMPT"] != nil,
+   let mon = RaisingState.shared.active {
+    PromptRelay.enqueue(.learnMove(monIndex: 0, moveId: mon.moves.first ?? 154))
+    PromptRelay.enqueue(.fullParty(captured: mon))
 }
 
 // --smoke <ticks>: run headless-ish for N ticks then exit 0 (dev/CI check).
