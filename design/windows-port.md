@@ -30,7 +30,7 @@
 
 | 등급 | 파일 | 근거 |
 |---|---|---|
-| **A. 그대로 재사용** (import Foundation만) | `Sources/Characters.swift`(99줄), `RaisingMode/GameData.swift`(258), `PartyState.swift`(586), `BattleEngine.swift`(1475), `MoveMechanics.swift`(268), `BattleLog.swift`(226) | 단 `GameData.swift:222`, `BattleEngine.swift:27`, `Characters.swift:58`이 `Bundle.main` 리소스 조회, `Characters.swift:95`가 `AppSettings` 참조 → 얇은 래퍼 필요 |
+| **A. 그대로 재사용** (import Foundation만) | `Sources/Characters.swift`(99줄), `RaisingMode/GameData.swift`(258), `PartyState.swift`(586), `BattleEngine.swift`(1475), `MoveMechanics.swift`(268), `BattleLog.swift`(226) | 단 `GameData.swift:222`, `BattleEngine.swift:27`, `Characters.swift:58`이 `Bundle.main` 리소스 조회, `Characters.swift:95`가 `AppSettings` 참조 → 얇은 래퍼 필요. **Phase 0에서 발견**: `PartyState.swift:231,243,430,439,459`가 `BattleController.current`(AppKit 파일)를 직접 참조(전투 중 회수/아이템 게이팅) → Phase 1에서 프로토콜 시임(`LiveBattleBridge`) 필요 |
 | **B. 로직 추출** (AppKit 표피만 제거) | `CharacterController.swift`(300) — 조향 물리·수면·8방향 로우 선택은 순수 수학, AppKit 의존은 `CGImage` 프레임 저장뿐(:20-26). `WildMon.swift`(157) — 동일 구조. `BattleController.swift`(1014) — 재생 상태머신은 중립, 의존은 `NSColor` 태그 색(:426-501)·`NSScreen` 경계(:988-1002)·`BattleScene`의 `CGImage/CGColor`. `Items.swift`(268) — 카탈로그/스폰 로직 중립, 의존은 CGContext 아이콘 드로잉(:97-181)·`NSScreen` union. `Sprite.swift`(163) — 슬라이싱/마커 분석이 이미 바이트 버퍼 기반(:64-133), ImageIO 디코딩(:9-14)만 종속 |
 | **C. 플랫폼별 재작성** | `main.swift`, `AppDelegate.swift`(428), `SpriteView.swift`(330, CALayer), `SettingsWindow.swift`(363), `CharacterPreviewView.swift`(98), `UIStyle.swift`, `Updater.swift`(262, DMG/hdiutil), `AppCore.swift`(128, UserDefaults+SMAppService), `RaisingPanel.swift`(950), `PromptCenter.swift`(168), `EvolutionAnimator.swift`(171), `EffectPlayer.swift`(401), `TypeStyle.swift`, `Selftests.swift`(682 — 헤드리스 부분 :183-330은 A등급 코드만 사용) |
 
@@ -43,8 +43,8 @@
 | 60fps `Timer` + `NSEvent.mouseLocation` 폴링 (`AppDelegate.swift:171-184`) | 고해상도 waitable timer 루프 + `GetCursorPos` | W5, W6 |
 | `NSScreen.screens` + `didChangeScreenParametersNotification` | `EnumDisplayMonitors` + `WM_DISPLAYCHANGE`/`WM_DPICHANGED` | W4 |
 | 전역 좌표 y-up, 하단좌측 원점 (`CharacterController.swift:39`, `SpriteView.swift:8-10`) | 가상 스크린 y-down·음수 좌표 → 어댑터에서 flip | W4 |
-| UserDefaults 설정 (`AppCore.swift:41-128`) | `%APPDATA%\PokemonMouseFollower\settings.json` | W9 |
-| `~/Library/Application Support/PokemonMouseFollower/raising.json` (`PartyState.swift:556-577`) | corelibs-foundation이 `.applicationSupportDirectory`→`%APPDATA%` 매핑 — 무수정 동작 예상, Phase 0 검증 | — |
+| UserDefaults 설정 (`AppCore.swift:41-128`) | `%LOCALAPPDATA%\PokemonMouseFollower\settings.json` | W9 |
+| `~/Library/Application Support/PokemonMouseFollower/raising.json` (`PartyState.swift:556-577`) | `.applicationSupportDirectory`→`%LOCALAPPDATA%` 매핑 — **Phase 0에서 무수정 동작 확인** | — |
 | SMAppService 자동시작 (`AppCore.swift:12-29`) | `HKCU\...\CurrentVersion\Run` 키 | W11 |
 | NSLocalizedString + 3개 .lproj (en 156키) | 커스텀 .strings 파서 (Core 공용) | W10 |
 | DMG 자체 업데이터: 분리 셸 스크립트가 종료 대기 후 번들 교체 (`Updater.swift:103-139`) | Setup.exe 다운로드 후 사일런트 실행 | W14 |
@@ -84,7 +84,7 @@
 
 ### 플랫폼 서비스
 
-- **W9. 설정 저장** — 채택: **`SettingsStore` 프로토콜**. Windows = `%APPDATA%\PokemonMouseFollower\settings.json` (corelibs-foundation UserDefaults의 Windows 저장 위치/신뢰성이 불명확 — 검증 비용보다 JSON 대체가 쌈). macOS = 기존 UserDefaults 백엔드 유지(기존 사용자 설정 보존, dev suite 로직 포함).
+- **W9. 설정 저장** — 채택: **`SettingsStore` 프로토콜**. Windows = `%LOCALAPPDATA%\PokemonMouseFollower\settings.json` (Foundation `.applicationSupportDirectory`가 `%LOCALAPPDATA%`로 매핑 — Phase 0 실측; 세이브와 같은 폴더) (corelibs-foundation UserDefaults의 Windows 저장 위치/신뢰성이 불명확 — 검증 비용보다 JSON 대체가 쌈). macOS = 기존 UserDefaults 백엔드 유지(기존 사용자 설정 보존, dev suite 로직 포함).
 - **W10. 로컬라이제이션** — 채택: **커스텀 .strings 파서를 Core에 두고 양 플랫폼 공용**. `L()`을 Core로 이동. 포맷이 단순(`"key" = "value";` + `\n`/`\"` 이스케이프)해 파서 ~50줄. `.lproj` 언어 선택이 Windows Foundation에서 동작할지 불확실한 도박을 제거하고 macOS와 문자열 선택 로직이 100% 일치. 언어 결정: Windows `GetUserPreferredUILanguages` → ko/ja/en 매칭 + 설정에 수동 오버라이드 항목(신규). `%@`/`%d` 포맷 치환은 기존 `String(format:)` 그대로.
 - **W11. 자동시작** — 채택: `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`에 exe 경로 등록/삭제(`RegSetValueExW`). `LoginItem` 프로토콜화(`AppCore.swift:12-29` 대응).
 - **W12. 리소스 배치/로딩** — 채택: exe 옆 폴더 구조 `{ PokemonMouseFollower.exe, *.dll(Swift 런타임), characters/, gamedata/, locale/{en,ko,ja}.strings, LICENSE }`. corelibs-foundation `Bundle.main.resourceURL` = exe 디렉토리라 기존 호출이 동작할 가능성 높으나, **Core에 `Resources.url(name,ext,subdir)` 래퍼**를 도입해 exe-상대 경로 폴백을 심어 불확실성 제거(Phase 0 검증).
@@ -239,3 +239,32 @@ Sources/
 - **Phase 5 — 키우기 모드 포팅**: BattleController/Items/WildMon/EffectPlayer/EvolutionAnimator 로직 추출, 배틀 크롬(HP바·Lv태그·플로팅 텍스트·배틀 로그) GDI 텍스트 렌더, RaisingPanel·PromptCenter Win32 재작성(가장 큰 덩어리), 아이템 아이콘 PNG화.
   **완료 기준**: 시드 픽스처 배틀 로그 macOS↔Windows 일치(W18-②), 키우기 QA 시나리오(스타터→배틀→포획→진화→프롬프트) 통과.
 - **Phase 6 — 완전 패리티 & 폴리시**: 전체 QA 체크리스트, 가상 데스크톱 폴백, 세이브 상호 호환 확인(raising.json 스키마 동일), 성능 프로파일(ULW 채우기율 — 필요 시 DComp 백엔드 전환 판단), 패리티 릴리즈.
+
+---
+
+## 10. Phase 0 검증 결과 (2026-07-10, ✅ 완료)
+
+환경: Windows 11 Pro, Swift 6.3.3 (winget `Swift.Toolchain`), VS Build Tools 2022 (MSVC 14.44) + Windows SDK 10.0.26100. 검증 코드: `spike/windows-phase0/`.
+
+| 체크리스트 항목 | 결과 |
+|---|---|
+| 코어 6파일 무수정 컴파일 | ✅ 스텁 4개(L/PMF/AppSettings/GameItem 로직부/BattleController)만으로 컴파일·실행 |
+| 미니 셀프테스트 | ✅ 전부 통과 — GameData(251종/544기술/19타입) 로드, 새 게임→Lv22 성장→L16 진화, 배틀 1판(턴 스탬프 단조), 한국어 배틀 로그 52줄 미해석 키 0, 세이브 기록 |
+| `Bundle.main` 리소스 조회 | ✅ `resourceURL` = exe 디렉토리. exe 옆 `gamedata/` 폴더에서 기존 호출이 그대로 동작 |
+| `.applicationSupportDirectory` | ✅ `%LOCALAPPDATA%`(`C:\Users\<u>\AppData\Local`)로 매핑 — W9/세이브 경로 확정 |
+| 커스텀 `.strings` 파서 (W10) | ✅ ~40줄 정규식 파서로 ko 1,217키 파싱, `String(format:)` 포맷 치환 정상 |
+| `CGVector` | ❌ 부재 (`CGPoint`/`CGRect`/`CGFloat`는 있음) → Phase 1에서 Core `Vec2` 정의 확정 |
+| GDI+ flat API (W20) | ✅ WinSDK 모듈에는 미노출(gdiplus.h가 C++) → `LoadLibrary`/`GetProcAddress` 동적 바인딩으로 검증 완료. 주의: Swift 정의 구조체는 `@convention(c)` 시그니처에 못 들어감 → raw pointer로 전달 |
+| ULW 오버레이 (W3) | ✅ 클릭통과 레이어드 창이 60fps로 커서 추적, 741틱 ULW 실패 0. PNG 시트 디코딩→PARGB 프레임 슬라이스→2x nearest→per-pixel alpha 전 과정 검증 |
+| 고해상도 타이머 (W5) | ✅ `CreateWaitableTimerExW(HIGH_RESOLUTION)` 사용 가능 |
+| `/SUBSYSTEM:WINDOWS` (W17) | ✅ `-Xlinker /SUBSYSTEM:WINDOWS -Xlinker /ENTRY:mainCRTStartup` 링크 성공 |
+| 비ASCII 경로 | ✅ `C:\가득\` 소스 컴파일, `save-테스트\` 디렉토리 세이브 정상 |
+| DateFormatter | ✅ 동작 |
+| 멀티모니터 | ⏳ 이 머신은 모니터 1대(2560×1440) — 멀티모니터 실측은 QA 체크리스트로 이월 |
+
+**Phase 1에 미치는 영향**:
+1. `PartyState.swift` → `BattleController` 커플링 발견(§2.1) — `LiveBattleBridge` 프로토콜 시임 추가.
+2. `Vec2` 대체 확정 (CGVector 부재).
+3. W20은 동적 바인딩 방식으로 확정 (modulemap C 심 불필요 — 검증된 코드를 `Windows/ImageDecode.swift`가 그대로 흡수).
+4. 설정/세이브 디렉토리는 `%LOCALAPPDATA%\PokemonMouseFollower\`로 통일.
+5. **macOS 검증 제약**: 현 개발 머신이 Windows라 Phase 1의 "macOS 무변화" 완료 기준(빌드+셀프테스트)은 Mac에서 실행해야 확정됨 — Phase 1 커밋 후 Mac에서 `./dev.sh` + `--selftest-raising` 확인 필요.
