@@ -247,6 +247,10 @@ final class BattleSession {
         self.stock = balls
     }
 
+    /// Replace the remaining ball stock mid-battle — the bag's capture toggle
+    /// is live, so the controller re-syncs this at every round boundary.
+    func setBallStock(_ balls: [GameItem]) { stock = balls }
+
     var isOver: Bool {
         player.isFainted || wild.isFainted || captured || playerFled || wildFled || turn >= 200
     }

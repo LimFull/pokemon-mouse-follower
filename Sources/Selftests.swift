@@ -364,6 +364,29 @@ private func selftestRaisingIfRequested() {
             if r.captured { _ = st.addCaptured(from: w2); print("party after capture=\(st.party.count)") }
         }
         print("bag: pokeball=\(st.itemCount(.pokeBall)) potion=\(st.itemCount(.potion)) canUsePotionOnHurt=\(st.canUseItem(.potion, at: 0))")
+        // Live capture toggle: the ball stock re-syncs at round boundaries —
+        // a session started with NO balls throws one the round after stock
+        // arrives (wild kept catchable at <50% HP; tanky mirror match so
+        // neither side faints while we watch).
+        if let p2 = Battler(wildDex: 113, level: 50), let w4 = Battler(wildDex: 113, level: 100) {
+            // Chansey mirror: huge HP on both sides, base-5 attack on both —
+            // neither can faint the other for many rounds (a real attacker
+            // one-shots Chansey's base-5 DEFENSE, ending the fight before the
+            // stock arrives). Wild pinned to Tackle: its own Soft-Boiled would
+            // heal it over the 50% catchable line and legitimately stop throws.
+            w4.currentHP = w4.maxHP * 49 / 100
+            w4.moves = [154]
+            let sess = BattleSession(player: p2, wild: w4)
+            let before = sess.nextRound().contains { $0.kind == .ball }
+            sess.setBallStock([.pokeBall, .pokeBall, .pokeBall])
+            var threw = false
+            var rounds = 0
+            while !sess.isOver, !threw, rounds < 10 {
+                rounds += 1
+                threw = sess.nextRound().contains { $0.kind == .ball }
+            }
+            print("live ball stock: beforeStock=\(before) afterStock=\(threw) (expect false true)")
+        }
         // Wild battle-pose sheets actually load (attack frame differs from idle).
         if let wm = WildMon(dex: 7) {
             wm.place(at: .zero)

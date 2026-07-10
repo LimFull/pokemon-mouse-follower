@@ -255,6 +255,24 @@ final class BattleController {
         else { wm.wander(bounds: screenBounds()) }
     }
 
+    /// Balls available to throw right now: nothing when the capture toggle is
+    /// off, else bag counts minus what this battle already threw (the bag is
+    /// only debited at finishBattle), capped at 3 throws per battle including
+    /// those already made. The stronger ball goes first (2026-07-10, was
+    /// cheapest first).
+    private func ballStock(used: [GameItem]) -> [GameItem] {
+        let st = RaisingState.shared
+        guard st.captureEnabled else { return [] }
+        let throwsLeft = 3 - used.count
+        guard throwsLeft > 0 else { return [] }
+        func remaining(_ item: GameItem) -> Int {
+            max(0, st.itemCount(item) - used.filter { $0 == item }.count)
+        }
+        var balls = Array(repeating: GameItem.greatBall, count: min(throwsLeft, remaining(.greatBall)))
+        balls += Array(repeating: .pokeBall, count: min(throwsLeft - balls.count, remaining(.pokeBall)))
+        return balls
+    }
+
     private func startBattle() {
         guard let w = wild, let wm = wildMon, let mon = RaisingState.shared.active, let p = Battler(mon: mon) else { despawn(); return }
         // Fight where they met. Only un-overlap: if the two are practically on
@@ -269,14 +287,9 @@ final class BattleController {
         wm.faceStanding(toward: playerPos)
         // Balls to throw (D11) — only when the bag's capture toggle is on; a
         // full party still catches (the release-or-abandon prompt resolves it
-        // afterwards). The stronger ball goes first (2026-07-10, was cheapest
-        // first): if a Great Ball is in the bag, lead with it.
+        // afterwards). Re-synced at every round boundary so the toggle is live.
         let st = RaisingState.shared
-        var balls: [GameItem] = []
-        if st.captureEnabled {
-            balls = Array(repeating: GameItem.greatBall, count: min(3, st.itemCount(.greatBall)))
-            balls += Array(repeating: .pokeBall, count: min(3 - balls.count, st.itemCount(.pokeBall)))
-        }
+        let balls = ballStock(used: [])
         // Gauges start at the REAL current/max ratio (a hurt mon enters hurt;
         // a rematched wild keeps its damage) — captured before the first
         // round mutates the battlers.
@@ -318,6 +331,7 @@ final class BattleController {
                         item = queued
                     }
                 }
+                s.setBallStock(ballStock(used: s.used))   // capture toggle is live
                 events = s.nextRound(playerItem: item)
                 evIdx = 0; evTick = 0
                 return
