@@ -22,7 +22,9 @@ enum Gender: String, Codable {
     /// `genderRate` is PokeAPI-style female eighths; -1 (or nil) = genderless.
     static func random(genderRate: Int?) -> Gender {
         guard let r = genderRate, r >= 0 else { return .genderless }
-        return Int.random(in: 0..<8) < r ? .female : .male
+        // Drawn from the battle RNG so a seeded fixture rolls identical
+        // battlers on both platforms (W18-②).
+        return Int.random(in: 0..<8, using: &BattleRNG.g) < r ? .female : .male
     }
 }
 

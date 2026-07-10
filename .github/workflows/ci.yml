@@ -27,6 +27,14 @@ jobs:
         run: |
           PMF_SAVE_DIR=/tmp/pmf-selftest \
             ./PokemonMouseFollower.app/Contents/MacOS/PokemonMouseFollower --selftest-raising
+      - name: Parity fixture dump (W18-2)
+        run: |
+          ./PokemonMouseFollower.app/Contents/MacOS/PokemonMouseFollower --dump-parity 12345 > parity-macos.txt
+          tail -1 parity-macos.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: parity-macos
+          path: parity-macos.txt
 
   windows:
     runs-on: windows-latest
@@ -50,6 +58,32 @@ jobs:
           $env:PMF_DEV = "1"
           & .\build-win\PokemonMouseFollower\PokemonMouseFollower.exe --smoke 300
         shell: pwsh
+      - name: Parity fixture dump (W18-2)
+        run: |
+          # cmd-level redirect: PowerShell's > writes UTF-16 and would break the diff
+          cmd /c ".\build-win\PokemonMouseFollower\PokemonMouseFollower.exe --dump-parity 12345 > parity-windows.txt"
+          Get-Content parity-windows.txt -Tail 1
+        shell: pwsh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: parity-windows
+          path: parity-windows.txt
+
+  # The engine is shared code — a seeded battle must replay bit-identically on
+  # both platforms (design/windows-port.md W18-2). Any divergence fails here.
+  parity:
+    needs: [macos, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: parity-*
+          merge-multiple: true
+      - name: Compare event logs
+        run: |
+          sed -i 's/\r$//' parity-windows.txt   # normalize CRLF just in case
+          diff -u parity-macos.txt parity-windows.txt
+          echo "parity OK: $(wc -l < parity-macos.txt) lines identical"
 
   windows-release:
     if: startsWith(github.ref, 'refs/tags/v')

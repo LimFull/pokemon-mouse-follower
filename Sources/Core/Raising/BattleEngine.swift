@@ -130,7 +130,7 @@ final class Battler {
         self.gender = gender; self.baseExp = baseExp
         self.currentHP = currentHP; self.moves = moves.isEmpty ? [154] : moves
         self.status = status
-        if status == .sleep { sleepTurns = Int.random(in: 1...3) }
+        if status == .sleep { sleepTurns = Int.random(in: 1...3, using: &BattleRNG.g) }
     }
 
     convenience init?(mon: OwnedPokemon) {
@@ -308,7 +308,7 @@ final class BattleSession {
             guard def.luckyChantRounds == 0 else { return false }
             let stage = min(4, atk.critStage + MoveMechanics.critBonus(of: m.moveId))
             let denominators: [Double] = [16, 8, 4, 3, 2]
-            return Double.random(in: 0..<1) < 1.0 / denominators[stage]
+            return Double.random(in: 0..<1, using: &BattleRNG.g) < 1.0 / denominators[stage]
         }
 
         /// Apply direct move damage: records counter/bide bookkeeping and
@@ -333,7 +333,7 @@ final class BattleSession {
             let eva = (def.identified || def.miracleEyed) ? min(0, def.stage(.eva)) : def.stage(.eva)
             let stage = max(-6, min(6, atk.stage(.acc) - eva))
             let chance = Double(m.accuracy) * MoveMechanics.accuracyMultiplier(stage)
-            return Double.random(in: 0..<100) < chance
+            return Double.random(in: 0..<100, using: &BattleRNG.g) < chance
         }
 
         func statTag(_ list: [(BattleStat, Int)]) -> String {
@@ -360,7 +360,7 @@ final class BattleSession {
                             default: return true
                             }
                         }
-                        if let pick = pool.randomElement(), let pm = GameData.moves[pick] {
+                        if let pick = pool.randomElement(using: &BattleRNG.g), let pm = GameData.moves[pick] {
                             atk.lastMoveUsed = pick
                             execute(pm, atk, def, isPlayer: isPlayer, releasing: false)
                             return
@@ -372,7 +372,7 @@ final class BattleSession {
                 atk.nightmared = false
                 emit(.recover, actorIsPlayer: isPlayer, reason: "woke up", targetIsPlayer: isPlayer)
             case .freeze:
-                if Int.random(in: 0..<100) < 20 {
+                if Int.random(in: 0..<100, using: &BattleRNG.g) < 20 {
                     atk.status = nil
                     emit(.recover, actorIsPlayer: isPlayer, reason: "thawed", targetIsPlayer: isPlayer)
                 } else {
@@ -380,7 +380,7 @@ final class BattleSession {
                     emit(.skip, actorIsPlayer: isPlayer, reason: "frozen"); return
                 }
             case .paralysis:
-                if Int.random(in: 0..<100) < 25 {
+                if Int.random(in: 0..<100, using: &BattleRNG.g) < 25 {
                     atk.chargingMove = nil; atk.bideTurns = 0
                     emit(.skip, actorIsPlayer: isPlayer, reason: "paralyzed"); return
                 }
@@ -392,17 +392,17 @@ final class BattleSession {
                 atk.confusionTurns -= 1
                 if atk.confusionTurns == 0 {
                     emit(.recover, actorIsPlayer: isPlayer, reason: "snapped out", targetIsPlayer: isPlayer)
-                } else if Int.random(in: 0..<3) == 0 {
+                } else if Int.random(in: 0..<3, using: &BattleRNG.g) == 0 {
                     let base = ((2.0 * Double(atk.level) / 5.0 + 2.0) * 40.0
                                 * Double(atk.stats.atk) / Double(max(1, atk.stats.def))) / 50.0 + 2.0
-                    let dmg = max(1, Int(base * Double.random(in: 0.85...1.0)))
+                    let dmg = max(1, Int(base * Double.random(in: 0.85...1.0, using: &BattleRNG.g)))
                     atk.currentHP = max(0, atk.currentHP - dmg)
                     emit(.selfHit, actorIsPlayer: isPlayer, reason: "hurt itself",
                          damage: dmg, targetIsPlayer: isPlayer)
                     return
                 }
             }
-            if atk.infatuated, Int.random(in: 0..<2) == 0 {
+            if atk.infatuated, Int.random(in: 0..<2, using: &BattleRNG.g) == 0 {
                 emit(.skip, actorIsPlayer: isPlayer, reason: "infatuated"); return
             }
 
@@ -460,7 +460,7 @@ final class BattleSession {
             case .trap(let p):
                 let landed = executePlain(m, atk, def, isPlayer: isPlayer, eff: eff, powerOverride: p)
                 if landed, !def.isFainted, def.trapRounds == 0 {
-                    def.trapRounds = Int.random(in: 2...5)
+                    def.trapRounds = Int.random(in: 2...5, using: &BattleRNG.g)
                 }
 
             case .charge:   // release turn
@@ -473,7 +473,7 @@ final class BattleSession {
             case .multiHit(let lo, let hi, let per):
                 guard eff > 0 else { emit(.miss, actorIsPlayer: isPlayer, move: m, eff: 0); return }
                 guard rolls(m, atk, def) else { emit(.miss, actorIsPlayer: isPlayer, move: m); return }
-                let hits = Int.random(in: lo...hi)
+                let hits = Int.random(in: lo...hi, using: &BattleRNG.g)
                 var total = 0
                 var anyCrit = false
                 for _ in 0..<hits where !def.isFainted {
@@ -544,7 +544,7 @@ final class BattleSession {
             case .psywave:
                 guard eff > 0 else { emit(.miss, actorIsPlayer: isPlayer, move: m, eff: 0); return }
                 guard rolls(m, atk, def) else { emit(.miss, actorIsPlayer: isPlayer, move: m); return }
-                let dmg = max(1, Int(Double(atk.level) * Double.random(in: 0.5...1.5)))
+                let dmg = max(1, Int(Double(atk.level) * Double.random(in: 0.5...1.5, using: &BattleRNG.g)))
                 dealDamage(dmg, from: atk, to: def, physical: false)
                 emit(.attack, actorIsPlayer: isPlayer, move: m, damage: dmg)
 
@@ -568,7 +568,7 @@ final class BattleSession {
                     emit(.miss, actorIsPlayer: isPlayer, move: m, eff: eff > 0 ? 1 : 0); return
                 }
                 let chance = 30 + (atk.level - def.level)
-                guard atk.lockedOnRounds > 0 || Int.random(in: 0..<100) < chance else {
+                guard atk.lockedOnRounds > 0 || Int.random(in: 0..<100, using: &BattleRNG.g) < chance else {
                     emit(.miss, actorIsPlayer: isPlayer, move: m); return
                 }
                 let dmg = def.currentHP
@@ -616,13 +616,13 @@ final class BattleSession {
 
             case .magnitude:
                 let table = [(10, 5), (30, 10), (50, 20), (70, 30), (90, 20), (110, 10), (150, 5)]
-                var roll = Int.random(in: 0..<100), power = 70
+                var roll = Int.random(in: 0..<100, using: &BattleRNG.g), power = 70
                 for (p, w) in table { if roll < w { power = p; break }; roll -= w }
                 executePlainScaled(m, atk, def, isPlayer: isPlayer, eff: eff, power: power)
 
             case .present:
                 guard rolls(m, atk, def) else { emit(.miss, actorIsPlayer: isPlayer, move: m); return }
-                let roll = Int.random(in: 0..<100)
+                let roll = Int.random(in: 0..<100, using: &BattleRNG.g)
                 if roll < 20 {   // a gift: heals the target a quarter
                     let heal = min(max(1, def.maxHP / 4), def.maxHP - def.currentHP)
                     def.currentHP += heal
@@ -800,7 +800,7 @@ final class BattleSession {
                     $0.effectivePower > 0 && MoveMechanics.mechanic(for: $0.moveId) == nil
                         && $0.moveId != MoveMechanics.basicAttackId   // synthetic, not a real move
                 }
-                guard let pick = pool.randomElement() else {
+                guard let pick = pool.randomElement(using: &BattleRNG.g) else {
                     emit(.miss, actorIsPlayer: isPlayer, move: m); return
                 }
                 executePlain(pick, atk, def, isPlayer: isPlayer,
@@ -838,7 +838,7 @@ final class BattleSession {
 
             // ---- wave 2 -------------------------------------------------
             case .acupressure:
-                guard let pick = BattleStat.allCases.filter({ atk.stage($0) < 6 }).randomElement() else {
+                guard let pick = BattleStat.allCases.filter({ atk.stage($0) < 6 }).randomElement(using: &BattleRNG.g) else {
                     emit(.miss, actorIsPlayer: isPlayer, move: m); return
                 }
                 atk.bump(pick, 2)
@@ -901,7 +901,7 @@ final class BattleSession {
                     emit(.miss, actorIsPlayer: isPlayer, move: m); return
                 }
                 def.status = s
-                if s == .sleep { def.sleepTurns = Int.random(in: 1...3) }
+                if s == .sleep { def.sleepTurns = Int.random(in: 1...3, using: &BattleRNG.g) }
                 atk.status = nil
                 atk.nightmared = false
                 emit(.attack, actorIsPlayer: isPlayer, move: m, status: s.rawValue)
@@ -953,7 +953,7 @@ final class BattleSession {
             case .conversion:
                 let candidates = atk.moves.compactMap { GameData.moves[$0]?.type }
                     .filter { !$0.isEmpty && $0 != atk.type1 }
-                guard let t = candidates.randomElement() else {
+                guard let t = candidates.randomElement(using: &BattleRNG.g) else {
                     emit(.miss, actorIsPlayer: isPlayer, move: m); return
                 }
                 atk.type1 = t; atk.type2 = nil
@@ -963,7 +963,7 @@ final class BattleSession {
             case .conversion2:
                 guard let lastId = def.lastMoveUsed, let lt = GameData.moves[lastId]?.type,
                       let t = TypeChart.chart.keys.filter({ TypeChart.multiplier(lt, vs: $0, nil) < 1 })
-                        .randomElement() else {
+                        .randomElement(using: &BattleRNG.g) else {
                     emit(.miss, actorIsPlayer: isPlayer, move: m); return
                 }
                 atk.type1 = t; atk.type2 = nil
@@ -1098,7 +1098,7 @@ final class BattleSession {
                     b.yawnCounter -= 1
                     if b.yawnCounter == 0, b.status == nil {
                         b.status = .sleep
-                        b.sleepTurns = Int.random(in: 1...3)
+                        b.sleepTurns = Int.random(in: 1...3, using: &BattleRNG.g)
                         emit(.residual, actorIsPlayer: isPlayer, reason: "asleep",
                              targetIsPlayer: isPlayer, status: "sleep")
                     }
@@ -1278,7 +1278,7 @@ enum BattleEngine {
         if a >= 255 { return (true, 4) }
         let b = 1_048_560.0 / (16_711_680.0 / a).squareRoot().squareRoot()
         var shakes = 0
-        while shakes < 4, Double.random(in: 0..<65_536) < b {
+        while shakes < 4, Double.random(in: 0..<65_536, using: &BattleRNG.g) < b {
             shakes += 1
         }
         return (shakes == 4, shakes)
@@ -1408,7 +1408,7 @@ enum BattleEngine {
             if attacker.tauntRounds > 0, !isDamaging(id) { return false }
             return usable(id, attacker: attacker, defender: defender)
         }
-        return pool.randomElement() ?? MoveMechanics.struggleId
+        return pool.randomElement(using: &BattleRNG.g) ?? MoveMechanics.struggleId
     }
 
     /// Simplified mainline damage: level/stat/power scaling × STAB × type ×
@@ -1433,18 +1433,18 @@ enum BattleEngine {
         if !crit, physical ? defender.reflectRounds > 0 : defender.lightScreenRounds > 0 { base /= 2 }
         if crit { base *= 2 }
         let stab = (m.type == attacker.type1 || m.type == attacker.type2) ? 1.5 : 1.0
-        let rand = Double.random(in: 0.85...1.0)
+        let rand = Double.random(in: 0.85...1.0, using: &BattleRNG.g)
         return max(1, Int(base * stab * eff * rand))
     }
 
     /// Try to inflict `m`'s ailment on `def`; returns its name when applied.
     fileprivate static func applyAilment(of m: MoveData, from atk: Battler, to def: Battler) -> String? {
         guard let name = m.ailment, !def.isFainted,
-              Int.random(in: 1...100) <= m.effectiveAilmentChance else { return nil }
+              Int.random(in: 1...100, using: &BattleRNG.g) <= m.effectiveAilmentChance else { return nil }
         switch name {
         case "confusion":
             guard def.confusionTurns == 0, def.safeguardRounds == 0 else { return nil }
-            def.confusionTurns = Int.random(in: 2...5)
+            def.confusionTurns = Int.random(in: 2...5, using: &BattleRNG.g)
             return name
         case "infatuation":
             // Opposite genders only (D19-2); genderless never qualifies.
@@ -1463,7 +1463,7 @@ enum BattleEngine {
                                ["Poison", "Steel"].contains(def.type2 ?? "") { return nil }
             if ail == .freeze, def.type1 == "Ice" || def.type2 == "Ice" { return nil }
             def.status = ail
-            if ail == .sleep { def.sleepTurns = Int.random(in: 1...3) }
+            if ail == .sleep { def.sleepTurns = Int.random(in: 1...3, using: &BattleRNG.g) }
             return name
         }
     }
