@@ -305,6 +305,7 @@
 "item.greatball" = "スーパーボール";
 "item.potion" = "キズぐすり";
 "item.superpotion" = "いいキズぐすり";
+"item.fullheal" = "なんでもなおし";
 "item.revive" = "げんきのかけら";
 "item.firestone" = "ほのおのいし";
 "item.thunderstone" = "かみなりのいし";

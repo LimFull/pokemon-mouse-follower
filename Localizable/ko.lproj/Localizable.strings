@@ -305,6 +305,7 @@
 "item.greatball" = "수퍼볼";
 "item.potion" = "상처약";
 "item.superpotion" = "좋은상처약";
+"item.fullheal" = "만병통치제";
 "item.revive" = "기력의조각";
 "item.firestone" = "불꽃의돌";
 "item.thunderstone" = "천둥의돌";

@@ -10,7 +10,7 @@ import AppKit
 
 enum GameItem: Int, CaseIterable, Codable {
     case pokeBall = 1, greatBall = 2
-    case potion = 10, superPotion = 11
+    case potion = 10, superPotion = 11, fullHeal = 12
     case revive = 20
     case fireStone = 30, thunderStone = 31, waterStone = 32
     case leafStone = 33, moonStone = 34, sunStone = 35
@@ -22,6 +22,7 @@ enum GameItem: Int, CaseIterable, Codable {
         case .greatBall: return "item.greatball"
         case .potion: return "item.potion"
         case .superPotion: return "item.superpotion"
+        case .fullHeal: return "item.fullheal"
         case .revive: return "item.revive"
         case .fireStone: return "item.firestone"
         case .thunderStone: return "item.thunderstone"
@@ -53,6 +54,9 @@ enum GameItem: Int, CaseIterable, Codable {
         }
     }
 
+    /// Cures every major status ailment (mainline Full Heal; no HP restored).
+    var curesStatus: Bool { self == .fullHeal }
+
     var isEvolutionItem: Bool { GameItem.stoneEosIds[self] != nil || self == .linkCord || self == .friendCandy }
 
     /// EoS item id each stone corresponds to (evolutions.json ITEMS param1).
@@ -68,6 +72,7 @@ enum GameItem: Int, CaseIterable, Codable {
         case .greatBall: return 9
         case .potion: return 24
         case .superPotion: return 9
+        case .fullHeal: return 7
         case .revive: return 8
         case .fireStone, .thunderStone, .waterStone, .leafStone, .moonStone, .sunStone: return 2
         case .linkCord: return 5
@@ -129,6 +134,17 @@ enum GameItem: Int, CaseIterable, Codable {
             ctx.fill(CGRect(x: 6, y: 10, width: 4, height: 3))          // neck
             fill(NSColor(white: 0.8, alpha: 1)); ctx.fill(CGRect(x: 5, y: 13, width: 6, height: 2))  // cap
             fill(NSColor(white: 1, alpha: 0.45)); ctx.fill(CGRect(x: 5, y: 3, width: 2, height: 5))  // shine
+        case .fullHeal:
+            // Yellow spray bottle, nozzle to the left with a puff of mist.
+            fill(NSColor(srgbRed: 0.97, green: 0.80, blue: 0.20, alpha: 1))
+            ctx.fill(CGRect(x: 6, y: 1, width: 8, height: 9))           // bottle body
+            fill(NSColor(white: 0.35, alpha: 1))
+            ctx.fill(CGRect(x: 7, y: 10, width: 6, height: 4))          // trigger head
+            ctx.fill(CGRect(x: 4, y: 11, width: 3, height: 2))          // nozzle
+            fill(NSColor(white: 1, alpha: 0.45)); ctx.fill(CGRect(x: 7, y: 3, width: 2, height: 5))  // shine
+            fill(NSColor(white: 0.92, alpha: 0.9))
+            ctx.fillEllipse(in: CGRect(x: 1, y: 12, width: 2, height: 2))  // mist
+            ctx.fillEllipse(in: CGRect(x: 2, y: 9, width: 2, height: 2))
         case .revive:
             fill(NSColor(srgbRed: 0.98, green: 0.83, blue: 0.25, alpha: 1))
             // diamond

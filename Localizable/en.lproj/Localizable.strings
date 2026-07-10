@@ -53,6 +53,7 @@
 "item.greatball" = "Great Ball";
 "item.potion" = "Potion";
 "item.superpotion" = "Super Potion";
+"item.fullheal" = "Full Heal";
 "item.revive" = "Revive";
 "item.firestone" = "Fire Stone";
 "item.thunderstone" = "Thunder Stone";

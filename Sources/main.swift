@@ -1666,6 +1666,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         st.addItem(.greatBall, 2)
         st.addItem(.potion, 3)
         st.addItem(.superPotion, 2)
+        st.addItem(.fullHeal, 2)
         st.addItem(.revive, 2)
         for stone: GameItem in [.fireStone, .thunderStone, .waterStone, .leafStone,
                                 .moonStone, .sunStone, .linkCord, .friendCandy] {
@@ -1932,6 +1933,15 @@ if CommandLine.arguments.contains("--selftest-raising") {
             let evs = s.nextRound(playerItem: .potion)
             let itemEv = evs.first { $0.kind == .item }
             print("mid-battle potion: event=\(itemEv != nil) healedTo=\(itemEv?.targetHP ?? -1) icon=\(GameItem.potion.icon != nil) (expect true, 25, true)")
+        }
+        // Mid-battle Full Heal: the item cures the follower's ailment and the
+        // turn is spent in its place.
+        if let p = Battler(wildDex: 7, level: 12), let w = Battler(wildDex: 16, level: 10) {
+            p.status = .poison
+            let s = BattleSession(player: p, wild: w)
+            let evs = s.nextRound(playerItem: .fullHeal)
+            let itemEv = evs.first { $0.kind == .item }
+            print("mid-battle full heal: event=\(itemEv != nil) cured=\(p.status == nil) icon=\(GameItem.fullHeal.icon != nil) (expect true, true, true)")
         }
         if let a = Battler(wildDex: 19, level: 20), let b = Battler(wildDex: 19, level: 20),
            let tackle = GameData.moves.values.first(where: { $0.displayName == "Tackle" }) {

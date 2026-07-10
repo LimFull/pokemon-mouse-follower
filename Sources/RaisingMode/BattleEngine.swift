@@ -1182,11 +1182,13 @@ final class BattleSession {
         return roundEvents
     }
 
-    /// The follower's trainer uses a potion: heal, and the turn is spent.
+    /// The follower's trainer uses a potion or Full Heal: heal/cure, and the
+    /// turn is spent.
     private func useHealingItem(_ item: GameItem) {
         player.actedThisRound = true
         let heal = min(item.healAmount, player.maxHP - player.currentHP)
         if heal > 0 { player.currentHP += heal }
+        if item.curesStatus { player.status = nil }
         var ev = BattleEvent(
             kind: .item, actorIsPlayer: true, moveId: 0,
             moveName: item.displayName, damage: 0, effectiveness: 1,

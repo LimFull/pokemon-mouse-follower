@@ -114,12 +114,12 @@ final class BattleController {
     /// Drop a pending flee (e.g. the player sent out someone else instead).
     func cancelRecallRequest() { recallTurn = nil }
 
-    /// Queue a healing item as the follower's NEXT action — mainline rules:
-    /// using an item costs the turn, so it replaces the move when the next
-    /// round is simulated. Returns false when there's no battle to act in
+    /// Queue a healing/curing item as the follower's NEXT action — mainline
+    /// rules: using an item costs the turn, so it replaces the move when the
+    /// next round is simulated. Returns false when there's no battle to act in
     /// (the caller should apply the item directly).
     func requestItem(_ item: GameItem) -> Bool {
-        guard phase == .battling, item.healAmount > 0, pendingItem == nil,
+        guard phase == .battling, item.healAmount > 0 || item.curesStatus, pendingItem == nil,
               session?.isOver == false else { return false }
         pendingItem = item
         return true
@@ -130,6 +130,10 @@ final class BattleController {
 
     /// The follower's live gauge fraction while a battle plays (panel gating).
     var playerGaugeFraction: Double? { phase == .battling ? curPHP : nil }
+
+    /// The ailment the playback has shown on the follower so far (panel gating
+    /// for status-curing items — the saved status is stale mid-battle).
+    var playerLiveStatus: String? { phase == .battling ? curPStatus : nil }
 
     /// Debug: spawn a wild encounter immediately; `at` pins its position
     /// (used by the selftest to force a contact battle deterministically).
@@ -610,6 +614,10 @@ final class BattleController {
         if e.targetIsPlayer, let s = e.statusApplied, Ailment(rawValue: s) != nil { curPStatus = s }
         if e.kind == .recover, e.targetIsPlayer,
            ["woke up", "thawed", "Refresh", "Heal Bell", "Aromatherapy"].contains(e.moveName) {
+            curPStatus = nil
+        }
+        if e.kind == .item, e.targetIsPlayer,
+           GameItem(rawValue: e.ballId)?.curesStatus == true {
             curPStatus = nil
         }
 

@@ -462,7 +462,7 @@ final class RaisingPanelView: NSView {
             && BattleController.current?.playerGaugeFraction != nil
         let shown = GameItem.allCases.filter { item in
             if state.canUseItem(item, at: idx) { return true }
-            return battlingActive && item.healAmount > 0 && state.itemCount(item) > 0
+            return battlingActive && (item.healAmount > 0 || item.curesStatus) && state.itemCount(item) > 0
         }
         if !shown.isEmpty {
             let itemStack = NSStackView()

@@ -410,6 +410,15 @@ final class RaisingState {
             }
             return !mon.isFainted && mon.currentHP < mon.maxHP
         }
+        if item.curesStatus {
+            // Mid-battle the saved status is stale too — gate on the ailment
+            // the playback has actually shown so far.
+            if index == save.activeIndex, let bc = BattleController.current,
+               bc.playerGaugeFraction != nil {
+                return !bc.itemPending && bc.playerLiveStatus != nil
+            }
+            return !mon.isFainted && mon.status != nil
+        }
         if item == .revive { return mon.isFainted }
         if item.isEvolutionItem { return evolution(for: item, of: mon) != nil }
         return false
@@ -423,7 +432,7 @@ final class RaisingState {
         // Mid-battle potion: queue it as the follower's next ACTION (mainline:
         // the item spends the turn). The controller consumes it from the bag
         // when the round simulates; the icon floats overhead during playback.
-        if item.healAmount > 0, index == save.activeIndex,
+        if item.healAmount > 0 || item.curesStatus, index == save.activeIndex,
            BattleController.current?.requestItem(item) == true {
             notifyChanged()   // panels show the queued state
             return nil
@@ -434,6 +443,8 @@ final class RaisingState {
         if item.healAmount > 0 {
             save.party[index].currentHP = min(save.party[index].maxHP,
                                               save.party[index].currentHP + item.healAmount)
+        } else if item.curesStatus {
+            save.party[index].status = nil
         } else if item == .revive {
             save.party[index].currentHP = max(1, save.party[index].maxHP / 2)
             save.party[index].status = nil
