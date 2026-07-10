@@ -79,7 +79,15 @@ enum Updater {
             if let assets = json["assets"] as? [[String: Any]] {
                 let match = assets.first { ($0["name"] as? String) == dmgAppName.replacingOccurrences(of: ".app", with: ".dmg") }
                         ?? assets.first { ($0["name"] as? String)?.hasSuffix(".dmg") == true }
-                if let u = match?["browser_download_url"] as? String, let url = URL(string: u) { dmg = url }
+                if let u = match?["browser_download_url"] as? String, let url = URL(string: u) {
+                    dmg = url
+                } else if !assets.isEmpty {
+                    // Windows-only release (no .dmg published): nothing to offer
+                    // here — report as current so the alert says "up to date"
+                    // instead of prompting a download that would 404.
+                    finish(.success(Release(version: currentVersion, dmgURL: dmg, notes: "")))
+                    return
+                }
             }
             let version = tag.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "v "))
             let notes = (json["body"] as? String) ?? ""
