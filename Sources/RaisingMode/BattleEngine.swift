@@ -1188,7 +1188,7 @@ final class BattleSession {
         player.actedThisRound = true
         let heal = min(item.healAmount, player.maxHP - player.currentHP)
         if heal > 0 { player.currentHP += heal }
-        if item.curesStatus { player.status = nil }
+        if item.curesStatus { player.status = nil; player.confusionTurns = 0 }
         var ev = BattleEvent(
             kind: .item, actorIsPlayer: true, moveId: 0,
             moveName: item.displayName, damage: 0, effectiveness: 1,
