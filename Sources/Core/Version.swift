@@ -3,5 +3,5 @@
 // into the .rc VERSIONINFO and the installer script.
 
 enum AppVersion {
-    static let string = "2.0.0"
+    static let string = "2.1.0"
 }
