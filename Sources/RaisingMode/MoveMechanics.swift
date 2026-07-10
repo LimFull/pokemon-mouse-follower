@@ -223,7 +223,7 @@ enum MoveMechanics {
     static let byMoveId: [Int: MoveMechanic] = {
         var out: [Int: MoveMechanic] = [:]
         for (id, m) in GameData.moves {
-            if let mech = byName[m.displayName] { out[id] = mech }
+            if let mech = byName[m.englishName] { out[id] = mech }
         }
         return out
     }()
@@ -231,13 +231,13 @@ enum MoveMechanics {
     static let priorityByMoveId: [Int: Int] = {
         var out: [Int: Int] = [:]
         for (id, m) in GameData.moves {
-            if let p = priorityByName[m.displayName] { out[id] = p }
+            if let p = priorityByName[m.englishName] { out[id] = p }
         }
         return out
     }()
 
     static let critBonusByMoveId: Set<Int> = {
-        Set(GameData.moves.compactMap { critBonusByName.contains($0.value.displayName) ? $0.key : nil })
+        Set(GameData.moves.compactMap { critBonusByName.contains($0.value.englishName) ? $0.key : nil })
     }()
 
     /// +1 crit stage for the high-ratio moves, else 0.
@@ -245,7 +245,7 @@ enum MoveMechanics {
 
     /// Struggle's move id (typeless fallback when nothing else is usable).
     static let struggleId: Int = {
-        GameData.moves.first(where: { $0.value.displayName == "Struggle" })?.key ?? 154
+        GameData.moves.first(where: { $0.value.englishName == "Struggle" })?.key ?? 154
     }()
 
     static func mechanic(for moveId: Int) -> MoveMechanic? { byMoveId[moveId] }

@@ -397,7 +397,7 @@ final class BattleSession {
                 // release: double everything it soaked (typeless)
                 let dmg = max(1, atk.bideStored * 2)
                 atk.bideStored = 0
-                if let m = GameData.moves.first(where: { $0.value.displayName == "Bide" })?.value {
+                if let m = GameData.moves.first(where: { $0.value.englishName == "Bide" })?.value {
                     dealDamage(dmg, from: atk, to: def, physical: true)
                     emit(.attack, actorIsPlayer: isPlayer, move: m, damage: dmg)
                 }
@@ -467,7 +467,7 @@ final class BattleSession {
             case .drain(let frac, let p):
                 guard eff > 0 else { emit(.miss, actorIsPlayer: isPlayer, move: m, eff: 0); return }
                 guard rolls(m, atk, def) else { emit(.miss, actorIsPlayer: isPlayer, move: m); return }
-                if m.displayName == "Dream Eater", def.status != .sleep {
+                if m.englishName == "Dream Eater", def.status != .sleep {
                     emit(.miss, actorIsPlayer: isPlayer, move: m); return
                 }
                 let crit = rollCrit(atk, def, m)

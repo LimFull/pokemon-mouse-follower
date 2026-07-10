@@ -108,6 +108,10 @@ struct MoveData: Codable {
         case ailmentChance = "ailment_chance"
         case powerMain = "power_main"
     }
+    /// English JSON name — the key for the engine's name-keyed tables
+    /// (MoveMechanics & co), which must not follow the UI language.
+    var englishName: String { names["e"] ?? "Move \(moveId)" }
+
     /// Localized move name: `move.name.<id>` from *.strings, else the English JSON name.
     var displayName: String {
         let fallback = names["e"] ?? "Move \(moveId)"

@@ -613,7 +613,9 @@ final class BattleController {
         // Wish) and confusion's "snapped out" leave the ailment alone.
         if e.targetIsPlayer, let s = e.statusApplied, Ailment(rawValue: s) != nil { curPStatus = s }
         if e.kind == .recover, e.targetIsPlayer,
-           ["woke up", "thawed", "Refresh", "Heal Bell", "Aromatherapy"].contains(e.moveName) {
+           ["woke up", "thawed"].contains(e.moveName)
+            || ["Refresh", "Heal Bell", "Aromatherapy"]
+                .contains(GameData.moves[e.moveId]?.englishName ?? "") {
             curPStatus = nil
         }
         if e.kind == .item, e.targetIsPlayer,
