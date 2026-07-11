@@ -53,6 +53,61 @@ tray.onCheckUpdate = { [weak tray] in
 SettingsDialog.onCharacterChanged = {
     controller.setCharacter(RaisingState.shared.followerFolder)   // raising mon keeps priority
 }
+
+// Debug tray submenu (dev runs only — the macOS AppDelegate debug handlers).
+/// Grant EXP through the real growth path (level-ups, move prompts,
+/// evolution + burst) — exactly what a battle win would do.
+func debugGainExp(_ amount: Int) {
+    let st = RaisingState.shared
+    guard st.hasActiveGame, amount > 0 else { return }
+    let idx = st.save.activeIndex
+    let result = st.gainExp(amount)
+    for moveId in result.pendingMoves {
+        PromptRelay.enqueue(.learnMove(monIndex: idx, moveId: moveId))
+    }
+}
+if PMF.isDevRun {
+    tray.onDebugEncounter = { battle.forceEncounter(dex: $0) }
+    tray.onDebugSpawnWild = { battle.forceSpawn() }
+    tray.onDebugSpawnItem = { items.forceSpawn($0, near: controller.position) }
+    tray.onDebugSetStatus = { RaisingState.shared.setStatusDebug($0) }
+    tray.onDebugGiveItems = {
+        let st = RaisingState.shared
+        st.addItem(.pokeBall, 5)
+        st.addItem(.greatBall, 2)
+        st.addItem(.potion, 3)
+        st.addItem(.superPotion, 2)
+        st.addItem(.fullHeal, 2)
+        st.addItem(.revive, 2)
+        for stone: GameItem in [.fireStone, .thunderStone, .waterStone, .leafStone,
+                                .moonStone, .sunStone, .linkCord, .friendCandy] {
+            st.addItem(stone, 1)
+        }
+    }
+    tray.onDebugHealAll = {
+        let st = RaisingState.shared
+        for i in st.party.indices { st.healMon(at: i) }
+    }
+    tray.onDebugLevelUp = {
+        guard let mon = RaisingState.shared.active else { return }
+        debugGainExp(mon.expToNext.remaining)
+    }
+    tray.onDebugLevelToEvolution = {
+        let st = RaisingState.shared
+        guard let mon = st.active, let s = mon.species, mon.level < 100 else { return }
+        // Jump to the nearest LEVEL-evolution threshold above the current
+        // level; species without one just gain a single level.
+        let target = s.evolutions
+            .filter { $0.method == "LEVEL" && $0.param1 > mon.level }
+            .map(\.param1)
+            .min()
+        guard let target, s.expCurve.indices.contains(target - 1) else {
+            debugGainExp(mon.expToNext.remaining)
+            return
+        }
+        debugGainExp(s.expCurve[target - 1] - mon.exp)
+    }
+}
 if CommandLine.arguments.contains("--show-settings") { SettingsDialog.show() }
 
 // The active raising mon (or the normal character) should be the follower.
