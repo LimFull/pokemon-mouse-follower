@@ -773,6 +773,15 @@ final class BattleController: LiveBattleBridge {
             // when the whip does. Directional sets face the CASTER — a
             // drain's gather must flow toward whoever is absorbing, not
             // whichever way the sheet's first rotation happens to point.
+            // Cry-type moves (mainline "sound" flag): a STATUS cry with no
+            // projectile emanates from just in front of the USER — Growl's
+            // rings on the target read as the target doing the growling
+            // (user report). Damaging sound moves keep their on-target
+            // impact, and projectile cries (Sing & co) already fly.
+            let moveData = GameData.moves[e.moveId]
+            let cry = proj == nil && moveData?.sound == true && moveData?.category == "Status"
+            let front = CGPoint(x: attacker.x + (target.x - attacker.x) * 0.3,
+                                y: attacker.y + (target.y - attacker.y) * 0.3)
             var coTicks = 0
             if e.moveId > 0, !EffectPlayer.isExplosionMove(e.moveId),
                let co = EffectPlayer.coClip(forMove: e.moveId, octant: (octant + 4) % 8) {
@@ -784,7 +793,7 @@ final class BattleController: LiveBattleBridge {
                 // absorbing or as gathering from thin air.)
                 let coAnchor: CGPoint
                 if case .drain = MoveMechanics.mechanic(for: e.moveId) { coAnchor = attacker }
-                else { coAnchor = target }
+                else { coAnchor = cry ? front : target }
                 effects.append(RunningEffect(clip: co, anchor: coAnchor,
                                              maxTicks: delay + ticks, delay: delay))
                 coTicks = ticks
@@ -797,7 +806,7 @@ final class BattleController: LiveBattleBridge {
                let clip = EffectPlayer.clip(forMove: e.moveId) {
                 let hitTicks = min(clip.loop ? 40 : clip.totalTicks, 54)
                 let delay = (proj == nil && coTicks == 0) ? windup : 0
-                effects.append(RunningEffect(clip: clip, anchor: target,
+                effects.append(RunningEffect(clip: clip, anchor: cry ? front : target,
                                              maxTicks: delay + hitTicks, delay: delay))
                 total += hitTicks
             }
