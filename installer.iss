@@ -13,10 +13,14 @@ AppName=Pokémon Mouse Follower
 AppVersion={#MyAppVersion}
 AppPublisher=LimFull
 AppPublisherURL=https://github.com/LimFull/pokemon-mouse-follower
-DefaultDirName={localappdata}\Programs\PokemonMouseFollower
+; {autopf} follows the chosen mode: per-user (default, no elevation) installs
+; under %LOCALAPPDATA%\Programs, "all users" under Program Files. The dir page
+; lets the user pick any location; upgrades reuse the previous dir/mode.
+DefaultDirName={autopf}\PokemonMouseFollower
 PrivilegesRequired=lowest
+PrivilegesRequiredOverridesAllowed=dialog commandline
 DisableProgramGroupPage=yes
-DisableDirPage=yes
+DisableDirPage=no
 OutputDir=build-win
 OutputBaseFilename=PokemonMouseFollower-Setup
 SetupIconFile=res\app.ico
