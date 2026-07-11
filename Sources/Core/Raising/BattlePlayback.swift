@@ -784,16 +784,28 @@ final class BattleController: LiveBattleBridge {
                                 y: attacker.y + (target.y - attacker.y) * 0.3)
             var coTicks = 0
             if e.moveId > 0, !EffectPlayer.isExplosionMove(e.moveId),
-               let co = EffectPlayer.coClip(forMove: e.moveId, octant: (octant + 4) % 8) {
+               let co = EffectPlayer.coClip(forMove: e.moveId, octant: octant) {
                 let ticks = min(co.loop ? 24 : co.totalTicks, 36)
                 let delay = proj == nil ? windup : 0
-                // Drain gathers play ON the caster — the energy visibly
-                // collects into the one who heals. (Tried on-target, midway,
-                // and a victim->caster flight: all read as the wrong mon
-                // absorbing or as gathering from thin air.)
+                // Directional companion sets (Absorb's gather, Growl's rings)
+                // are USER-side visuals anchored on the attacker. Sets with
+                // baked per-facing offsets (Absorb: ±24px) already sit in
+                // front of the caster; sets whose art carries no offset
+                // (Growl's rings — all zeros) get pushed one step ahead
+                // manually, or the cry sits on the caster's back (user
+                // report). Non-directional companions (Vine Whip's vine
+                // & co) land on the target as before.
                 let coAnchor: CGPoint
-                if case .drain = MoveMechanics.mechanic(for: e.moveId) { coAnchor = attacker }
-                else { coAnchor = cry ? front : target }
+                if MoveEffects.map[e.moveId]?.co?.dirs == true {
+                    if co.steps.allSatisfy({ abs($0.dx) < 4 && abs($0.dy) < 4 }) {
+                        let d = max(0.001, hypot(ddx, ddy))
+                        let k = 24 * AppSettings.shared.scale
+                        coAnchor = CGPoint(x: attacker.x + ddx / d * k,
+                                           y: attacker.y + ddy / d * k)
+                    } else {
+                        coAnchor = attacker
+                    }
+                } else { coAnchor = cry ? front : target }
                 effects.append(RunningEffect(clip: co, anchor: coAnchor,
                                              maxTicks: delay + ticks, delay: delay))
                 coTicks = ticks

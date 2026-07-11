@@ -207,7 +207,7 @@ enum EffectPlayer {
     /// `octant`, same convention as projectile().
     static func coClip(forMove moveId: Int, octant: Int = 6) -> EffectClip? {
         guard let c = MoveEffects.map[moveId]?.co else { return nil }
-        let idx = c.dirs == true ? (6 - (octant & 7) + 8) % 8 : 0
+        let idx = c.dirs == true ? (2 + (octant & 7)) % 8 : 0
         let key = moveId * 8 + idx
         if let cached = coCache[key] { return cached }
         let built = build(moveId: moveId, file: c.file, anim: c.anim + idx, loop: c.loop,
@@ -219,11 +219,14 @@ enum EffectPlayer {
 
     /// The projectile/travel clip for `moveId`, facing its travel direction.
     /// `octant` is the travel angle octant (0=E, 1=NE, ... CCW); directional
-    /// sets (anim..anim+7, ROM order S,SW,W,NW,N,NE,E,SE) pick the matching
-    /// rotation, single-sequence projectiles ignore it.
+    /// sets (anim..anim+7) pick the matching rotation, single-sequence
+    /// projectiles ignore it. The ROM's set order is CLOCKWISE from south —
+    /// S,SE,E,NE,N,NW,W,SW, same as the monster sheet rows (proven by
+    /// effect_0023's per-facing displacement offsets; the previous CCW
+    /// assumption mirrored E/W and the diagonals).
     static func projectile(forMove moveId: Int, octant: Int = 6) -> EffectClip? {
         guard let p = MoveEffects.map[moveId]?.proj else { return nil }
-        let idx = p.dirs == true ? (6 - (octant & 7) + 8) % 8 : 0
+        let idx = p.dirs == true ? (2 + (octant & 7)) % 8 : 0
         let key = moveId * 8 + idx
         if let cached = projCache[key] { return cached }
         let built = build(moveId: moveId, file: p.file, anim: p.anim + idx, loop: p.loop,
