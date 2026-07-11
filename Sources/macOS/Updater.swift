@@ -12,9 +12,11 @@ enum Updater {
     static let owner = "LimFull"
     static let repo  = "pokemon-mouse-follower"
 
-    /// GitHub API endpoint for the newest published release.
+    /// GitHub API endpoint listing recent releases, newest first. The single
+    /// `/releases/latest` may be a Windows-only release with no .dmg, so the
+    /// check scans for the newest release that actually ships one.
     private static var apiURL: URL {
-        URL(string: "https://api.github.com/repos/\(owner)/\(repo)/releases/latest")!
+        URL(string: "https://api.github.com/repos/\(owner)/\(repo)/releases?per_page=20")!
     }
     /// Versionless asset every release publishes — used if the API lookup can't
     /// pin the exact `.dmg` asset URL.
@@ -70,28 +72,27 @@ enum Updater {
             guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode), let data else {
                 finish(.failure(err("서버 응답 오류"))); return
             }
-            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let tag = json["tag_name"] as? String else {
+            guard let list = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
                 finish(.failure(err("릴리스 정보를 해석할 수 없습니다"))); return
             }
-            // Prefer the exact asset URL from the API; fall back to the stable link.
-            var dmg = fallbackDMG
-            if let assets = json["assets"] as? [[String: Any]] {
-                let match = assets.first { ($0["name"] as? String) == dmgAppName.replacingOccurrences(of: ".app", with: ".dmg") }
+            // Newest published release that ships a macOS .dmg — each OS
+            // versions independently, so Windows-only releases are skipped.
+            let dmgName = dmgAppName.replacingOccurrences(of: ".app", with: ".dmg")
+            for json in list {
+                if (json["draft"] as? Bool) == true || (json["prerelease"] as? Bool) == true { continue }
+                guard let tag = json["tag_name"] as? String,
+                      let assets = json["assets"] as? [[String: Any]] else { continue }
+                let match = assets.first { ($0["name"] as? String) == dmgName }
                         ?? assets.first { ($0["name"] as? String)?.hasSuffix(".dmg") == true }
-                if let u = match?["browser_download_url"] as? String, let url = URL(string: u) {
-                    dmg = url
-                } else if !assets.isEmpty {
-                    // Windows-only release (no .dmg published): nothing to offer
-                    // here — report as current so the alert says "up to date"
-                    // instead of prompting a download that would 404.
-                    finish(.success(Release(version: currentVersion, dmgURL: dmg, notes: "")))
-                    return
-                }
+                guard let u = match?["browser_download_url"] as? String, let dmg = URL(string: u) else { continue }
+                let version = tag.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "v "))
+                let notes = (json["body"] as? String) ?? ""
+                finish(.success(Release(version: version, dmgURL: dmg, notes: notes)))
+                return
             }
-            let version = tag.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "v "))
-            let notes = (json["body"] as? String) ?? ""
-            finish(.success(Release(version: version, dmgURL: dmg, notes: notes)))
+            // No release with a .dmg in the window — report as current so the
+            // alert says "up to date" instead of offering a 404 download.
+            finish(.success(Release(version: currentVersion, dmgURL: fallbackDMG, notes: "")))
         }.resume()
     }
 

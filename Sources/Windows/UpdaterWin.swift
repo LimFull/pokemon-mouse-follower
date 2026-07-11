@@ -1,8 +1,8 @@
-// Self-update, Windows edition (design/windows-port.md W14): check the latest
-// GitHub release, download PokemonMouseFollower-Setup.exe, run it silently
-// (Inno Setup closes and relaunches the app), and quit. Mirrors the macOS
-// Updater's version handling; releases without a Windows installer asset are
-// treated as not-an-update so macOS-only releases never prompt here.
+// Self-update, Windows edition (design/windows-port.md W14): find the newest
+// GitHub release that ships PokemonMouseFollower-Setup.exe, download it, run
+// it silently (Inno Setup closes and relaunches the app), and quit. Mirrors
+// the macOS Updater's version handling; macOS-only releases are skipped, so
+// each OS updates on its own version track.
 
 import WinSDK
 import Foundation
@@ -15,8 +15,11 @@ enum UpdaterWin {
     static let repo = "pokemon-mouse-follower"
     static let setupAssetSuffix = "-Setup.exe"
 
+    /// Recent releases, newest first. `/releases/latest` may be a macOS-only
+    /// release with no installer, so the check scans for the newest release
+    /// that actually ships one.
     private static var apiURL: URL {
-        URL(string: "https://api.github.com/repos/\(owner)/\(repo)/releases/latest")!
+        URL(string: "https://api.github.com/repos/\(owner)/\(repo)/releases?per_page=20")!
     }
 
     struct Release {
@@ -97,24 +100,23 @@ enum UpdaterWin {
         req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         guard let (data, status) = requestSync(req) else { return .failure(Err(message: "network error")) }
         guard (200..<300).contains(status) else { return .failure(Err(message: "server error (\(status))")) }
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let tag = json["tag_name"] as? String else {
+        guard let list = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
             return .failure(Err(message: "could not parse release info"))
         }
-        var setup: URL? = nil
-        if let assets = json["assets"] as? [[String: Any]] {
+        // Newest published release that ships a Windows installer — each OS
+        // versions independently, so macOS-only releases are skipped.
+        for json in list {
+            if (json["draft"] as? Bool) == true || (json["prerelease"] as? Bool) == true { continue }
+            guard let tag = json["tag_name"] as? String,
+                  let assets = json["assets"] as? [[String: Any]] else { continue }
             let match = assets.first { ($0["name"] as? String)?.hasSuffix(setupAssetSuffix) == true }
-            if let u = match?["browser_download_url"] as? String { setup = URL(string: u) }
+            guard let u = match?["browser_download_url"] as? String, let setup = URL(string: u) else { continue }
+            let version = tag.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "v "))
+            return .success(Release(version: version, setupURL: setup,
+                                    notes: (json["body"] as? String) ?? ""))
         }
-        let version = tag.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "v "))
-        guard let setup else {
-            // No Windows installer in the latest release -> nothing to offer.
-            return isNewer(version, than: AppVersion.string)
-                ? .failure(Err(message: String(format: L("update.latest.body"), AppVersion.string)))
-                : .success(Release(version: AppVersion.string, setupURL: apiURL, notes: ""))
-        }
-        return .success(Release(version: version, setupURL: setup,
-                                notes: (json["body"] as? String) ?? ""))
+        // No release with an installer in the window -> nothing to offer.
+        return .success(Release(version: AppVersion.string, setupURL: apiURL, notes: ""))
     }
 
     private static func download(_ url: URL) -> Result<String, Err> {
