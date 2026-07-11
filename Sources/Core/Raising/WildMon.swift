@@ -11,6 +11,10 @@ final class WildMon {
     private var idle: [[PMFImage]] = []
     private var attack: [[PMFImage]] = []   // battle poses (D2-1); empty -> idle
     private var shoot: [[PMFImage]] = []
+    private var romPoseCache: [Int: [[PMFImage]]] = [:]   // BattlePose.rom sheets, lazy
+    private var poseSubdir = ""
+    private var poseBase = ""
+    private var poseXML: String?
     private var hurt: [[PMFImage]] = []
     private var sleep: [[PMFImage]] = []
     private let octantToRow = [2, 3, 4, 5, 6, 7, 0, 1]
@@ -45,6 +49,10 @@ final class WildMon {
         let base = "characters/\(Characters.folder(dex: dex))"
         let subdir = Characters.spriteSubdir(Characters.folder(dex: dex))
         let xml = Sprite.loadText("AnimData", ext: "xml", subdir: subdir)
+        poseSubdir = subdir
+        poseBase = base
+        poseXML = xml
+        romPoseCache = [:]
         func load(_ png: String, _ anim: String) -> [[PMFImage]] {
             let sheet = Sprite.slicedSheet(png, anim: anim, subdir: subdir, xml: xml)
             guard sheet.isEmpty, subdir != base else { return sheet }
@@ -114,6 +122,23 @@ final class WildMon {
 
     /// Stand still, turned toward `point` (used when a battle starts). `pose`
     /// plays a battle sheet once from `poseTick`, holding its last frame (D2-1).
+    /// Lazy ROM pose sheet (BattlePose.rom) — same resolution and alt-color
+    /// fallback as CharacterController.romSheet. Cached (misses included).
+    private func romSheet(_ index: Int) -> [[PMFImage]] {
+        if let cached = romPoseCache[index] { return cached }
+        var sheet: [[PMFImage]] = []
+        if let xml = poseXML, let name = Sprite.animName(forIndex: index, in: xml) {
+            sheet = Sprite.slicedSheet("\(name)-Anim", anim: name, subdir: poseSubdir, xml: xml)
+        }
+        if sheet.isEmpty, poseSubdir != poseBase,
+           let baseXml = Sprite.loadText("AnimData", ext: "xml", subdir: poseBase),
+           let name = Sprite.animName(forIndex: index, in: baseXml) {
+            sheet = Sprite.slicedSheet("\(name)-Anim", anim: name, subdir: poseBase, xml: baseXml)
+        }
+        romPoseCache[index] = sheet
+        return sheet
+    }
+
     func faceStanding(toward point: CGPoint, pose: BattlePose = .stand, poseTick: Int = 0) {
         tick += 1
         faceVector(point.x - pos.x, point.y - pos.y)
@@ -124,6 +149,9 @@ final class WildMon {
         case .hurt: poseSheet = hurt
         case .sleep: poseSheet = sleep
         case .stand: poseSheet = []
+        case .rom(let index, let ranged):
+            let sheet = romSheet(index)
+            poseSheet = sheet.isEmpty ? (ranged ? shoot : attack) : sheet
         }
         if !poseSheet.isEmpty {
             let r = min(row, poseSheet.count - 1)

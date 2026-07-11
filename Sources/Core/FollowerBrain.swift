@@ -10,12 +10,18 @@ import Foundation
 // current animation frame. Rendering is done separately by one SpriteView per
 // screen, so the character can cross between displays (which each own a space).
 /// Battle pose for a combatant during playback (design D2/D2-1).
-enum BattlePose {
+enum BattlePose: Equatable {
     case stand      // idle, facing the opponent
     case attack     // Attack-Anim (contact moves)
     case shoot      // Shoot-Anim (projectile moves; falls back to attack)
     case hurt       // Hurt-Anim while damage lands
     case sleep      // Sleep-Anim while asleep (loops)
+    /// The move's ROM caster anim group (moves.json caster_anim): each
+    /// renderer resolves the index through ITS species' AnimData.xml
+    /// (fetch-rom-pose-anims.sh sheets) — the same index maps to different
+    /// sheet names per species. Missing sheet -> the pre-ROM heuristic pose
+    /// (`ranged` ? shoot : attack).
+    case rom(index: Int, ranged: Bool)
 }
 
 final class CharacterController {
@@ -26,6 +32,9 @@ final class CharacterController {
     private var attack: [[PMFImage]] = []      // battle poses (D2-1); empty -> idle fallback
     private var shoot: [[PMFImage]] = []
     private var hurt: [[PMFImage]] = []
+    private var romPoseCache: [Int: [[PMFImage]]] = [:]   // BattlePose.rom sheets, lazy
+    private var poseXML: String?                           // this character's AnimData.xml
+    private var basePoseSubdir = ""                        // base folder for alt-color fallback
     private var faintTick = 0
     private(set) var faintRotation: CGFloat = 0   // z-rotation for the fallback faint pose
     // Shadow anchor per frame, parallel to the sheets above (position + size).
@@ -79,6 +88,8 @@ final class CharacterController {
         if loaded, subdir == loadedSubdir { return }
         loadedSubdir = subdir
         let xml = Sprite.loadText("AnimData", ext: "xml", subdir: subdir)
+        poseXML = xml
+        romPoseCache = [:]
         shadowSize = xml.map { Sprite.shadowSize(in: $0) } ?? 1
         // walk/idle/sleep keep their sliced buffers around long enough to
         // compute shadow anchors (marker sheet or alpha fallback).
@@ -95,6 +106,7 @@ final class CharacterController {
         shoot = Sprite.slicedSheet("Shoot-Anim", anim: "Shoot", subdir: subdir, xml: xml)
         hurt = Sprite.slicedSheet("Hurt-Anim", anim: "Hurt", subdir: subdir, xml: xml)
         let baseSubdir = "characters/\(folder)"
+        basePoseSubdir = baseSubdir
         if subdir != baseSubdir {
             let baseXml = Sprite.loadText("AnimData", ext: "xml", subdir: baseSubdir)
             if faint.isEmpty { faint = Sprite.slicedSheet("Faint-Anim", anim: "Faint", subdir: baseSubdir, xml: baseXml) }
@@ -240,6 +252,24 @@ final class CharacterController {
     /// Stand in place (no movement) turned to face `point` — used during a
     /// battle. `pose` selects a battle sheet (D2-1): attack/shoot/hurt play
     /// once from `poseTick` and hold their last frame; stand cycles idle.
+    /// Lazy ROM pose sheet (BattlePose.rom): the caster_anim index resolved
+    /// through this character's AnimData.xml, alt-color -> base fallback like
+    /// the fixed battle set. Cached (including misses) per character.
+    private func romSheet(_ index: Int) -> [[PMFImage]] {
+        if let cached = romPoseCache[index] { return cached }
+        var sheet: [[PMFImage]] = []
+        if let xml = poseXML, let name = Sprite.animName(forIndex: index, in: xml) {
+            sheet = Sprite.slicedSheet("\(name)-Anim", anim: name, subdir: loadedSubdir, xml: xml)
+        }
+        if sheet.isEmpty, loadedSubdir != basePoseSubdir,
+           let baseXml = Sprite.loadText("AnimData", ext: "xml", subdir: basePoseSubdir),
+           let name = Sprite.animName(forIndex: index, in: baseXml) {
+            sheet = Sprite.slicedSheet("\(name)-Anim", anim: name, subdir: basePoseSubdir, xml: baseXml)
+        }
+        romPoseCache[index] = sheet
+        return sheet
+    }
+
     func face(_ point: CGPoint, pose: BattlePose = .stand, poseTick: Int = 0) {
         guard loaded else { return }
         faintRotation = 0   // healed/awake — clear the fallback faint tilt
@@ -251,6 +281,9 @@ final class CharacterController {
         case .hurt: poseSheet = hurt
         case .sleep: poseSheet = sleep
         case .stand: poseSheet = []
+        case .rom(let index, let ranged):
+            let sheet = romSheet(index)
+            poseSheet = sheet.isEmpty ? (ranged ? shoot : attack) : sheet
         }
         if !poseSheet.isEmpty {
             let row = min(lastRow, poseSheet.count - 1)

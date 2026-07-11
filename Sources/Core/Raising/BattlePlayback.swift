@@ -566,6 +566,12 @@ final class BattleController: LiveBattleBridge {
     static func rangedVisual(_ moveId: Int) -> Bool {
         if EffectPlayer.hasProjectile(moveId) { return true }
         guard let m = GameData.moves[moveId] else { return false }
+        // ROM caster-anim classes that extend a weapon or cast in place —
+        // 2 Strike-class swipe (Vine Whip), 3 Shoot-class emit, 8 Swing
+        // (Power Whip, Iron Tail), 11 Charge: the body stays put even when
+        // the move officially "makes contact". Body anims (1 Attack,
+        // 9 Double, 10 Hop, 12 Rotate) keep the contact-flag lunge.
+        if let a = m.casterAnim, [2, 3, 8, 11].contains(a) { return true }
         if let contact = m.contact { return !contact }
         return m.category == "Special"
     }
@@ -619,7 +625,15 @@ final class BattleController: LiveBattleBridge {
             // damage beat gets NO attacker pose: the user already detonated
             // (and fainted) on the preceding selfHit beat.
             if evTick < min(36, impactAt + 12), !EffectPlayer.isExplosionMove(e.moveId) {
-                let atk = (ranged ? BattlePose.shoot : .attack, evTick)
+                // The move's ROM caster anim when it has one (each renderer
+                // resolves it per species, falling back to attack/shoot);
+                // index 0 (Walk) reads wrong as a battle pose — heuristic.
+                let atk: (BattlePose, Int)
+                if let idx = GameData.moves[e.moveId]?.casterAnim, idx >= 1 {
+                    atk = (.rom(index: idx, ranged: ranged), evTick)
+                } else {
+                    atk = (ranged ? BattlePose.shoot : .attack, evTick)
+                }
                 if e.actorIsPlayer { p = atk } else { w = atk }
             }
             if e.kind == .attack, e.damage > 0, evTick >= impactAt, evTick < impactAt + 18 {
@@ -753,13 +767,26 @@ final class BattleController: LiveBattleBridge {
             } else {
                 total = windup
             }
+            // Companion clip (ROM anim2 — e.g. Vine Whip's vine lash): plays
+            // at the target BEFORE the hit flash, so the impact lands exactly
+            // when the whip does.
+            var coTicks = 0
+            if e.moveId > 0, !EffectPlayer.isExplosionMove(e.moveId),
+               let co = EffectPlayer.coClip(forMove: e.moveId) {
+                let ticks = min(co.loop ? 24 : co.totalTicks, 36)
+                let delay = proj == nil ? windup : 0
+                effects.append(RunningEffect(clip: co, anchor: target,
+                                             maxTicks: delay + ticks, delay: delay))
+                coTicks = ticks
+                total += ticks
+            }
             impactAt = total
             // Explosion moves played their boom on the detonation beat (the
             // selfHit before this event) — this beat only lands the damage.
             if e.moveId > 0, !EffectPlayer.isExplosionMove(e.moveId),
                let clip = EffectPlayer.clip(forMove: e.moveId) {
                 let hitTicks = min(clip.loop ? 40 : clip.totalTicks, 54)
-                let delay = proj == nil ? windup : 0
+                let delay = (proj == nil && coTicks == 0) ? windup : 0
                 effects.append(RunningEffect(clip: clip, anchor: target,
                                              maxTicks: delay + hitTicks, delay: delay))
                 total += hitTicks

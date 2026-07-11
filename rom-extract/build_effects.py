@@ -136,6 +136,7 @@ def main():
     used_files = set()
     skipped = {"screen": 0, "none": 0}
     n_proj = 0
+    n_co = 0
     for key in moves:
         mid = int(key)
         entry = move_anims.get(mid)
@@ -161,6 +162,18 @@ def main():
                 rec["proj"] = proj
                 used_files.add(proj["file"])
                 n_proj += 1
+        # Companion: the anim2 slot when it isn't already the hit or the
+        # projectile — the visual the hit-slot priority used to DROP (e.g.
+        # Vine Whip: anim3 is just the impact flash, anim2 is the vine lash
+        # itself). Played at the target right before the hit clip.
+        a2 = entry["anim2"]
+        if not rec.get("screen") and 0 < a2 < len(general) and a2 not in (hit_slot, a4):
+            co = resolve(general[a2])
+            if co is not None and not co.get("screen") \
+               and (co["file"], co["anim"]) != (rec.get("file"), rec.get("anim")):
+                rec["co"] = co
+                used_files.add(co["file"])
+                n_co += 1
         mapping[key] = rec
         if "file" in rec:
             used_files.add(rec["file"])
@@ -184,7 +197,8 @@ def main():
     with open(os.path.join(DEST, "move_effects.json"), "w", encoding="utf-8") as f:
         json.dump(mapping, f, ensure_ascii=False, separators=(",", ":"))
 
-    print(f"move_effects.json: {len(mapping)} moves mapped, {n_proj} with a projectile "
+    print(f"move_effects.json: {len(mapping)} moves mapped, {n_proj} with a projectile, "
+          f"{n_co} with a companion "
           f"(skipped: {skipped['screen']} screen-type, {skipped['none']} unmapped)")
     print(f"effects bundled: {len(used_files)} files, {total / 1e6:.1f} MB of frames")
 

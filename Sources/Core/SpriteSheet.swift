@@ -143,6 +143,30 @@ enum Sprite {
         return intBetween(xml, "<ShadowSize>", "</ShadowSize>") ?? 1
     }
 
+    // The sheet NAME serving ROM anim group `index` (move_animations
+    // "animation" -> the species' AnimData.xml <Index>), CopyOf chains
+    // resolved: Strike CopyOf Attack -> "Attack" (that name owns the .png
+    // and the frame size). nil when the species has no anim at that index.
+    static func animName(forIndex index: Int, in xml: String) -> String? {
+        var copyOf: [String: String] = [:]
+        var found: String?
+        for block in xml.components(separatedBy: "</Anim>") {
+            guard let name = textBetween(block, "<Name>", "</Name>") else { continue }
+            if let c = textBetween(block, "<CopyOf>", "</CopyOf>") { copyOf[name] = c }
+            if intBetween(block, "<Index>", "</Index>") == index { found = name }
+        }
+        guard var name = found else { return nil }
+        var seen = Set<String>()
+        while let next = copyOf[name], seen.insert(name).inserted { name = next }
+        return name
+    }
+
+    private static func textBetween(_ s: String, _ a: String, _ b: String) -> String? {
+        guard let r1 = s.range(of: a),
+              let r2 = s.range(of: b, range: r1.upperBound..<s.endIndex) else { return nil }
+        return String(s[r1.upperBound..<r2.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     private static func intBetween(_ s: String, _ a: String, _ b: String) -> Int? {
         guard let r1 = s.range(of: a),
               let r2 = s.range(of: b, range: r1.upperBound..<s.endIndex) else { return nil }

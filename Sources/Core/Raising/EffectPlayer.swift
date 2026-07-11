@@ -35,6 +35,8 @@ struct MoveEffectRef: Codable {
     let tint: Bool?         // approximate palette: re-hue with the type color
     let screen: Bool?       // full-screen effect: type-colored flash + quake
     let proj: Proj?         // travel effect flown attacker -> target first
+    let co: Proj?           // companion clip (ROM anim2 — e.g. Vine Whip's
+                            // vine lash) played at the target before the hit
 }
 
 enum MoveEffects {
@@ -92,6 +94,7 @@ enum EffectPlayer {
     private static var metaCache: [Int: FileMeta] = [:]
     private static var clipCache: [Int: EffectClip?] = [:]   // hit clip per move id
     private static var projCache: [Int: EffectClip?] = [:]   // key: moveId*8 + facing
+    private static var coCache: [Int: EffectClip?] = [:]     // companion clip per move id
 
     /// Whether `moveId` is a full-screen effect (Psychic & co) — the overlay
     /// renders a type-colored screen flash + quake instead of a sprite.
@@ -117,6 +120,14 @@ enum EffectPlayer {
         m["infatuated"] = id("Attract")
         m["asleep"] = id("Sing") ?? id("Hypnosis")
         m["confused"] = id("Supersonic") ?? id("Confuse Ray")
+        // Per-round drain beats (residual reasons) each borrow a fitting
+        // move clip — without one the victim's HP just melts with nothing
+        // on screen. The planting/casting clip belongs to the move itself.
+        m["leech seed"] = id("Absorb") ?? id("Mega Drain")   // green sparks
+        m["curse"] = id("Curse")                             // ghost-nail flicker
+        m["nightmare"] = id("Nightmare")
+        m["perish song"] = id("Perish Song") ?? id("Sing")
+        m["trap"] = id("Wrap") ?? id("Bind")                 // squeeze coils
         return m
     }()
 
@@ -153,6 +164,19 @@ enum EffectPlayer {
         return false
     }
 
+    /// The companion clip (ROM anim2) played at the target just before the
+    /// hit clip — the part the hit-slot priority used to drop entirely
+    /// (Vine Whip's vine, Cut's slash arc, String Shot's threads, ...).
+    static func coClip(forMove moveId: Int) -> EffectClip? {
+        guard let c = MoveEffects.map[moveId]?.co else { return nil }
+        if let cached = coCache[moveId] { return cached }
+        let built = build(moveId: moveId, file: c.file, anim: c.anim, loop: c.loop,
+                          particle: c.particle == true, tint: c.tint == true,
+                          headAnchored: false)
+        coCache[moveId] = built
+        return built
+    }
+
     /// The projectile/travel clip for `moveId`, facing its travel direction.
     /// `octant` is the travel angle octant (0=E, 1=NE, ... CCW); directional
     /// sets (anim..anim+7, ROM order S,SW,W,NW,N,NE,E,SE) pick the matching
@@ -173,6 +197,22 @@ enum EffectPlayer {
         guard var steps = rawSteps(file: file, anim: anim) else { return nil }
         steps = cropAndCenter(steps)
         steps = capSize(steps)   // screen-filling art (Surf & co) fits battle scale
+        // Source quirk: some drawn clips alternate real frames with BLANK
+        // 1-tick spacers (Vine Whip: whip/blank/whip/blank — 6 ticks total),
+        // a strobe that reads as no effect at all at desktop scale. Drop the
+        // blanks and stretch blink-length clips to a readable length.
+        // (Drawn art only: shared-file particle frames are legitimately tiny,
+        // and their burst timing is composed later.)
+        if !loop, !particle {
+            let real = steps.filter { $0.image.width > 2 || $0.image.height > 2 }
+            if !real.isEmpty, real.count < steps.count { steps = real }
+            let total = steps.reduce(0) { $0 + $1.ticks }
+            if total > 0, total < 12 {
+                let k = (12 + total - 1) / total
+                steps = steps.map { RawStep(image: $0.image, ticks: $0.ticks * k,
+                                            dx: $0.dx, dy: $0.dy) }
+            }
+        }
         let type = GameData.moves[moveId]?.type
         if particle {
             // Shared-file particle frames are unrecoverable palette garbage
