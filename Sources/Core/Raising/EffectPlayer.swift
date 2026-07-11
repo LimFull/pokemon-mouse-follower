@@ -574,7 +574,9 @@ struct RunningEffect {
               : local
         for s in clip.steps {
             if t < s.ticks {
-                let f = travels ? CGFloat(tick) / CGFloat(maxTicks) : 0
+                // Flight progress excludes the delay — with it included, a
+                // delayed traveling clip would pop in partway along its path.
+                let f = travels ? CGFloat(tick - delay) / CGFloat(max(1, maxTicks - delay)) : 0
                 let base = CGPoint(x: from.x + (to.x - from.x) * f,
                                    y: from.y + (to.y - from.y) * f)
                 let up: CGFloat = (clip.headAnchored ? 10 : 0)

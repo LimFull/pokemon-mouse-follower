@@ -778,7 +778,14 @@ final class BattleController: LiveBattleBridge {
                let co = EffectPlayer.coClip(forMove: e.moveId, octant: (octant + 4) % 8) {
                 let ticks = min(co.loop ? 24 : co.totalTicks, 36)
                 let delay = proj == nil ? windup : 0
-                effects.append(RunningEffect(clip: co, anchor: target,
+                // Drain gathers play ON the caster — the energy visibly
+                // collects into the one who heals. (Tried on-target, midway,
+                // and a victim->caster flight: all read as the wrong mon
+                // absorbing or as gathering from thin air.)
+                let coAnchor: CGPoint
+                if case .drain = MoveMechanics.mechanic(for: e.moveId) { coAnchor = attacker }
+                else { coAnchor = target }
+                effects.append(RunningEffect(clip: co, anchor: coAnchor,
                                              maxTicks: delay + ticks, delay: delay))
                 coTicks = ticks
                 total += ticks
@@ -871,20 +878,6 @@ final class BattleController: LiveBattleBridge {
             // back up — the lerp is direction-agnostic. Pure cures ("woke up")
             // carry an unchanged snapshot and stay flat.
             impactAt = 6; hitAt = 8
-            if e.moveName == "drained" {
-                // Absorb & co: the stolen HP visibly flows victim -> drainer
-                // (same suck-in as the leech seed tick) before the gauge
-                // fills — without it the co clip's gather ends ON the victim
-                // and reads as the VICTIM absorbing something (user report).
-                let healer = e.targetIsPlayer ? playerPos : (wildMon?.pos ?? playerPos)
-                let victim = e.targetIsPlayer ? (wildMon?.pos ?? playerPos) : playerPos
-                if let clip = EffectPlayer.drainClip {
-                    let travel = 26
-                    effects.append(RunningEffect(clip: clip, from: victim, to: healer,
-                                                 maxTicks: travel))
-                    hitAt = max(hitAt, travel)
-                }
-            }
             drainEnd = hitAt + 22
             curTicks = drainEnd + 12
         case .item:
