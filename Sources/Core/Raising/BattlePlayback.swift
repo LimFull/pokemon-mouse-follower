@@ -41,6 +41,11 @@ struct BattleScene {
     var logAnchor: CGPoint = .zero        // global top-center of the log box
     var playerSpriteDex: Int? = nil       // player Transformed: draw the follower as this species
     var wildSpriteDex: Int? = nil         // wild Transformed: the species it currently shows
+    // Minimize/Growth body scale — the ROM keeps this visual in engine code
+    // (the anim data ships only a tiny spark), so the playback scales the
+    // sprite itself; sticks for the battle like the stat stage it mirrors.
+    var playerSpriteScale: CGFloat = 1
+    var wildSpriteScale: CGFloat = 1
 }
 
 final class BattleController: LiveBattleBridge {
@@ -85,6 +90,11 @@ final class BattleController: LiveBattleBridge {
     private var curPHP = 1.0, curWHP = 1.0
     private var pFrom = 1.0, pTo = 1.0, wFrom = 1.0, wTo = 1.0
     private var flashP = false, flashW = false
+    // Minimize/Growth body scale (current eased value + target). The wild's
+    // persists while it lingers between battles — consistent with its stat
+    // stages surviving; the player's resets on every battle entry.
+    private var pBodyScale: CGFloat = 1, wBodyScale: CGFloat = 1
+    private var pBodyTarget: CGFloat = 1, wBodyTarget: CGFloat = 1
     private var playerAlpha = 1.0
     private var wildAlpha = 1.0
     private var result: BattleResult?
@@ -175,6 +185,7 @@ final class BattleController: LiveBattleBridge {
     private static let showcaseMoves: [Int: Int] = [
         204: 123,   // 피콘 → 자폭 (Selfdestruct)
         43: 135,    // 뚜벅쵸 → 흡수 (Absorb; L21+ would drop it for Mega Drain)
+        35: 169,    // 삐삐 → 작아지기 (Minimize; learned at L19, later window drops it)
     ]
 
     func forceEncounter(dex: Int? = nil) {
@@ -328,6 +339,7 @@ final class BattleController: LiveBattleBridge {
         flashP = false; flashW = false
         pendingLog = []
         playerTransformedDex = nil   // the follower always re-enters as itself
+        pBodyScale = 1; pBodyTarget = 1   // fresh mon, full size (wild's persists)
         pushLog(BattleLog.battleStart(wildName: w.name))
         phase = .battling
     }
@@ -380,6 +392,21 @@ final class BattleController: LiveBattleBridge {
             pushLog(next.text)
             pendingLog.removeFirst()
         }
+        // Minimize/Growth: the body itself shrinks/swells at the impact tick
+        // (compounding on repeat use, clamped) and eases toward the target.
+        if e.kind == .attack, evTick == impactAt {
+            switch GameData.moves[e.moveId]?.englishName {
+            case "Minimize":
+                if e.actorIsPlayer { pBodyTarget = max(0.4, pBodyTarget * 0.6) }
+                else { wBodyTarget = max(0.4, wBodyTarget * 0.6) }
+            case "Growth":
+                if e.actorIsPlayer { pBodyTarget = min(1.4, pBodyTarget * 1.2) }
+                else { wBodyTarget = min(1.4, wBodyTarget * 1.2) }
+            default: break
+            }
+        }
+        pBodyScale += (pBodyTarget - pBodyScale) * 0.12
+        wBodyScale += (wBodyTarget - wBodyScale) * 0.12
         // Transform: swap the shown sprite the moment the copy lands.
         if e.statusApplied == "transformed!", evTick == impactAt {
             if e.actorIsPlayer, let w = wild {
@@ -1060,6 +1087,8 @@ final class BattleController: LiveBattleBridge {
         pendingLog = []
         playerTransformedDex = nil
         wildTransformedDex = nil
+        pBodyScale = 1; wBodyScale = 1
+        pBodyTarget = 1; wBodyTarget = 1
         recallTurn = nil
         session = nil
         pendingItem = nil
@@ -1094,7 +1123,9 @@ final class BattleController: LiveBattleBridge {
             logLines: logLines.map { ($0.text, logAlpha($0.age)) },
             logAnchor: logAnchor(wildPos: wm.pos),
             playerSpriteDex: playerTransformedDex,
-            wildSpriteDex: wildTransformedDex)
+            wildSpriteDex: wildTransformedDex,
+            playerSpriteScale: pBodyScale,
+            wildSpriteScale: wBodyScale)
     }
 
     private func logAlpha(_ age: Int) -> Double {

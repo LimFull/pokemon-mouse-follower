@@ -126,16 +126,19 @@ final class SpriteView: NSView {
             logBox.isHidden = true
             logWidthCache.removeAll()
             spriteLayer.opacity = 1
+            battleBodyScale = 1
             return
         }
         let s = AppSettings.shared.scale
+        battleBodyScale = scene.playerSpriteScale   // Minimize/Growth (render() applies it)
         let wx = scene.wildPos.x - screenOrigin.x, wy = scene.wildPos.y - screenOrigin.y
         let px = scene.playerPos.x - screenOrigin.x, py = scene.playerPos.y - screenOrigin.y
         CATransaction.begin(); CATransaction.setDisableActions(true)
 
         wildLayer.isHidden = false
-        wildLayer.bounds = CGRect(x: 0, y: 0, width: CGFloat(scene.wildFrame.width) * s,
-                                  height: CGFloat(scene.wildFrame.height) * s)
+        let ws = s * scene.wildSpriteScale   // Minimize/Growth body scale
+        wildLayer.bounds = CGRect(x: 0, y: 0, width: CGFloat(scene.wildFrame.width) * ws,
+                                  height: CGFloat(scene.wildFrame.height) * ws)
         wildLayer.contents = scene.wildFrame
         wildLayer.position = CGPoint(x: wx, y: wy)
         wildLayer.opacity = scene.flashWild ? 0.25 : Float(scene.wildAlpha)
@@ -279,13 +282,17 @@ final class SpriteView: NSView {
         CATransaction.commit()
     }
 
+    /// Minimize/Growth body scale from the battle scene — multiplies the
+    /// follower sprite (and its shadow) drawn by render().
+    private var battleBodyScale: CGFloat = 1
+
     func render(_ frame: CGImage?, globalPos: CGPoint, shadow: ShadowAnchor,
                 rotation: CGFloat = 0, glow: CGFloat = 0) {
         guard let frame else {
             spriteLayer.isHidden = true; shadowLayer.isHidden = true; glowLayer.isHidden = true
             return
         }
-        let s = AppSettings.shared.scale
+        let s = AppSettings.shared.scale * battleBodyScale
         let x = globalPos.x - screenOrigin.x
         let y = globalPos.y - screenOrigin.y
         CATransaction.begin()

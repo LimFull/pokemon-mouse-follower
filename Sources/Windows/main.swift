@@ -242,15 +242,17 @@ func tickFrame() {
         overlay.hide()
     } else {
         let playerAlpha = scene.map { $0.flashPlayer ? 0.25 : $0.playerAlpha } ?? 1
+        // Minimize/Growth body scale rides the draw scale (shadow included).
+        let bodyScale = scene?.playerSpriteScale ?? 1
         overlay.present(frame: controller.currentFrame, worldPos: renderPos,
                         shadow: controller.currentShadow,
-                        scale: s, showShadow: AppSettings.shared.showShadow,
+                        scale: s * bodyScale, showShadow: AppSettings.shared.showShadow,
                         alpha: playerAlpha, rotation: controller.faintRotation)
     }
     if let sc = scene {
         wildOverlay.present(frame: sc.wildFrame, worldPos: sc.wildPos,
                             shadow: ShadowAnchor(offset: .zero, size: .zero),
-                            scale: s, showShadow: false,
+                            scale: s * sc.wildSpriteScale, showShadow: false,
                             alpha: sc.flashWild ? 0.25 : sc.wildAlpha)
         if let fx = sc.effectFrame {
             effectOverlay.present(frame: fx, worldPos: sc.effectPos,

@@ -148,7 +148,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                              ("즉시 배틀: 별가사리 (물대포)", 120),
                              ("즉시 배틀: 메타몽 (변신)", 132),
                              ("즉시 배틀: 피콘 (자폭)", 204),
-                             ("즉시 배틀: 뚜벅쵸 (흡수·드레인)", 43)] {
+                             ("즉시 배틀: 뚜벅쵸 (흡수·드레인)", 43),
+                             ("즉시 배틀: 삐삐 (작아지기)", 35)] {
             dm.addItem(menuItem(title, action: #selector(debugEncounter(_:)), tag: dex))
         }
         dm.addItem(.separator())

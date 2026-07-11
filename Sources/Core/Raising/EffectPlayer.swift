@@ -268,9 +268,15 @@ enum EffectPlayer {
             let color = explosion ? RGBA(r: 1.0, g: 0.62, b: 0.25)   // blast orange
                       : neutral ? RGBA(white: 0.96) : TypeStyle.rgba(type)
             steps = steps.map {
-                RawStep(image: glowDot(width: $0.image.width,
-                                       height: $0.image.height, color: color),
-                        ticks: $0.ticks, dx: $0.dx, dy: $0.dy)
+                // The ROM's raw particle SIZE reads as a fat blob at desktop
+                // scale (user report: Minimize spark, Water Gun hit) — keep
+                // each frame's timing (and the burst spread below) but draw
+                // the dot at 40%. Explosions keep full-size dots: the blast
+                // should stay chunky.
+                let dw = explosion ? $0.image.width : max(3, $0.image.width * 2 / 5)
+                let dh = explosion ? $0.image.height : max(3, $0.image.height * 2 / 5)
+                return RawStep(image: glowDot(width: dw, height: dh, color: color),
+                               ticks: $0.ticks, dx: $0.dx, dy: $0.dy)
             }
             if explosion {
                 // Denser, wider burst that engulfs the user instead of a spark.
