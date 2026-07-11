@@ -37,8 +37,14 @@ Source: "build-win\PokemonMouseFollower\*"; DestDir: "{app}"; \
     Excludes: "build-log.txt,build-err.txt,sources.rsp,*.lib,*.exp"; \
     Flags: recursesubdirs ignoreversion
 
+[Tasks]
+Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
+
 [Icons]
-Name: "{userprograms}\Pokémon Mouse Follower"; Filename: "{app}\PokemonMouseFollower.exe"
+; ASCII shortcut names: Windows Start-menu search misses the accented
+; "Pokémon" when users type "pokemon".
+Name: "{userprograms}\Pokemon Mouse Follower"; Filename: "{app}\PokemonMouseFollower.exe"
+Name: "{userdesktop}\Pokemon Mouse Follower"; Filename: "{app}\PokemonMouseFollower.exe"; Tasks: desktopicon
 
 [Run]
 ; Interactive install: offer to launch. Silent (self-update): always relaunch.
