@@ -25,13 +25,31 @@ if (-not (Test-Path "gamedata\effects")) {
 
 $version = (Select-String -Path "Sources\Core\Version.swift" -Pattern 'static let string = "([^"]+)"').Matches[0].Groups[1].Value
 $tag = "v$version"
+$publish = ($args.Count -gt 0 -and $args[0] -eq "publish")
+
+# Publishing requires a CHANGELOG.md section for this version — the release
+# notes lead with it (and the in-app updaters display it). Validate before
+# the slow build, not after.
+$changes = ""
+if ($publish) {
+    $on = $false
+    $changes = foreach ($l in (Get-Content CHANGELOG.md -Encoding UTF8)) {
+        if ($l -match ('^## ' + [regex]::Escape($version) + ' ')) { $on = $true; continue }
+        if ($l -match '^## ') { $on = $false; continue }
+        if ($on) { $l }
+    }
+    $changes = (($changes -join "`n")).Trim()
+    if (-not $changes) {
+        Write-Error "CHANGELOG.md has no '## $version ...' section - write one before releasing."
+    }
+}
 
 .\build.ps1 package
 
 $zip = (Get-Item "build-win\PokemonMouseFollower-$version-windows.zip").FullName
 $setup = (Get-Item "build-win\PokemonMouseFollower-Setup.exe").FullName
 
-if ($args.Count -eq 0 -or $args[0] -ne "publish") {
+if (-not $publish) {
     Write-Host "==> Built:"
     Write-Host "      $zip"
     Write-Host "      $setup"
@@ -53,15 +71,20 @@ if ($LASTEXITCODE -ne 0) {
     if ($LASTEXITCODE -ne 0) { Write-Error "git push failed" }
 }
 
+# Release notes: the changelog section (extracted above) leads — the in-app
+# updaters show the body up to "## 설치" — then install instructions.
 $notes = @'
 Pokémon Mouse Follower {VERSION} (Windows)
+
+## 변경 사항
+{CHANGES}
 
 Windows 10+ · x64.
 
 ## 설치
 1. `PokemonMouseFollower-Setup.exe` 다운로드 후 실행 (무설치를 원하면 `-windows.zip`)
 2. SmartScreen 경고가 뜨면 **추가 정보 → 실행**을 누르세요 — 코드 서명이 없어 뜨는 경고입니다
-'@.Replace("{VERSION}", $version)
+'@.Replace("{VERSION}", $version).Replace("{CHANGES}", $changes)
 
 # Create or update the GitHub Release and upload both assets.
 cmd /c "gh release view $tag >nul 2>nul"

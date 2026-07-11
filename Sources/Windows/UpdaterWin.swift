@@ -47,6 +47,22 @@ enum UpdaterWin {
         return false
     }
 
+    /// The update prompt shows what changed, not the whole release page:
+    /// release.ps1 puts the CHANGELOG.md section under a "## 변경 사항"
+    /// heading, so extract it (up to the next "## " heading — the install
+    /// instructions don't apply to an in-app update). Older releases without
+    /// the heading fall back to the full body. Mirrors Updater.changelogSection.
+    static func changelogSection(_ body: String) -> String {
+        guard let s = body.range(of: "## 변경 사항") else {
+            // Pre-changelog release: show the body up to the install section.
+            let head = body.components(separatedBy: "\n## 설치").first ?? body
+            return head.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        var notes = String(body[s.upperBound...])
+        if let e = notes.range(of: "\n## ") { notes = String(notes[..<e.lowerBound]) }
+        return notes.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     private static var checking = false
 
     /// Tray-menu entry point. Network + prompts run off the tick thread;
@@ -113,7 +129,7 @@ enum UpdaterWin {
             guard let u = match?["browser_download_url"] as? String, let setup = URL(string: u) else { continue }
             let version = tag.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "v "))
             return .success(Release(version: version, setupURL: setup,
-                                    notes: (json["body"] as? String) ?? ""))
+                                    notes: changelogSection((json["body"] as? String) ?? "")))
         }
         // No release with an installer in the window -> nothing to offer.
         return .success(Release(version: AppVersion.string, setupURL: apiURL, notes: ""))

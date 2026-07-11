@@ -33,6 +33,23 @@ DMG="${APP_NAME}-${VERSION}.dmg"
 STABLE_DMG="${APP_NAME}.dmg"   # version-less copy for a stable /releases/latest/download/ link
 TAG="v${VERSION}"
 
+# Publishing requires a CHANGELOG.md section for this version — the release
+# notes lead with it (and the in-app updaters display it). Validate before
+# the slow build/notarize, not after.
+CHANGES=""
+if [ "${1:-}" = "publish" ]; then
+  CHANGES=$(awk -v ver="$VERSION" '
+    $0 ~ "^## "ver" " { on=1; next }
+    /^## /            { on=0 }
+    on' CHANGELOG.md)
+  if [ -z "$(echo "$CHANGES" | tr -d '[:space:]')" ]; then
+    echo "ERROR: CHANGELOG.md has no '## ${VERSION} ...' section — write one before releasing." >&2
+    exit 1
+  fi
+  CHANGES="## 변경 사항
+$(echo "$CHANGES" | sed '/./,$!d')"
+fi
+
 # 1. Build a fresh universal app bundle (build.sh ad-hoc signs it).
 ./build.sh
 
@@ -105,20 +122,26 @@ if ! git rev-parse "$TAG" >/dev/null 2>&1; then
   git push origin "$TAG"
 fi
 
-# 7. Release notes: clean when notarized, Gatekeeper workaround when ad-hoc.
+# 7. Release notes: the changelog section (extracted above) leads — the
+# in-app updaters show the body up to "## 설치" — then install instructions:
+# clean when notarized, Gatekeeper workaround when ad-hoc.
 INSTALL="## 설치
 1. \`${DMG}\` 다운로드 후 열기
 2. **Pokémon Mouse Follower** 아이콘을 **Applications** 폴더로 드래그
 3. Launchpad / 응용 프로그램에서 실행"
 
 if [ "$NOTARIZED" = 1 ]; then
-  NOTES="Pokémon Mouse Follower ${VERSION}
+  NOTES="Pokémon Mouse Follower ${VERSION} (macOS)
+
+${CHANGES}
 
 macOS 13 (Ventura)+ · Apple Silicon / Intel universal.
 
 ${INSTALL}"
 else
-  NOTES="Pokémon Mouse Follower ${VERSION}
+  NOTES="Pokémon Mouse Follower ${VERSION} (macOS)
+
+${CHANGES}
 
 macOS 13 (Ventura)+ · Apple Silicon / Intel universal. Xcode / 개발자 도구 없이 바로 실행됩니다.
 

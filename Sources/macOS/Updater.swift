@@ -86,14 +86,30 @@ enum Updater {
                         ?? assets.first { ($0["name"] as? String)?.hasSuffix(".dmg") == true }
                 guard let u = match?["browser_download_url"] as? String, let dmg = URL(string: u) else { continue }
                 let version = tag.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "v "))
-                let notes = (json["body"] as? String) ?? ""
-                finish(.success(Release(version: version, dmgURL: dmg, notes: notes)))
+                finish(.success(Release(version: version, dmgURL: dmg,
+                                        notes: changelogSection((json["body"] as? String) ?? ""))))
                 return
             }
             // No release with a .dmg in the window — report as current so the
             // alert says "up to date" instead of offering a 404 download.
             finish(.success(Release(version: currentVersion, dmgURL: fallbackDMG, notes: "")))
         }.resume()
+    }
+
+    /// The update dialog shows what changed, not the whole release page:
+    /// release.sh puts the CHANGELOG.md section under a "## 변경 사항" heading,
+    /// so extract it (up to the next "## " heading — the install instructions
+    /// don't apply to an in-app update). Older releases without the heading
+    /// fall back to the full body.
+    static func changelogSection(_ body: String) -> String {
+        guard let s = body.range(of: "## 변경 사항") else {
+            // Pre-changelog release: show the body up to the install section.
+            let head = body.components(separatedBy: "\n## 설치").first ?? body
+            return head.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        var notes = String(body[s.upperBound...])
+        if let e = notes.range(of: "\n## ") { notes = String(notes[..<e.lowerBound]) }
+        return notes.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     // MARK: Install + relaunch
