@@ -94,7 +94,7 @@ enum EffectPlayer {
     private static var metaCache: [Int: FileMeta] = [:]
     private static var clipCache: [Int: EffectClip?] = [:]   // hit clip per move id
     private static var projCache: [Int: EffectClip?] = [:]   // key: moveId*8 + facing
-    private static var coCache: [Int: EffectClip?] = [:]     // companion clip per move id
+    private static var coCache: [Int: EffectClip?] = [:]     // key: moveId*8 + facing
 
     /// Whether `moveId` is a full-screen effect (Psychic & co) — the overlay
     /// renders a type-colored screen flash + quake instead of a sprite.
@@ -123,7 +123,7 @@ enum EffectPlayer {
         // Per-round drain beats (residual reasons) each borrow a fitting
         // move clip — without one the victim's HP just melts with nothing
         // on screen. The planting/casting clip belongs to the move itself.
-        m["leech seed"] = id("Absorb") ?? id("Mega Drain")   // green sparks
+        // ("leech seed" uses the synthetic drainClip instead — see below.)
         m["curse"] = id("Curse")                             // ghost-nail flicker
         m["nightmare"] = id("Nightmare")
         m["perish song"] = id("Perish Song") ?? id("Sing")
@@ -164,16 +164,56 @@ enum EffectPlayer {
         return false
     }
 
+    /// Synthetic drain-tick clip (leech seed's per-round HP steal): small
+    /// ROUND green sparks, loosely scattered at the start and CONVERGING as
+    /// the clip plays. The playback flies it victim -> seeder, so the gather
+    /// reads as HP being pulled in — the opposite arc of composeBurst, whose
+    /// borrowed Absorb ellipses read as an outward hit (user feedback).
+    static let drainClip: EffectClip? = makeDrainClip()
+
+    private static func makeDrainClip() -> EffectClip? {
+        let color = TypeStyle.rgba("Grass")
+        let dot = 5, spread = 18, copies = 7, frames = 8
+        let canvas = 2 * spread + dot + 4
+        let spark = glowDot(width: dot, height: dot, color: color)
+        var raw: [RawStep] = []
+        for i in 0..<frames {
+            let progress = Double(i) / Double(frames - 1)
+            var out = RGBABuffer(width: canvas, height: canvas,
+                                 pixels: [UInt8](repeating: 0, count: canvas * canvas * 4))
+            let c = Double(canvas) / 2
+            for j in 0..<copies {
+                let jitter = 0.65 + 0.35 * Double((j * 37) % 10) / 9.0
+                let r = (2 + Double(spread - 2) * (1 - progress)) * jitter
+                let angle = Double(j) * 2.399963        // golden angle
+                let x = c + cos(angle) * r - Double(dot) / 2
+                let y = c + sin(angle) * r - Double(dot) / 2
+                blit(spark, onto: &out, x: Int(x), y: Int(y))
+            }
+            raw.append(RawStep(image: out, ticks: 3, dx: 0, dy: 0))
+        }
+        let rendered = raw.compactMap { s -> EffectClip.Step? in
+            guard let img = PlatformImageIO.makeImage(s.image) else { return nil }
+            return EffectClip.Step(image: img, ticks: s.ticks, dx: s.dx, dy: s.dy)
+        }
+        guard !rendered.isEmpty else { return nil }
+        return EffectClip(steps: rendered, loop: false, headAnchored: false)
+    }
+
     /// The companion clip (ROM anim2) played at the target just before the
     /// hit clip — the part the hit-slot priority used to drop entirely
     /// (Vine Whip's vine, Cut's slash arc, String Shot's threads, ...).
-    static func coClip(forMove moveId: Int) -> EffectClip? {
+    /// Directional sets (Absorb's gather & co) pick the rotation for
+    /// `octant`, same convention as projectile().
+    static func coClip(forMove moveId: Int, octant: Int = 6) -> EffectClip? {
         guard let c = MoveEffects.map[moveId]?.co else { return nil }
-        if let cached = coCache[moveId] { return cached }
-        let built = build(moveId: moveId, file: c.file, anim: c.anim, loop: c.loop,
+        let idx = c.dirs == true ? (6 - (octant & 7) + 8) % 8 : 0
+        let key = moveId * 8 + idx
+        if let cached = coCache[key] { return cached }
+        let built = build(moveId: moveId, file: c.file, anim: c.anim + idx, loop: c.loop,
                           particle: c.particle == true, tint: c.tint == true,
                           headAnchored: false)
-        coCache[moveId] = built
+        coCache[key] = built
         return built
     }
 

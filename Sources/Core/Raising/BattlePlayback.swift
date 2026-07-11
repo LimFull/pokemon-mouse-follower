@@ -174,6 +174,7 @@ final class BattleController: LiveBattleBridge {
     /// lose the showcase move (e.g. Pineco drops Selfdestruct at L20–33).
     private static let showcaseMoves: [Int: Int] = [
         204: 123,   // 피콘 → 자폭 (Selfdestruct)
+        43: 135,    // 뚜벅쵸 → 흡수 (Absorb; L21+ would drop it for Mega Drain)
     ]
 
     func forceEncounter(dex: Int? = nil) {
@@ -769,10 +770,12 @@ final class BattleController: LiveBattleBridge {
             }
             // Companion clip (ROM anim2 — e.g. Vine Whip's vine lash): plays
             // at the target BEFORE the hit flash, so the impact lands exactly
-            // when the whip does.
+            // when the whip does. Directional sets face the CASTER — a
+            // drain's gather must flow toward whoever is absorbing, not
+            // whichever way the sheet's first rotation happens to point.
             var coTicks = 0
             if e.moveId > 0, !EffectPlayer.isExplosionMove(e.moveId),
-               let co = EffectPlayer.coClip(forMove: e.moveId) {
+               let co = EffectPlayer.coClip(forMove: e.moveId, octant: (octant + 4) % 8) {
                 let ticks = min(co.loop ? 24 : co.totalTicks, 36)
                 let delay = proj == nil ? windup : 0
                 effects.append(RunningEffect(clip: co, anchor: target,
@@ -814,7 +817,17 @@ final class BattleController: LiveBattleBridge {
             let victim = e.targetIsPlayer ? playerPos : (wildMon?.pos ?? playerPos)
             impactAt = 8
             hitAt = 22
-            if let clip = EffectPlayer.statusClip(e.moveName) {
+            if e.moveName == "leech seed", let clip = EffectPlayer.drainClip {
+                // The stolen HP flows INTO the seeder: loose round sparks
+                // gather together while they travel victim -> seeder (the
+                // ROM keeps this tick's visual in engine code — a suck-in
+                // reads as draining, a burst reads as a hit).
+                let seeder = e.targetIsPlayer ? (wildMon?.pos ?? playerPos) : playerPos
+                let travel = 26
+                effects.append(RunningEffect(clip: clip, from: victim, to: seeder,
+                                             maxTicks: travel))
+                hitAt = max(hitAt, travel)
+            } else if let clip = EffectPlayer.statusClip(e.moveName) {
                 let ticks = min(clip.loop ? 30 : clip.totalTicks, 44)
                 effects.append(RunningEffect(clip: clip, anchor: victim, maxTicks: ticks))
                 hitAt = max(hitAt, ticks)
@@ -858,6 +871,20 @@ final class BattleController: LiveBattleBridge {
             // back up — the lerp is direction-agnostic. Pure cures ("woke up")
             // carry an unchanged snapshot and stay flat.
             impactAt = 6; hitAt = 8
+            if e.moveName == "drained" {
+                // Absorb & co: the stolen HP visibly flows victim -> drainer
+                // (same suck-in as the leech seed tick) before the gauge
+                // fills — without it the co clip's gather ends ON the victim
+                // and reads as the VICTIM absorbing something (user report).
+                let healer = e.targetIsPlayer ? playerPos : (wildMon?.pos ?? playerPos)
+                let victim = e.targetIsPlayer ? (wildMon?.pos ?? playerPos) : playerPos
+                if let clip = EffectPlayer.drainClip {
+                    let travel = 26
+                    effects.append(RunningEffect(clip: clip, from: victim, to: healer,
+                                                 maxTicks: travel))
+                    hitAt = max(hitAt, travel)
+                }
+            }
             drainEnd = hitAt + 22
             curTicks = drainEnd + 12
         case .item:

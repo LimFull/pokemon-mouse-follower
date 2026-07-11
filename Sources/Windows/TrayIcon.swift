@@ -33,6 +33,7 @@ private let debugEncounters: [(String, Int)] = [
     ("즉시 배틀: 별가사리 (물대포)", 120),
     ("즉시 배틀: 메타몽 (변신)", 132),
     ("즉시 배틀: 피콘 (자폭)", 204),
+    ("즉시 배틀: 뚜벅쵸 (흡수·드레인)", 43),
 ]
 private let debugStatuses: [(String, String)] = [
     ("내 포켓몬: 마비", "paralysis"), ("내 포켓몬: 화상", "burn"),

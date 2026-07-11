@@ -1007,8 +1007,10 @@ final class BattleSession {
             case .lockOn:
                 guard atk.lockedOnRounds == 0 else { emit(.miss, actorIsPlayer: isPlayer, move: m); return }
                 atk.lockedOnRounds = 2
-                emit(.attack, actorIsPlayer: isPlayer, move: m,
-                     targetIsPlayer: isPlayer, status: "locked on")
+                // The no-miss state lives on the USER, but the reticle (and
+                // the "locked on" tag) belongs on the FOE being sighted —
+                // default event target, like identify/miracleEye.
+                emit(.attack, actorIsPlayer: isPlayer, move: m, status: "locked on")
             }
         }
 

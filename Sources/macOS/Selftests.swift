@@ -90,6 +90,7 @@ private func dumpEffectIfRequested() {
         }
         dump(EffectPlayer.clip(forMove: moveId), "step")
         dump(EffectPlayer.coClip(forMove: moveId), "co")
+        dump(EffectPlayer.drainClip, "drain")
         dump(EffectPlayer.projectile(forMove: moveId), "proj")
         dump(EffectPlayer.projectile(forMove: moveId, octant: 0), "projE")   // flying east
         exit(0)
