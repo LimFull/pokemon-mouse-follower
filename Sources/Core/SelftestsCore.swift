@@ -68,6 +68,18 @@ func runCoreSelftestsIfRequested() {
     let saveFile = URL(fileURLWithPath: saveDir, isDirectory: true).appendingPathComponent("raising.json")
     check(FileManager.default.fileExists(atPath: saveFile.path), "save file written")
 
+    // Move-effect sprites (rom-extract output, gitignored): informational
+    // only — absent on CI runners and fresh clones, where battles fall back
+    // to bursts/lunges. Present -> the three staple clips must decode.
+    print("move effects mapped=\(MoveEffects.map.count)")
+    for (label, id) in [("Tackle", 154), ("Ember", 262), ("Thunderbolt", 129)] {
+        if let c = EffectPlayer.clip(forMove: id) {
+            print("  effect \(label): steps=\(c.steps.count) ticks=\(c.totalTicks) loop=\(c.loop)")
+        } else {
+            print("  effect \(label): absent (gamedata/effects not bundled — see rom-extract/README.md)")
+        }
+    }
+
     print(failures == 0 ? "=== core selftest: ALL PASS ===" : "=== core selftest: \(failures) FAILURES ===")
     exit(failures == 0 ? 0 : 1)
 }

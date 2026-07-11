@@ -15,7 +15,6 @@ Usage: render_all.py [--rom rom.nds] [--out out] [--mem-mb 1200] [--timeout 180]
 import argparse
 import json
 import os
-import signal
 import subprocess
 import sys
 import time
@@ -30,6 +29,32 @@ def log(msg):
 
 
 def rss_mb(pid):
+    """Real resident memory of a child, in MB (Unix: ps; Windows: psapi)."""
+    if sys.platform == "win32":
+        import ctypes
+        import ctypes.wintypes as wt
+
+        class PMC(ctypes.Structure):
+            _fields_ = [
+                ("cb", wt.DWORD), ("PageFaultCount", wt.DWORD),
+                ("PeakWorkingSetSize", ctypes.c_size_t), ("WorkingSetSize", ctypes.c_size_t),
+                ("QuotaPeakPagedPoolUsage", ctypes.c_size_t), ("QuotaPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t), ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+                ("PagefileUsage", ctypes.c_size_t), ("PeakPagefileUsage", ctypes.c_size_t),
+            ]
+
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        h = ctypes.windll.kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if not h:
+            return 0
+        try:
+            pmc = PMC()
+            pmc.cb = ctypes.sizeof(PMC)
+            if ctypes.windll.psapi.GetProcessMemoryInfo(h, ctypes.byref(pmc), pmc.cb):
+                return pmc.WorkingSetSize / (1024 * 1024)
+            return 0
+        finally:
+            ctypes.windll.kernel32.CloseHandle(h)
     try:
         out = subprocess.run(["ps", "-o", "rss=", "-p", str(pid)], capture_output=True, text=True)
         return int(out.stdout.strip() or 0) / 1024
@@ -113,7 +138,7 @@ def main():
             elif time.time() - started > args.timeout:
                 verdict = "killed_time"
             if verdict:
-                proc.send_signal(signal.SIGKILL)
+                proc.kill()   # SIGKILL equivalent; also exists on Windows
                 proc.wait()
                 break
 
