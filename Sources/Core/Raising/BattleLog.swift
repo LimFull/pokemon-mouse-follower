@@ -26,7 +26,11 @@ enum BattleLog {
 
         switch e.kind {
         case .attack:
-            if e.moveId > 0 { add(LF("log.attack", actor, e.moveName), .start) }
+            // Explosion moves already announced on their detonation beat
+            // (the selfHit that precedes this event) — don't repeat it.
+            if e.moveId > 0, !EffectPlayer.isExplosionMove(e.moveId) {
+                add(LF("log.attack", actor, e.moveName), .start)
+            }
             if e.damage > 0 {
                 if e.crit { add(L("log.crit"), .impact) }
                 if e.effectiveness > 1 { add(L("log.eff.super"), .impact) }
@@ -36,13 +40,21 @@ enum BattleLog {
             for line in statusLines(e.statusApplied, name: target) { add(line, .resolve) }
             if e.fainted { add(LF("log.faint", target), .resolve) }
         case .miss:
-            if e.moveId > 0 { add(LF("log.attack", actor, e.moveName), .start) }
+            if e.moveId > 0, !EffectPlayer.isExplosionMove(e.moveId) {
+                add(LF("log.attack", actor, e.moveName), .start)
+            }
             add(e.effectiveness == 0 ? LF("log.noeffect", target) : L("log.missed"), .impact)
         case .skip:
             add(reasonLine("skip", e.moveName, name: actor), .start)
         case .selfHit:
-            add(reasonLine("selfhit", e.moveName, name: target), .start)
-            if e.damage > 0 { add(LF("log.damage", target, String(e.damage)), .resolve) }
+            // A selfHit carrying a move is a detonation beat (Selfdestruct &
+            // co): announce the move like an attack — the whole-HP "damage"
+            // number is noise, the faint line tells the story.
+            if e.moveId > 0 { add(LF("log.attack", actor, e.moveName), .start) }
+            else {
+                add(reasonLine("selfhit", e.moveName, name: target), .start)
+                if e.damage > 0 { add(LF("log.damage", target, String(e.damage)), .resolve) }
+            }
             if e.fainted { add(LF("log.faint", target), .resolve) }
         case .residual:
             add(reasonLine("residual", e.moveName, name: target), .start)

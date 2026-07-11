@@ -578,12 +578,16 @@ final class BattleSession {
                 emit(.attack, actorIsPlayer: isPlayer, move: m, damage: dmg, status: "One-hit KO!")
 
             case .explosion(let p):
-                let landed = executePlain(m, atk, def, isPlayer: isPlayer, eff: eff, powerOverride: p)
-                _ = landed
+                // The user detonates FIRST — the selfHit carries the move so
+                // the playback stages announce + blast + full HP drain as one
+                // beat — and the damage lands on the foe after (that attack
+                // event neither re-announces nor re-plays the boom). Fainting
+                // costs the blast nothing: damage comes from stats, not HP.
                 let pay = atk.currentHP
                 atk.currentHP = 0
-                emit(.selfHit, actorIsPlayer: isPlayer, reason: "fainted from the blast",
+                emit(.selfHit, actorIsPlayer: isPlayer, move: m,
                      damage: pay, targetIsPlayer: isPlayer)
+                _ = executePlain(m, atk, def, isPlayer: isPlayer, eff: eff, powerOverride: p)
 
             case .counterPhysical:
                 guard atk.physicalTakenThisRound > 0 else {

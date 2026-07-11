@@ -540,10 +540,11 @@ final class BattleController: LiveBattleBridge {
     private func tickScreenFX(_ e: BattleEvent) {
         screenFlash = 0
         // Selfdestruct/Explosion borrow the full-screen treatment: the blast
-        // is the drama the ROM keeps in engine code, so flash + quake it too.
-        let explosion = EffectPlayer.isExplosionMove(e.moveId)
-        guard e.kind == .attack || e.kind == .miss,
-              EffectPlayer.isScreen(e.moveId) || explosion,
+        // is the drama the ROM keeps in engine code — flash + quake on the
+        // DETONATION beat (the selfHit), not on the follow-up damage beat.
+        let explosion = e.kind == .selfHit && EffectPlayer.isExplosionMove(e.moveId)
+        let screenMove = (e.kind == .attack || e.kind == .miss) && EffectPlayer.isScreen(e.moveId)
+        guard explosion || screenMove,
               evTick >= impactAt, evTick < impactAt + 20 else { return }
         let t = Double(evTick - impactAt) / 20.0
         screenFlash = sin(t * .pi)
@@ -612,12 +613,12 @@ final class BattleController: LiveBattleBridge {
         var w: (BattlePose, Int) = e.wildAsleep ? (.sleep, evTick) : (.stand, 0)
         switch e.kind {
         case .attack, .miss:
-            // An exploding user neither lunges nor shoots — it strikes its
-            // Attack pose in place and goes up with the blast.
-            let ranged = Self.rangedVisual(e.moveId) && !EffectPlayer.isExplosionMove(e.moveId)
+            let ranged = Self.rangedVisual(e.moveId)
             // Attack anim runs through the impact (holding its last frame just
-            // past it), so a lunge isn't cut off mid-swing.
-            if evTick < min(36, impactAt + 12) {
+            // past it), so a lunge isn't cut off mid-swing. An explosion's
+            // damage beat gets NO attacker pose: the user already detonated
+            // (and fainted) on the preceding selfHit beat.
+            if evTick < min(36, impactAt + 12), !EffectPlayer.isExplosionMove(e.moveId) {
                 let atk = (ranged ? BattlePose.shoot : .attack, evTick)
                 if e.actorIsPlayer { p = atk } else { w = atk }
             }
@@ -753,13 +754,13 @@ final class BattleController: LiveBattleBridge {
                 total = windup
             }
             impactAt = total
-            if e.moveId > 0, let clip = EffectPlayer.clip(forMove: e.moveId) {
+            // Explosion moves played their boom on the detonation beat (the
+            // selfHit before this event) — this beat only lands the damage.
+            if e.moveId > 0, !EffectPlayer.isExplosionMove(e.moveId),
+               let clip = EffectPlayer.clip(forMove: e.moveId) {
                 let hitTicks = min(clip.loop ? 40 : clip.totalTicks, 54)
                 let delay = proj == nil ? windup : 0
-                // Selfdestruct/Explosion detonate ON the user — everything
-                // else lands its hit effect on the target.
-                let anchor = EffectPlayer.isExplosionMove(e.moveId) ? attacker : target
-                effects.append(RunningEffect(clip: clip, anchor: anchor,
+                effects.append(RunningEffect(clip: clip, anchor: target,
                                              maxTicks: delay + hitTicks, delay: delay))
                 total += hitTicks
             }
@@ -794,10 +795,25 @@ final class BattleController: LiveBattleBridge {
             drainEnd = hitAt + 24
             curTicks = drainEnd + 12
         case .selfHit:
-            impactAt = 6
-            hitAt = 6
-            drainEnd = hitAt + 24
-            curTicks = drainEnd + 12
+            if EffectPlayer.isExplosionMove(e.moveId),
+               let clip = EffectPlayer.clip(forMove: e.moveId) {
+                // Detonation beat (Selfdestruct & co): announce + blast over
+                // the USER first, then its whole gauge drains. The follow-up
+                // attack event lands the foe's damage without a second boom.
+                let actor = e.actorIsPlayer ? playerPos : (wildMon?.pos ?? playerPos)
+                let ticks = min(clip.loop ? 40 : clip.totalTicks, 54)
+                effects.append(RunningEffect(clip: clip, anchor: actor,
+                                             maxTicks: 6 + ticks, delay: 6))
+                impactAt = 6                    // flash + quake open with the burst
+                hitAt = 6 + ticks               // gauge drains once the blast peaks
+                drainEnd = hitAt + 26
+                curTicks = drainEnd + 12
+            } else {
+                impactAt = 6
+                hitAt = 6
+                drainEnd = hitAt + 24
+                curTicks = drainEnd + 12
+            }
         case .skip:
             // A lost turn must be readable (paralyzed / frozen / asleep / in
             // love): the condition's effect plays over the ACTOR + a float tag.
