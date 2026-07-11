@@ -1,14 +1,15 @@
 ﻿# CI (design/windows-port.md W15): every push builds both platforms and runs
-# the shared core selftest; a v* tag additionally packages the Windows zip +
-# installer and attaches them to the GitHub release. macOS release stays
-# manual (release.sh needs the signing/notarization credentials).
+# the shared core selftest + cross-OS parity diff. Releases are NOT built
+# here: the ROM-extracted effect sprites (gamedata/effects/) are never
+# committed, so a CI-built package would ship without them. Each OS releases
+# from a real machine — macOS via release.sh, Windows via release.ps1 — on
+# independent version tracks.
 
 name: CI
 
 on:
   push:
     branches: [main]
-    tags: ["v*"]
   pull_request:
 
 jobs:
@@ -84,34 +85,3 @@ jobs:
           sed -i 's/\r$//' parity-windows.txt   # normalize CRLF just in case
           diff -u parity-macos.txt parity-windows.txt
           echo "parity OK: $(wc -l < parity-macos.txt) lines identical"
-
-  windows-release:
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: windows
-    runs-on: windows-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-      - uses: compnerd/gha-setup-swift@v0.4.0
-        with:
-          branch: swift-6.3.3-release
-          tag: 6.3.3-RELEASE
-      - name: Install Inno Setup
-        run: choco install innosetup --no-progress -y
-      - name: Package (zip + installer)
-        run: .\build.ps1 package
-        shell: pwsh
-      - name: Attach to release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release view "${{ github.ref_name }}" 2>$null
-          if ($LASTEXITCODE -ne 0) {
-            gh release create "${{ github.ref_name }}" --verify-tag --generate-notes `
-              --title "${{ github.ref_name }}"
-          }
-          gh release upload "${{ github.ref_name }}" `
-            (Get-Item build-win\PokemonMouseFollower-*-windows.zip).FullName `
-            build-win\PokemonMouseFollower-Setup.exe --clobber
-        shell: pwsh

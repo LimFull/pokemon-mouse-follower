@@ -24,12 +24,20 @@ if (-not (Get-Command swiftc -ErrorAction SilentlyContinue)) {
 }
 
 $mode = if ($args.Count -gt 0) { $args[0] } else { "" }
+
+# Release packages must include the ROM-extracted effect sprites (never
+# committed — rebuild with rom-extract\build_effects.py). Dev/CI builds may
+# run without them (move effects just don't render).
+if ($mode -eq "package" -and -not (Test-Path "gamedata\effects")) {
+    Write-Error "gamedata\effects\ missing - run rom-extract\build_effects.py first (see gamedata\README.md)"
+}
+
 $appName = "PokemonMouseFollower"
 $outDir = Join-Path $PSScriptRoot "build-win\$appName"
 
 New-Item -ItemType Directory -Force $outDir | Out-Null
 
-# Version from the single source of truth (W16).
+# Windows version source (W16) — independent of the macOS Info.plist version.
 $version = (Select-String -Path "Sources\Core\Version.swift" -Pattern 'static let string = "([^"]+)"').Matches[0].Groups[1].Value
 Write-Host "==> Version $version"
 

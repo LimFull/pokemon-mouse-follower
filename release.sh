@@ -21,6 +21,13 @@ BUNDLE="${APP_NAME}.app"
 VOL_NAME="Pokémon Mouse Follower"
 NOTARY_PROFILE="PMF_NOTARY"
 
+# Release bundles must include the ROM-extracted effect sprites — never
+# committed, so a fresh clone won't have them (see gamedata/README.md).
+if [ ! -d gamedata/effects ]; then
+  echo "ERROR: gamedata/effects/ missing — run rom-extract/build_effects.py first." >&2
+  exit 1
+fi
+
 VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" Info.plist)
 DMG="${APP_NAME}-${VERSION}.dmg"
 STABLE_DMG="${APP_NAME}.dmg"   # version-less copy for a stable /releases/latest/download/ link

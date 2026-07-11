@@ -96,8 +96,8 @@
 
 - **W13. 패키징** — 채택: **Inno Setup 인스톨러(per-user, `%LOCALAPPDATA%\Programs\`, 관리자 권한 불필요) + zip 병행 배포**. MSIX는 서명 필수(C3 위배)라 탈락. Inno는 시작 메뉴·업데이트 덮어쓰기·실행 중 앱 종료 처리를 공짜로 제공하고 자체 업데이터(W14)의 기반.
 - **W14. 자체 업데이터(Windows)** — 채택: GitHub API 버전 확인(기존 `Updater.fetchLatest` :63-88 재사용 — URLSession은 Windows에서 curl 백엔드로 동작) → `PokemonMouseFollower-Setup.exe` 다운로드 → `/VERYSILENT /SUPPRESSMSGBOXES /CLOSEAPPLICATIONS` 실행 → 인스톨러가 교체+재실행. macOS의 분리 셸 스크립트 스왑과 달리 스왑 로직을 직접 짤 필요 없음. 릴리즈 자산에 버전리스 stable 링크 포함(macOS `STABLE_DMG` 패턴 :26 미러). zip 사용자용 수동 업데이트는 문서화만.
-- **W15. CI** — 채택: **GitHub Actions 도입**. `windows-latest`: Swift 툴체인 설치 → `build.ps1` → 헤드리스 `--selftest-core`; `macos-latest`: `build.sh` + 기존 셀프테스트(Core 리팩터가 macOS를 깨지 않는지 매 push 검증). 태그 push 시 Windows 아티팩트(Setup.exe+zip) 자동 빌드.
-- **W16. 버전 단일 출처** — 채택: `Sources/Core/Version.swift`(`let appVersion`)를 진실로. build.sh가 Info.plist와 동기화, build.ps1이 .rc `VERSIONINFO`와 Inno `.iss`에 주입. `Updater.currentVersion`(:27-29, Info.plist 의존)을 이 상수로 교체.
+- **W15. CI** — 채택: **GitHub Actions 도입**. `windows-latest`: Swift 툴체인 설치 → `build.ps1` → 헤드리스 `--selftest-core`; `macos-latest`: `build.sh` + 기존 셀프테스트(Core 리팩터가 macOS를 깨지 않는지 매 push 검증). ~~태그 push 시 Windows 아티팩트 자동 빌드~~ → **철회**: gitignore된 ROM 추출 스프라이트(`gamedata/effects/`)가 러너에 없어 CI 패키지는 이펙트 없이 만들어짐. 릴리스는 양 OS 모두 실물 머신에서 — macOS `release.sh`, Windows `release.ps1`.
+- **W16. 버전 출처** — ~~단일 출처~~ → **OS별 독립 버전으로 변경**: Windows는 `Sources/Core/Version.swift`(build.ps1이 .rc `VERSIONINFO`와 Inno `.iss`에 주입), macOS는 `Info.plist`(release.sh). 한쪽 OS만 릴리스해도 다른 OS의 인앱 업데이트·사이트 다운로드 버튼에 영향 없음 — 둘 다 해당 플랫폼 에셋이 있는 최신 릴리스를 스스로 찾는다.
 - **W17. exe 메타데이터** — 채택: `.rc` 리소스(.ico 앱 아이콘 + VERSIONINFO)를 `rc.exe`로 컴파일 후 링크, `app.manifest`(PMv2 DPI + comctl32 v6 + UTF-8 activeCodePage) 임베드, `-Xlinker /SUBSYSTEM:WINDOWS`(콘솔 창 숨김 — 엔트리 포인트는 Phase 0 검증).
 
 ### 패리티 검증
@@ -216,8 +216,8 @@ Sources/
 | W12 | 리소스 | exe 옆 폴더 + Resources 래퍼 |
 | W13 | 패키징 | Inno Setup(per-user) + zip, MSIX 탈락 |
 | W14 | 업데이터 | Setup.exe 다운로드 후 사일런트 실행 |
-| W15 | CI | GitHub Actions windows+macos, 태그 시 아티팩트 |
-| W16 | 버전 | Core/Version.swift 단일 출처 |
+| W15 | CI | GitHub Actions windows+macos 빌드·테스트만 (릴리스는 실물 머신: release.sh / release.ps1) |
+| W16 | 버전 | OS별 독립: Windows=Core/Version.swift, macOS=Info.plist |
 | W17 | exe 메타 | .rc(icon+VERSIONINFO) + manifest(PMv2·comctl32·UTF-8) + /SUBSYSTEM:WINDOWS |
 | W18 | 패리티 | 공용 헤드리스 셀프테스트 + 시드 픽스처 + 수동 QA 체크리스트 |
 | W19 | 폰트/아이콘 | Segoe UI/Consolas, SF Symbol 대체 |
