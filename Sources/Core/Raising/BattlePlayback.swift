@@ -168,6 +168,14 @@ final class BattleController: LiveBattleBridge {
 
     /// Debug: drop a chosen wild (nil = random) right next to the follower at
     /// the active mon's level — the battle starts on the next contact check.
+    /// Debug showcase spawns (both platforms' 디버그 menus): guarantee the
+    /// mechanic the menu entry advertises. Wild movesets are the last 4
+    /// level-up moves at the spawn level, so mid-level spawns can silently
+    /// lose the showcase move (e.g. Pineco drops Selfdestruct at L20–33).
+    private static let showcaseMoves: [Int: Int] = [
+        204: 123,   // 피콘 → 자폭 (Selfdestruct)
+    ]
+
     func forceEncounter(dex: Int? = nil) {
         guard AppSettings.shared.raisingMode,
               let a = RaisingState.shared.active, !a.isFainted else { return }
@@ -176,6 +184,11 @@ final class BattleController: LiveBattleBridge {
         guard let d = dex ?? GameData.wildPool(atLevel: level).randomElement(),
               let w = Battler(wildDex: d, level: level),
               let wm = WildMon(dex: d) else { return }
+        // Only explicitly requested spawns (dex != nil) get the pinned move —
+        // random encounters keep the natural last-4 moveset.
+        if dex != nil, let mid = Self.showcaseMoves[d], !w.moves.contains(mid) {
+            if w.moves.count < 4 { w.moves.append(mid) } else { w.moves[0] = mid }
+        }
         wild = w
         wildMon = wm
         let scale = AppSettings.shared.scale
@@ -526,13 +539,19 @@ final class BattleController: LiveBattleBridge {
     /// whole screen plus a quake on both combatants around the impact.
     private func tickScreenFX(_ e: BattleEvent) {
         screenFlash = 0
-        guard e.kind == .attack || e.kind == .miss, EffectPlayer.isScreen(e.moveId),
+        // Selfdestruct/Explosion borrow the full-screen treatment: the blast
+        // is the drama the ROM keeps in engine code, so flash + quake it too.
+        let explosion = EffectPlayer.isExplosionMove(e.moveId)
+        guard e.kind == .attack || e.kind == .miss,
+              EffectPlayer.isScreen(e.moveId) || explosion,
               evTick >= impactAt, evTick < impactAt + 20 else { return }
         let t = Double(evTick - impactAt) / 20.0
         screenFlash = sin(t * .pi)
-        screenColor = TypeStyle.rgba(GameData.moves[e.moveId]?.type)
+        screenColor = explosion ? RGBA(r: 1.0, g: 0.66, b: 0.3)   // blast orange
+                                : TypeStyle.rgba(GameData.moves[e.moveId]?.type)
         let scale = AppSettings.shared.scale
-        let jitter = CGFloat(sin(Double(evTick) * 1.9)) * 3 * scale * CGFloat(1 - t)
+        let jitter = CGFloat(sin(Double(evTick) * 1.9)) * (explosion ? 6 : 3)
+            * scale * CGFloat(1 - t)
         playerDodge.x += jitter
         wildDodge.x -= jitter
     }
@@ -562,6 +581,7 @@ final class BattleController: LiveBattleBridge {
         guard e.kind == .attack || e.kind == .miss, e.moveId > 0,
               e.damage > 0 || (e.kind == .miss && BattleEngine.isDamaging(e.moveId)),
               !EffectPlayer.isScreen(e.moveId),
+              !EffectPlayer.isExplosionMove(e.moveId),   // detonates in place
               !Self.rangedVisual(e.moveId) else { return }
         let scale = AppSettings.shared.scale
         let attackerPos = e.actorIsPlayer ? playerPos : (wildMon?.pos ?? playerPos)
@@ -592,7 +612,9 @@ final class BattleController: LiveBattleBridge {
         var w: (BattlePose, Int) = e.wildAsleep ? (.sleep, evTick) : (.stand, 0)
         switch e.kind {
         case .attack, .miss:
-            let ranged = Self.rangedVisual(e.moveId)
+            // An exploding user neither lunges nor shoots — it strikes its
+            // Attack pose in place and goes up with the blast.
+            let ranged = Self.rangedVisual(e.moveId) && !EffectPlayer.isExplosionMove(e.moveId)
             // Attack anim runs through the impact (holding its last frame just
             // past it), so a lunge isn't cut off mid-swing.
             if evTick < min(36, impactAt + 12) {
@@ -734,7 +756,10 @@ final class BattleController: LiveBattleBridge {
             if e.moveId > 0, let clip = EffectPlayer.clip(forMove: e.moveId) {
                 let hitTicks = min(clip.loop ? 40 : clip.totalTicks, 54)
                 let delay = proj == nil ? windup : 0
-                effects.append(RunningEffect(clip: clip, anchor: target,
+                // Selfdestruct/Explosion detonate ON the user — everything
+                // else lands its hit effect on the target.
+                let anchor = EffectPlayer.isExplosionMove(e.moveId) ? attacker : target
+                effects.append(RunningEffect(clip: clip, anchor: anchor,
                                              maxTicks: delay + hitTicks, delay: delay))
                 total += hitTicks
             }
@@ -866,6 +891,15 @@ final class BattleController: LiveBattleBridge {
         } else if result?.wildFled == true {
             // The wild teleported / was roared away: it slips off with no
             // spoils — fade it out like a win, minus the EXP.
+            ballFrame = nil
+            endTicks = fast ? 30 : 60
+            endTotal = endTicks
+            phase = .ending
+        } else if result?.wildFainted == true {
+            // Double KO (e.g. the wild's Explosion): no winner, so no EXP,
+            // but the wild went down too — fade it out like a win instead of
+            // letting a 0-HP wild linger and wander (the loss branch below
+            // assumes the wild is still standing).
             ballFrame = nil
             endTicks = fast ? 30 : 60
             endTotal = endTicks

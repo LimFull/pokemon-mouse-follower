@@ -143,6 +143,16 @@ enum EffectPlayer {
         MoveEffects.map[moveId]?.proj != nil
     }
 
+    /// Selfdestruct/Explosion: the user detonates. The ROM's sprite for these
+    /// is just the tiny shared particle (the real game's drama is engine-side
+    /// screen work), so the playback compensates: a bigger blast-colored
+    /// burst, anchored on the USER, plus a screen flash + quake — and no
+    /// lunge/shoot delivery.
+    static func isExplosionMove(_ moveId: Int) -> Bool {
+        if case .explosion = MoveMechanics.mechanic(for: moveId) { return true }
+        return false
+    }
+
     /// The projectile/travel clip for `moveId`, facing its travel direction.
     /// `octant` is the travel angle octant (0=E, 1=NE, ... CCW); directional
     /// sets (anim..anim+7, ROM order S,SW,W,NW,N,NE,E,SE) pick the matching
@@ -170,15 +180,23 @@ enum EffectPlayer {
             // gradients). Keep only each frame's SIZE and timing: draw a round
             // glow dot in its place (white flash for Normal/untyped, else the
             // type color), THEN compose the dots into the burst.
+            let explosion = isExplosionMove(moveId)
             let neutral = type == nil || type == "Normal" || type == "None"
-            let color = neutral ? RGBA(white: 0.96) : TypeStyle.rgba(type)
+            let color = explosion ? RGBA(r: 1.0, g: 0.62, b: 0.25)   // blast orange
+                      : neutral ? RGBA(white: 0.96) : TypeStyle.rgba(type)
             steps = steps.map {
                 RawStep(image: glowDot(width: $0.image.width,
                                        height: $0.image.height, color: color),
                         ticks: $0.ticks, dx: $0.dx, dy: $0.dy)
             }
-            steps = composeBurst(steps)
-            steps = capSize(steps, maxDim: 46)   // a hit spark stays smaller than the mon
+            if explosion {
+                // Denser, wider burst that engulfs the user instead of a spark.
+                steps = composeBurst(steps, copies: 13, spread: 48)
+                steps = capSize(steps, maxDim: 88)
+            } else {
+                steps = composeBurst(steps)
+                steps = capSize(steps, maxDim: 46)   // a hit spark stays smaller than the mon
+            }
         } else if doTint {
             // Drawn art with an approximate palette: re-hue, keep shading.
             let color = TypeStyle.rgba(type)
@@ -276,10 +294,10 @@ enum EffectPlayer {
     /// each step into a burst: a center copy plus a ring of copies spreading
     /// outward (golden-angle spacing) as the animation progresses. The canvas
     /// is sized to the full spread so edge particles never get sliced off.
-    private static func composeBurst(_ steps: [RawStep]) -> [RawStep] {
+    private static func composeBurst(_ steps: [RawStep], copies: Int = 7,
+                                     spread: Int = 30) -> [RawStep] {
         let maxPart = steps.map { max($0.image.width, $0.image.height) }.max() ?? 16
-        let canvas = 2 * 30 + maxPart + 8   // ring radius peaks at 30 (capped after)
-        let copies = 7
+        let canvas = 2 * spread + maxPart + 8   // ring radius peaks at `spread` (capped after)
         let n = max(1, steps.count - 1)
         return steps.enumerated().map { (i, s) in
             let progress = Double(i) / Double(n)
@@ -289,7 +307,7 @@ enum EffectPlayer {
             let c = Double(canvas) / 2
             for j in 0..<copies {
                 let jitter = 0.65 + 0.35 * Double((j * 37) % 10) / 9.0
-                let r = (4 + 26 * progress) * jitter
+                let r = (4 + Double(spread - 4) * progress) * jitter
                 let angle = Double(j) * 2.399963        // golden angle
                 let x = c + cos(angle) * r - w / 2
                 let y = c + sin(angle) * r - h / 2

@@ -146,7 +146,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                              ("즉시 배틀: 아보 (독)", 23),
                              ("즉시 배틀: 루주라 (얼음·헤롱헤롱)", 124),
                              ("즉시 배틀: 별가사리 (물대포)", 120),
-                             ("즉시 배틀: 메타몽 (변신)", 132)] {
+                             ("즉시 배틀: 메타몽 (변신)", 132),
+                             ("즉시 배틀: 피콘 (자폭)", 204)] {
             dm.addItem(menuItem(title, action: #selector(debugEncounter(_:)), tag: dex))
         }
         dm.addItem(.separator())

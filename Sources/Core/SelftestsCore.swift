@@ -145,7 +145,7 @@ func runParityDumpIfRequested() {
                 + "|s\(e.statusApplied ?? "-")|c\(e.crit ? 1 : 0)|sh\(e.shakes)|ct\(e.caught ? 1 : 0)|b\(e.ballId)")
         }
         print("R|won\(r.playerWon ? 1 : 0)|exp\(r.expGained)|cap\(r.captured ? 1 : 0)"
-            + "|pf\(r.playerFled ? 1 : 0)|wf\(r.wildFled ? 1 : 0)"
+            + "|pf\(r.playerFled ? 1 : 0)|wf\(r.wildFled ? 1 : 0)|wk\(r.wildFainted ? 1 : 0)"
             + "|hp\(r.playerEndHP)/\(r.playerMaxHP)|s\(r.playerEndStatus ?? "-")"
             + "|balls\(r.ballsUsed.map { String($0.rawValue) }.joined(separator: ","))")
     }

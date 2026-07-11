@@ -222,6 +222,7 @@ struct BattleResult {
     var ballsUsed: [GameItem] = []
     var playerFled: Bool = false   // Teleport, or blown out by Roar/Whirlwind
     var wildFled: Bool = false     // the wild escaped — it leaves, no EXP
+    var wildFainted: Bool = false  // the wild went down too (double KO, e.g. Explosion)
 }
 
 /// A stepwise battle: one nextRound() call simulates one round, so playback
@@ -263,7 +264,8 @@ final class BattleSession {
             playerEndStatus: player.status?.rawValue,
             playerEndHP: player.currentHP, playerMaxHP: player.maxHP,
             captured: captured, ballsUsed: used,
-            playerFled: playerFled, wildFled: wildFled)
+            playerFled: playerFled, wildFled: wildFled,
+            wildFainted: wild.isFainted)
     }
 
         func emit(_ kind: BattleEvent.Kind, actorIsPlayer: Bool, move: MoveData? = nil,
