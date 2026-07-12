@@ -266,8 +266,9 @@ enum EffectPlayer {
     }
 
     private static func makeStatAura(color: RGBA, rising: Bool) -> EffectClip? {
-        let w = 40, h = 46, dot = 4, frames = 14, count = 6
-        let spark = glowDot(width: dot, height: dot, color: color)
+        let w = 40, h = 46, pw = 7, ph = 5, frames = 14, count = 6
+        // Arrowheads point the way they travel: ^ rising, v sinking.
+        let spark = chevron(width: pw, height: ph, color: color, up: rising)
         var raw: [RawStep] = []
         for f in 0..<frames {
             var out = RGBABuffer(width: w, height: h,
@@ -276,11 +277,11 @@ enum EffectPlayer {
             for j in 0..<count {
                 // Columns spread by golden-angle hash; each particle staggers
                 // its start so the aura streams instead of pulsing.
-                let x = Double((j * 29) % (w - dot))
+                let x = Double((j * 29) % (w - pw))
                 var t = progress + Double((j * 37) % 10) / 10.0
                 t -= t.rounded(.down)                       // wrap 0..1
-                let yTravel = t * Double(h - dot)
-                let y = rising ? Double(h - dot) - yTravel : yTravel
+                let yTravel = t * Double(h - ph)
+                let y = rising ? Double(h - ph) - yTravel : yTravel
                 blit(spark, onto: &out, x: Int(x), y: Int(y))
             }
             raw.append(RawStep(image: out, ticks: 2, dx: 0, dy: 0))
@@ -497,6 +498,37 @@ enum EffectPlayer {
             }
             return RawStep(image: out, ticks: s.ticks, dx: s.dx, dy: s.dy)
         }
+    }
+
+    /// A chevron (arrowhead) particle for the stat auras: ^ points up for a
+    /// raise, v down for a drop — the mainline gen-4/5 read. Two mirrored
+    /// diagonal strokes with a lighter core row.
+    private static func chevron(width: Int, height: Int, color: RGBA, up: Bool) -> RGBABuffer {
+        let w = max(5, width | 1)          // odd width keeps the tip centered
+        let h = max(3, height)
+        var out = RGBABuffer(width: w, height: h,
+                             pixels: [UInt8](repeating: 0, count: w * h * 4))
+        let mid = w / 2
+        let core = color.blended(with: RGBA(white: 1), fraction: 0.45)
+        func put(_ x: Int, _ y: Int, _ c: RGBA) {
+            guard x >= 0, x < w, y >= 0, y < h else { return }
+            let i = (y * w + x) * 4
+            out.pixels[i] = UInt8(min(255, c.r * 255 * c.a))
+            out.pixels[i + 1] = UInt8(min(255, c.g * 255 * c.a))
+            out.pixels[i + 2] = UInt8(min(255, c.b * 255 * c.a))
+            out.pixels[i + 3] = UInt8(min(255, c.a * 255))
+        }
+        // Slope 1 strokes, 2px thick, from the tip outward.
+        for d in 0...mid {
+            let y = up ? d : h - 1 - d
+            guard y >= 0, y < h else { continue }
+            for x in [mid - d, mid + d] {
+                put(x, y, d == 0 ? core : color.withAlpha(0.92))
+                let y2 = up ? y + 1 : y - 1
+                put(x, y2, color.withAlpha(0.85))
+            }
+        }
+        return out
     }
 
     /// A crisp round particle: an ellipse of `color` with a lighter core,
