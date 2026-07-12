@@ -104,6 +104,11 @@ final class AppSettings {
         get { d.has("battleLogEnabled") ? d.bool("battleLogEnabled") : true }
         set { d.set(newValue, "battleLogEnabled") }
     }
+    // Floating damage numbers over the hit side in battle (default on).
+    var damageNumbersEnabled: Bool {
+        get { d.has("damageNumbersEnabled") ? d.bool("damageNumbersEnabled") : true }
+        set { d.set(newValue, "damageNumbersEnabled") }
+    }
     // UI language: "auto" follows the system; "en"/"ko"/"ja" force one (W10).
     var language: String {
         get { d.string("language") ?? "auto" }

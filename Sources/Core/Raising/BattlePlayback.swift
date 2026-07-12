@@ -35,6 +35,11 @@ struct BattleScene {
     var floatPos: CGPoint = .zero
     var floatAlpha: Double = 0
     var floatColor: RGBA = RGBA(white: 1)
+    // Floating damage number over the hit side ("-23"; settings-gated).
+    var damageText: String?
+    var damagePos: CGPoint = .zero
+    var damageAlpha: Double = 0
+    var damageColor: RGBA = RGBA(white: 1)
     var screenFlash: Double = 0           // full-screen effect veil 0...1 (Psychic & co)
     var screenColor: RGBA = RGBA(white: 1)
     var logLines: [(String, Double)] = [] // PMD-style log: (text, alpha), oldest first
@@ -91,6 +96,10 @@ final class BattleController: LiveBattleBridge {
     private var floatPos = CGPoint.zero
     private var floatAlpha = 0.0
     private var floatColor = RGBA(white: 1)
+    private var dmgText: String?
+    private var dmgPos = CGPoint.zero
+    private var dmgAlpha = 0.0
+    private var dmgColor = RGBA(white: 1)
     private var screenFlash = 0.0
     private var screenColor = RGBA(white: 1)
     private var lastTracedWildPose = BattlePose.stand   // PMF_TRACE_BATTLE only
@@ -532,6 +541,7 @@ final class BattleController: LiveBattleBridge {
         tickDodge(e)
         tickLunge(e)
         tickFloatText(e)
+        tickDamageNumber(e)
         tickScreenFX(e)
         if e.kind == .ball { tickBall(e) }
         if e.kind == .item { tickItemUse(e) }
@@ -578,6 +588,26 @@ final class BattleController: LiveBattleBridge {
 
     /// Floating combat tag over the defender at impact: "Miss"/"No Effect" on
     /// a whiff, "Super Effective!"/"Not Very Effective.." by type matchup.
+    /// Floating damage number ("-23") rising off the hit side while its
+    /// gauge drains — settings-gated (label.damagenumbers).
+    private func tickDamageNumber(_ e: BattleEvent) {
+        dmgText = nil; dmgAlpha = 0
+        guard AppSettings.shared.damageNumbersEnabled, e.damage > 0,
+              e.kind == .attack || e.kind == .selfHit || e.kind == .residual else { return }
+        let span = max(1, drainEnd - hitAt) + 18
+        guard evTick >= hitAt, evTick < hitAt + span else { return }
+        let scale = AppSettings.shared.scale
+        let anchor = e.targetIsPlayer ? playerPos : (wildMon?.pos ?? playerPos)
+        let t = Double(evTick - hitAt) / Double(span)
+        dmgText = "-\(e.damage)"
+        // Rises on the opposite lane from the tag text (which floats higher).
+        dmgPos = CGPoint(x: anchor.x + 18 * scale,
+                         y: anchor.y + (8 + CGFloat(t) * 20) * scale)
+        dmgAlpha = 1.0 - t * 0.75
+        // My side bleeds red, the wild's damage reads white.
+        dmgColor = e.targetIsPlayer ? RGBA(r: 1.0, g: 0.42, b: 0.38) : RGBA(white: 0.97)
+    }
+
     private func tickFloatText(_ e: BattleEvent) {
         floatText = nil; floatAlpha = 0
         // An ailment landing gets its own late window (after the HP drain and
@@ -1203,6 +1233,7 @@ final class BattleController: LiveBattleBridge {
         playerPose = (.stand, 0)
         playerDodge = .zero; wildDodge = .zero
         floatText = nil; floatAlpha = 0; screenFlash = 0
+        dmgText = nil; dmgAlpha = 0
         flashP = false; flashW = false
         wildAlpha = 1; playerAlpha = 1
         pVanish = false; wVanish = false
@@ -1250,6 +1281,8 @@ final class BattleController: LiveBattleBridge {
             playerDodge: playerDodge,
             floatText: floatText, floatPos: floatPos,
             floatAlpha: floatAlpha, floatColor: floatColor,
+            damageText: dmgText, damagePos: dmgPos,
+            damageAlpha: dmgAlpha, damageColor: dmgColor,
             screenFlash: screenFlash, screenColor: screenColor,
             logLines: logLines.map { ($0.text, logAlpha($0.age)) },
             logAnchor: logAnchor(wildPos: wm.pos),

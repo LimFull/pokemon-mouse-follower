@@ -178,6 +178,11 @@ final class RaisingPanelView: NSView {
         itemCB.state = AppSettings.shared.itemSpawnsEnabled ? .on : .off
         itemCB.font = .rounded(12, .medium)
         root.addArrangedSubview(itemCB)
+        let dmgCB = NSButton(checkboxWithTitle: L("label.damagenumbers"), target: self,
+                             action: #selector(damageNumbersToggled(_:)))
+        dmgCB.state = AppSettings.shared.damageNumbersEnabled ? .on : .off
+        dmgCB.font = .rounded(12, .medium)
+        root.addArrangedSubview(dmgCB)
         let logCB = NSButton(checkboxWithTitle: L("label.battlelog"), target: self,
                              action: #selector(battleLogToggled(_:)))
         logCB.state = AppSettings.shared.battleLogEnabled ? .on : .off
@@ -228,6 +233,10 @@ final class RaisingPanelView: NSView {
 
     @objc private func battleLogToggled(_ sender: NSButton) {
         AppSettings.shared.battleLogEnabled = (sender.state == .on)
+    }
+
+    @objc private func damageNumbersToggled(_ sender: NSButton) {
+        AppSettings.shared.damageNumbersEnabled = (sender.state == .on)
     }
 
     // MARK: bag UI

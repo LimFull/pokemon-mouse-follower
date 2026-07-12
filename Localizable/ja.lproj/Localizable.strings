@@ -330,6 +330,7 @@
 "raising.settings" = "育成設定";
 "label.wildspawn" = "野生ポケモン出現";
 "label.itemspawn" = "アイテム出現";
+"label.damagenumbers" = "ダメージ表示";
 "detail.recall" = "もどす";
 
 /* --- Move names & descriptions (기술 이름/설명) --- */

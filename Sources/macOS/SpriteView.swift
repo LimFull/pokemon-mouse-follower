@@ -20,6 +20,7 @@ final class SpriteView: NSView {
     private let wHPTrack = CALayer(); private let wHPFill = CALayer()
     private let levelLabel = CATextLayer()   // "Lv.n" above the wild's head
     private let floatLabel = CATextLayer()   // floating combat tag (Miss / effectiveness)
+    private let damageLabel = CATextLayer()  // floating damage number (-23; settings-gated)
     private let screenFlashLayer = CALayer() // full-screen veil (Psychic-class moves)
     // Evolution burst: radial white glow over the follower (design D8/#9).
     private let glowLayer = CAGradientLayer()
@@ -94,6 +95,13 @@ final class SpriteView: NSView {
         floatLabel.shadowOffset = CGSize(width: 0, height: -1)
         floatLabel.isHidden = true
         layer?.addSublayer(floatLabel)
+        damageLabel.alignmentMode = .center
+        damageLabel.shadowColor = NSColor.black.cgColor
+        damageLabel.shadowOpacity = 0.9
+        damageLabel.shadowRadius = 1.5
+        damageLabel.shadowOffset = CGSize(width: 0, height: -1)
+        damageLabel.isHidden = true
+        layer?.addSublayer(damageLabel)
 
         glowLayer.type = .radial
         glowLayer.colors = [CGColor(gray: 1, alpha: 0.95),
@@ -121,6 +129,7 @@ final class SpriteView: NSView {
             effectLayer.isHidden = true
             levelLabel.isHidden = true
             floatLabel.isHidden = true
+            damageLabel.isHidden = true
             screenFlashLayer.isHidden = true
             [pHPTrack, pHPFill, wHPTrack, wHPFill].forEach { $0.isHidden = true }
             logBox.isHidden = true
@@ -207,6 +216,25 @@ final class SpriteView: NSView {
             floatLabel.opacity = Float(scene.floatAlpha)
         } else {
             floatLabel.isHidden = true
+        }
+
+        // Floating damage number over the hit side (settings-gated upstream).
+        if let text = scene.damageText {
+            let fs = min(20, max(11, 8 * s))
+            damageLabel.isHidden = false
+            damageLabel.contentsScale = bs
+            damageLabel.font = NSFont.rounded(fs, .heavy)
+            damageLabel.fontSize = fs
+            damageLabel.string = text
+            damageLabel.foregroundColor = scene.damageColor.cgColor
+            damageLabel.bounds = CGRect(x: 0, y: 0,
+                                        width: CGFloat(text.count) * fs * 0.62 + 12,
+                                        height: fs + 4)
+            damageLabel.position = CGPoint(x: scene.damagePos.x - screenOrigin.x,
+                                           y: scene.damagePos.y - screenOrigin.y)
+            damageLabel.opacity = Float(scene.damageAlpha)
+        } else {
+            damageLabel.isHidden = true
         }
 
         layoutLog(scene, s: s, backingScale: bs)

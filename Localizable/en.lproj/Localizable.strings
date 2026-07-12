@@ -78,6 +78,7 @@
 "raising.settings" = "Raising settings";
 "label.wildspawn" = "Wild encounters";
 "label.itemspawn" = "Item spawns";
+"label.damagenumbers" = "Damage numbers";
 "detail.recall" = "Recall";
 
 /* Move ON/OFF toggles (PMD-style) */

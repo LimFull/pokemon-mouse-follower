@@ -225,6 +225,15 @@ final class BattleChrome {
                             center: scene.floatPos, bg: nil,
                             color: scene.floatColor, alpha: scene.floatAlpha))
         }
+        // Floating damage number over the hit side (settings-gated upstream).
+        if let dt = scene.damageText, scene.damageAlpha > 0.01 {
+            let fs = Double(min(20, max(11, 8 * s)))
+            let m = text.measure(dt, size: fs, weight: 900)
+            tags.append(Tag(text: dt, size: fs, weight: 900,
+                            boxW: Double(m.w) + 12, boxH: fs + 4,
+                            center: scene.damagePos, bg: nil,
+                            color: scene.damageColor, alpha: scene.damageAlpha))
+        }
 
         // Battle log: measured lines, box anchored top-center at logAnchor.
         let logLines = scene.logLines.filter { $0.1 > 0 }
