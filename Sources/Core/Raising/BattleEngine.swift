@@ -66,6 +66,7 @@ final class Battler {
     var ivs: Stats?              // mainline IVs baked into `stats`; kept so a
                                  // catch/rematch carries the individual's spread
     var hiddenState: HiddenState?   // semi-invulnerable charge turn (Dig & co)
+    var furyCutterCount = 0      // consecutive Fury Cutter hits (doubles its power)
 
     // Status state (D19). `status` persists across battles for the player's mon;
     // everything below it is battle-local.
@@ -292,6 +293,7 @@ final class BattleSession {
         for b in [player, wild] {
             b.chargingMove = nil
             b.hiddenState = nil
+            b.furyCutterCount = 0
         }
     }
 
@@ -498,6 +500,7 @@ final class BattleSession {
         func execute(_ m: MoveData, _ atk: Battler, _ def: Battler,
                      isPlayer: Bool, releasing: Bool) {
             atk.destinyBond = false   // the bond lasts until the next action
+            if m.englishName != "Fury Cutter" { atk.furyCutterCount = 0 }   // streak broken
             let eff = effectiveness(m, def)
             guard let mech = MoveMechanics.mechanic(for: m.moveId) else {
                 executePlain(m, atk, def, isPlayer: isPlayer, eff: eff, powerOverride: nil)
@@ -534,6 +537,15 @@ final class BattleSession {
                 if landed, !def.isFainted, def.trapRounds == 0 {
                     def.trapRounds = Int.random(in: 2...5, using: &BattleRNG.g)
                 }
+
+            case .furyCutter(let p):
+                // Power doubles with each consecutive successful use
+                // (40 -> 80 -> 160), resetting on a miss; execute() resets
+                // the streak whenever any OTHER move is picked.
+                let power = min(p * 4, p << atk.furyCutterCount)
+                let landed = executePlain(m, atk, def, isPlayer: isPlayer, eff: eff,
+                                          powerOverride: power)
+                atk.furyCutterCount = landed ? min(2, atk.furyCutterCount + 1) : 0
 
             case .charge:   // release turn
                 executePlain(m, atk, def, isPlayer: isPlayer, eff: eff, powerOverride: nil)
@@ -1402,7 +1414,7 @@ enum BattleEngine {
             case .plain, .fixedDamage, .levelDamage, .psywave, .multiHit,
                  .recoil, .crashOnMiss, .recharge, .charge, .explosion,
                  .magnitude, .present, .payback, .revenge, .bide, .memento,
-                 .metronome, .splash, .futureSight, .trap:
+                 .metronome, .splash, .futureSight, .trap, .furyCutter:
                 return true
             // Escape moves aren't picked while pinned (trap/Mean Look/roots) —
             // saves the log from an endless "can't flee" loop.

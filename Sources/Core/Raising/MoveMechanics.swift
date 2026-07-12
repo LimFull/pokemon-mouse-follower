@@ -56,6 +56,7 @@ enum MoveMechanic {
     case mist                             // block foe stat drops (5 rounds)
     case leechSeed                        // 1/8 chip to foe, healed to user
     case trap(Int)                        // mainline power + 1/16 chip 2–5 rounds
+    case furyCutter(Int)                  // power doubles per consecutive hit (cap x4)
     case curse                            // ghost: pay half, curse foe; else stats
     case nightmare                        // sleeping foe loses 1/4 per round
     case yawn                             // foe sleeps at end of next round
@@ -179,6 +180,7 @@ enum MoveMechanics {
         "Reflect": .screen(physical: true), "Light Screen": .screen(physical: false),
         "Safeguard": .safeguard, "Mist": .mist,
         "Leech Seed": .leechSeed,
+        "Fury Cutter": .furyCutter(40),
         "Wrap": .trap(15), "Bind": .trap(15), "Fire Spin": .trap(35),
         "Clamp": .trap(35), "Whirlpool": .trap(35), "Sand Tomb": .trap(35),
         "Curse": .curse, "Nightmare": .nightmare, "Yawn": .yawn,
