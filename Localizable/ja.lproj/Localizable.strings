@@ -1172,6 +1172,8 @@
 "log.skip.charging" = "%@は ちからを ためている!";
 "log.skip.storing" = "%@は エネルギーを ためている!";
 "log.skip.fled" = "%@は にげだした!";
+"log.skip.blownaway" = "%@は ふきとばされた!";
+"log.skip.cantflee" = "%@は にげられない!";
 "log.selfhit.destinybond" = "%@は あいてを みちづれに した!";
 "log.selfhit.hurtitself" = "%@は わけも わからず じぶんを こうげきした!";
 "log.selfhit.recoil" = "%@は はんどうによる ダメージを うけた!";
@@ -1222,6 +1224,8 @@
 "log.exp" = "%1$@は %2$@の けいけんちを もらった!";
 "log.levelup" = "%1$@は レベル%2$@に あがった!";
 "log.wildfled" = "やせいの %@は にげてしまった!";
+"log.wildleft" = "やせいの %@は たちさった!";
+"log.draggedout" = "%@が ひきずりだされた!";
 "log.recalled" = "%@を ひきあげた!";
 
 /* Language picker (Windows settings; design/windows-port.md W10) */

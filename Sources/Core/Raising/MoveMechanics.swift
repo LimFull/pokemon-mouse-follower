@@ -72,6 +72,7 @@ enum MoveMechanic {
     case mimic                            // copy foe's last move into this slot
     case fleeSelf                         // Teleport: the user escapes the battle
     case fleeFoe                          // Roar / Whirlwind: the foe is blown out
+    case noEscape                         // Mean Look / Spider Web / Block: the foe can't flee
     case splash                           // usable, does nothing at all
     // wave 2 — crit/evasion package, move-choice control, type shifts
     case acupressure                      // a random stat +2
@@ -188,6 +189,7 @@ enum MoveMechanics {
         "Mirror Move": .mirrorMove, "Copycat": .mirrorMove, "Me First": .mirrorMove,
         "Mimic": .mimic, "Sketch": .mimic,
         "Teleport": .fleeSelf, "Roar": .fleeFoe, "Whirlwind": .fleeFoe,
+        "Mean Look": .noEscape, "Spider Web": .noEscape, "Block": .noEscape,
         "Splash": .splash,
         // --- wave 2 ---------------------------------------------------------
         "Acupressure": .acupressure, "Captivate": .captivate,

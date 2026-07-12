@@ -108,6 +108,8 @@
 "log.skip.charging" = "%@ is charging power!";
 "log.skip.storing" = "%@ is storing energy!";
 "log.skip.fled" = "%@ fled from battle!";
+"log.skip.blownaway" = "%@ was blown away!";
+"log.skip.cantflee" = "%@ can't get away!";
 "log.selfhit.destinybond" = "%@ took its foe down with it!";
 "log.selfhit.hurtitself" = "%@ hurt itself in its confusion!";
 "log.selfhit.recoil" = "%@ is damaged by recoil!";
@@ -158,6 +160,8 @@
 "log.exp" = "%1$@ gained %2$@ EXP!";
 "log.levelup" = "%1$@ grew to level %2$@!";
 "log.wildfled" = "The wild %@ fled!";
+"log.wildleft" = "The wild %@ wandered off!";
+"log.draggedout" = "%@ was dragged out!";
 "log.recalled" = "%@ was recalled!";
 
 /* Language picker (Windows settings; design/windows-port.md W10) */

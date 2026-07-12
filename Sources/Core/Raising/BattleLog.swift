@@ -83,16 +83,20 @@ enum BattleLog {
     /// Post-battle lines. Faint lines are NOT produced here — the fainting
     /// event already carried one; capture success rides the ball event.
     static func outcome(won: Bool, expGained: Int, levelUpTo: Int?,
-                        captured: Bool, wildFled: Bool,
+                        captured: Bool, wildFled: Bool, playerFled: Bool = false,
                         playerName: String, wildName: String) -> [String] {
         var out: [String] = []
         if wildFled { out.append(LF("log.wildfled", wildName)) }
+        else if playerFled { out.append(LF("log.wildleft", wildName)) }   // it blew US out and left
         if won, expGained > 0 { out.append(LF("log.exp", playerName, String(expGained))) }
         if let lv = levelUpTo { out.append(LF("log.levelup", playerName, String(lv))) }
         return out
     }
 
     static func recallLine(playerName: String) -> String { LF("log.recalled", playerName) }
+
+    /// Wild Roar/Whirlwind dragged this member into the fight.
+    static func draggedOutLine(playerName: String) -> String { LF("log.draggedout", playerName) }
 
     // MARK: - internals
 
@@ -144,6 +148,8 @@ enum BattleLog {
         "skip.charging": "log.skip.charging",
         "skip.storing": "log.skip.storing",
         "skip.fled": "log.skip.fled",
+        "skip.blown away": "log.skip.blownaway",
+        "skip.cant flee": "log.skip.cantflee",
         // selfHit (hurt itself / self-pay)
         "selfhit.Destiny Bond": "log.selfhit.destinybond",
         "selfhit.hurt itself": "log.selfhit.hurtitself",

@@ -79,6 +79,8 @@ final class Battler {
     var lightScreenRounds = 0
     var seeded = false           // Leech Seed
     var trapRounds = 0           // Wrap/Bind/Fire Spin chip
+    var cantEscape = false       // Mean Look / Spider Web / Block: no fleeing
+    var rooted = false           // Ingrain: can't flee, immune to Roar/Whirlwind
     var ghostCursed = false
     var nightmared = false
     var yawnCounter = 0          // 2 → 1 → falls asleep
@@ -229,13 +231,31 @@ struct BattleResult {
 /// can feed mid-battle decisions (healing items) in between rounds.
 /// BattleEngine.run wraps it for one-shot simulations.
 final class BattleSession {
-    let player: Battler
+    private(set) var player: Battler   // var: a wild Roar/Whirlwind drags in another member
     let wild: Battler
     private var stock: [GameItem]
     private(set) var used: [GameItem] = []
     private(set) var captured = false
     private(set) var playerFled = false
     private(set) var wildFled = false
+    // Wild used Roar/Whirlwind on us: mainline TRAINER rules — the playback
+    // swaps in a random other party member at the round boundary (the party
+    // makes us a trainer, not a lone wild), or marks the player fled when
+    // nobody else can battle.
+    private(set) var playerDraggedOut = false
+
+    /// The dragged-in replacement takes over mid-battle (fresh battle-local
+    /// state; the wild's stages/volatiles stay, mainline-style).
+    func dragOutPlayer(replacement: Battler) {
+        player = replacement
+        playerDraggedOut = false
+    }
+
+    /// No replacement available — the blow-out ends the encounter after all.
+    func markPlayerFled() {
+        playerFled = true
+        playerDraggedOut = false
+    }
     private(set) var turn = 0
     private(set) var allEvents: [BattleEvent] = []
     private var roundEvents: [BattleEvent] = []
@@ -832,12 +852,34 @@ final class BattleSession {
                      status: "copied \(GameData.moves[lastId]?.displayName ?? "a move")")
 
             case .fleeSelf:
+                // Mainline escape rules: a binding trap (Wrap & co), Mean
+                // Look-class shadowing, or the user's own Ingrain roots all
+                // pin it in place.
+                guard atk.trapRounds == 0, !atk.cantEscape, !atk.rooted else {
+                    emit(.skip, actorIsPlayer: isPlayer, reason: "cant flee")
+                    return
+                }
                 emit(.skip, actorIsPlayer: isPlayer, reason: "fled")
                 if isPlayer { playerFled = true } else { wildFled = true }
 
             case .fleeFoe:
-                emit(.skip, actorIsPlayer: isPlayer, reason: "fled")
-                if isPlayer { wildFled = true } else { playerFled = true }
+                // Roar/Whirlwind blow the FOE out. Only roots hold against a
+                // forced blow-out (mainline: Ingrain blocks forced switches;
+                // traps and Mean Look don't). Against the WILD it ends the
+                // encounter; against US it drags in another party member
+                // (trainer rules — the swap happens at the round boundary).
+                guard !def.rooted else {
+                    emit(.miss, actorIsPlayer: isPlayer, move: m, eff: 0)
+                    return
+                }
+                emit(.attack, actorIsPlayer: isPlayer, move: m)            // "루기아의 회오리바람!"
+                emit(.skip, actorIsPlayer: !isPlayer, reason: "blown away") // names the one sent flying
+                if isPlayer { wildFled = true } else { playerDraggedOut = true }
+
+            case .noEscape:
+                guard !def.cantEscape else { emit(.miss, actorIsPlayer: isPlayer, move: m); return }
+                def.cantEscape = true
+                emit(.attack, actorIsPlayer: isPlayer, move: m, status: "can't escape!")
 
             case .splash:
                 emit(.attack, actorIsPlayer: isPlayer, move: m, targetIsPlayer: isPlayer, status: "nothing happened")
@@ -880,6 +922,7 @@ final class BattleSession {
             case .aquaRing:
                 guard !atk.aquaRing else { emit(.miss, actorIsPlayer: isPlayer, move: m); return }
                 atk.aquaRing = true
+                if m.englishName == "Ingrain" { atk.rooted = true }   // roots pin the user too
                 emit(.attack, actorIsPlayer: isPlayer, move: m,
                      targetIsPlayer: isPlayer, status: "veiled in water")
 
@@ -1182,7 +1225,7 @@ final class BattleSession {
             : [(wild, player, false, wPlan.moveId), (player, wild, true, pPlan.moveId)]
 
         for (atk, def, isPlayer, planned) in order {
-            guard !isOver, !atk.isFainted, !def.isFainted else { continue }
+            guard !isOver, !playerDraggedOut, !atk.isFainted, !def.isFainted else { continue }
             if isPlayer, let item = playerItem {
                 useHealingItem(item)
                 continue
@@ -1209,7 +1252,9 @@ final class BattleSession {
             }
             act(atk, def, isPlayer: isPlayer, planned: planned)
         }
-        if !captured { endOfRound() }
+        // A dragged-out mon leaves before end-of-turn effects — its chips
+        // belong to whoever gets dragged in next round, not to it.
+        if !captured, !playerDraggedOut { endOfRound() }
         return roundEvents
     }
 
@@ -1301,8 +1346,14 @@ enum BattleEngine {
             case .plain, .fixedDamage, .levelDamage, .psywave, .multiHit,
                  .recoil, .crashOnMiss, .recharge, .charge, .explosion,
                  .magnitude, .present, .payback, .revenge, .bide, .memento,
-                 .metronome, .splash, .fleeSelf, .fleeFoe, .futureSight, .trap:
+                 .metronome, .splash, .futureSight, .trap:
                 return true
+            // Escape moves aren't picked while pinned (trap/Mean Look/roots) —
+            // saves the log from an endless "can't flee" loop.
+            case .fleeSelf:
+                return attacker.trapRounds == 0 && !attacker.cantEscape && !attacker.rooted
+            case .fleeFoe: return !defender.rooted
+            case .noEscape: return !defender.cantEscape
             case .counterPhysical, .counterSpecial:
                 return true   // gambles on being hit first, like the games
             case .superFang: return defender.currentHP > 1

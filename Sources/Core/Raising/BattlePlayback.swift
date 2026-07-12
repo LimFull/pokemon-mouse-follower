@@ -186,6 +186,7 @@ final class BattleController: LiveBattleBridge {
         204: 123,   // 피콘 → 자폭 (Selfdestruct)
         43: 135,    // 뚜벅쵸 → 흡수 (Absorb; L21+ would drop it for Mega Drain)
         35: 169,    // 삐삐 → 작아지기 (Minimize; learned at L19, later window drops it)
+        249: 268,   // 루기아 → 회오리바람 (Whirlwind; L1 move, L29+ window drops it)
     ]
 
     func forceEncounter(dex: Int? = nil) {
@@ -304,6 +305,28 @@ final class BattleController: LiveBattleBridge {
         return balls
     }
 
+    /// Wild Roar/Whirlwind landed: write the outgoing mon's battle state
+    /// back, activate a random other conscious member, and hand its fresh
+    /// Battler to the session. False when nobody else can battle.
+    private func dragOutReplacement(into s: BattleSession) -> Bool {
+        let st = RaisingState.shared
+        if let mon = st.active {
+            st.applyFleeState(hp: Int((curPHP * Double(mon.maxHP)).rounded()),
+                              status: curPStatus)
+        }
+        let choices = st.party.indices.filter { $0 != st.save.activeIndex && !st.party[$0].isFainted }
+        guard let pick = choices.randomElement() else { return false }
+        st.setActive(pick)
+        guard let mon = st.active, let b = Battler(mon: mon) else { return false }
+        s.dragOutPlayer(replacement: b)
+        curPHP = frac(b.currentHP, b.maxHP)
+        curPStatus = mon.status
+        playerTransformedDex = nil
+        pBodyScale = 1; pBodyTarget = 1   // the newcomer is full size
+        pushLog(BattleLog.draggedOutLine(playerName: b.name))
+        return true
+    }
+
     private func startBattle() {
         guard let w = wild, let wm = wildMon, let mon = RaisingState.shared.active, let p = Battler(mon: mon) else { despawn(); return }
         // Fight where they met. Only un-overlap: if the two are practically on
@@ -353,6 +376,16 @@ final class BattleController: LiveBattleBridge {
                     recallTurn = nil
                     cancelBattle()
                     RaisingState.shared.recall()
+                    return
+                }
+                // The wild's Roar/Whirlwind: drag in a random other party
+                // member (trainer rules). Nobody left -> the blow-out ends
+                // the encounter after all (falls to finishBattle below).
+                if s.playerDraggedOut, !dragOutReplacement(into: s) {
+                    s.markPlayerFled()
+                    result = s.makeResult()
+                    wildMon?.faceStanding(toward: playerPos)
+                    finishBattle()
                     return
                 }
                 var item: GameItem? = nil
@@ -970,7 +1003,7 @@ final class BattleController: LiveBattleBridge {
             levelUpTo = growth.leveledTo
             let outcomeLines = BattleLog.outcome(
                 won: r.playerWon, expGained: r.expGained, levelUpTo: growth.leveledTo,
-                captured: r.captured, wildFled: r.wildFled,
+                captured: r.captured, wildFled: r.wildFled, playerFled: r.playerFled,
                 playerName: session?.player.name ?? "", wildName: wild?.name ?? "")
             outcomeLines.forEach { pushLog($0) }
             if r.captured, let w = wild {
@@ -999,9 +1032,13 @@ final class BattleController: LiveBattleBridge {
             if AppSettings.shared.battleLogEnabled { endTicks += 40 }
             endTotal = endTicks
             phase = .ending                 // the beaten wild fades away
-        } else if result?.wildFled == true {
-            // The wild teleported / was roared away: it slips off with no
-            // spoils — fade it out like a win, minus the EXP.
+        } else if result?.wildFled == true || result?.playerFled == true {
+            // The wild teleported / was roared away — OR it blew/teleported
+            // US out. Either way the ENCOUNTER is over, and only the wild
+            // can leave the screen (the follower is the mouse), so it
+            // departs with a fade and no spoils. (playerFled used to fall
+            // into the lingering branch below: a wild Lugia would Whirlwind,
+            // log "fled", stay put, and immediately re-engage — forever.)
             ballFrame = nil
             endTicks = fast ? 30 : 60
             endTotal = endTicks
