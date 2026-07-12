@@ -713,7 +713,12 @@ struct RunningEffect {
                 let f = travels ? CGFloat(tick - delay) / CGFloat(max(1, maxTicks - delay)) : 0
                 let base = CGPoint(x: from.x + (to.x - from.x) * f,
                                    y: from.y + (to.y - from.y) * f)
-                let up: CGFloat = (clip.headAnchored ? 10 : 0)
+                // PMD character cells reserve their lower rows for the
+                // shadow, so the BODY's center sits ~4 game-px above the
+                // cell center every effect anchors to (measured across 10
+                // species). Lift everything by that bias or effects read
+                // low against the sprite (user report).
+                let up: CGFloat = 4 + (clip.headAnchored ? 10 : 0)
                     + (travels ? 0 : clip.riseOffset)   // strike columns land, not skewer
                 let pos = CGPoint(x: base.x + CGFloat(s.dx) * scale,
                                   y: base.y - CGFloat(s.dy) * scale + up * scale)
