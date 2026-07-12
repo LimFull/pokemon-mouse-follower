@@ -125,9 +125,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Dev runs only — dev.sh sets PMF_DEV, and PMF_FAST_BATTLE test runs
         // imply it; the release build never shows it.
         if PMF.isDevRun {
-            let debug = NSMenuItem(title: "디버그", action: nil, keyEquivalent: "")
-            debug.submenu = makeDebugMenu()
-            menu.addItem(debug)
+            menu.addItem(menuItem("디버그 패널…", action: #selector(showDebugPanel)))
         }
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "\(L("menu.version")) \(Updater.currentVersion)", action: nil, keyEquivalent: ""))
@@ -137,43 +135,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem.menu = menu
     }
 
-    private func makeDebugMenu() -> NSMenu {
-        let dm = NSMenu()
-        for (title, dex) in [("즉시 배틀: 랜덤", 0),
-                             ("즉시 배틀: 피카츄 (마비)", 25),
-                             ("즉시 배틀: 슬리프 (최면술·에스퍼)", 96),
-                             ("즉시 배틀: 식스테일 (화상)", 37),
-                             ("즉시 배틀: 아보 (독)", 23),
-                             ("즉시 배틀: 루주라 (얼음·헤롱헤롱)", 124),
-                             ("즉시 배틀: 별가사리 (물대포)", 120),
-                             ("즉시 배틀: 메타몽 (변신)", 132),
-                             ("즉시 배틀: 피콘 (자폭)", 204),
-                             ("즉시 배틀: 뚜벅쵸 (흡수·드레인)", 43),
-                             ("즉시 배틀: 삐삐 (작아지기)", 35),
-                             ("즉시 배틀: 루기아 (날려버리기·강제교체)", 249),
-                             ("즉시 배틀: 캐이시 (순간이동 도주)", 63),
-                             ("즉시 배틀: 뿔카노 (뿔찌르기)", 111)] {
-            dm.addItem(menuItem(title, action: #selector(debugEncounter(_:)), tag: dex))
-        }
-        dm.addItem(.separator())
-        dm.addItem(menuItem("테스트 아이템 지급", action: #selector(debugGiveItems)))
-        dm.addItem(menuItem("파티 전체 회복", action: #selector(debugHealAll)))
-        dm.addItem(menuItem("활성 포켓몬 +1 레벨", action: #selector(debugLevelUp)))
-        dm.addItem(menuItem("활성 포켓몬 진화 레벨까지", action: #selector(debugLevelToEvolution)))
-        dm.addItem(menuItem("야생 스폰 (배회)", action: #selector(debugSpawn)))
-        // Field-item drops near the follower — pickup GIFs on demand.
-        dm.addItem(menuItem("필드 아이템 스폰: 랜덤", action: #selector(debugSpawnItem(_:)), tag: 0))
-        dm.addItem(menuItem("필드 아이템 스폰: 몬스터볼", action: #selector(debugSpawnItem(_:)),
-                            tag: GameItem.pokeBall.rawValue))
-        dm.addItem(.separator())
-        // Force a status on the active mon — it carries into the next battle,
-        // so the skip/residual visuals are testable without RNG.
-        for (title, key) in [("내 포켓몬: 마비", "paralysis"), ("내 포켓몬: 화상", "burn"),
-                             ("내 포켓몬: 독", "poison"), ("내 포켓몬: 수면", "sleep"),
-                             ("내 포켓몬: 얼음", "freeze"), ("내 포켓몬: 상태 해제", "")] {
-            dm.addItem(menuItem(title, action: #selector(debugSetStatus(_:)), represented: key))
-        }
-        return dm
+    /// The debug panel (dev runs): DebugCatalog actions as one-click buttons.
+    private let debugPanel = DebugPanelController()
+
+    @objc private func showDebugPanel() {
+        debugPanel.show(sections: DebugCatalog.sections(
+            forceEncounter: { [weak self] in self?.battle.forceEncounter(dex: $0) },
+            spawnWild: { [weak self] in self?.battle.forceSpawn() },
+            spawnItem: { [weak self] item in
+                guard let self else { return }
+                self.items.forceSpawn(item, near: self.controller.position)
+            }))
     }
 
     private func setupTimer() {
@@ -287,73 +259,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         running.toggle()
         sender.title = running ? L("menu.pause") : L("menu.resume")
         for (_, view) in overlays { view.isHidden = !running }
-    }
-
-    @objc private func debugSpawn() { battle.forceSpawn() }
-
-    @objc private func debugSpawnItem(_ sender: NSMenuItem) {
-        items.forceSpawn(GameItem(rawValue: sender.tag), near: controller.position)
-    }
-
-    @objc private func debugEncounter(_ sender: NSMenuItem) {
-        battle.forceEncounter(dex: sender.tag > 0 ? sender.tag : nil)
-    }
-
-    @objc private func debugGiveItems() {
-        let st = RaisingState.shared
-        st.addItem(.pokeBall, 5)
-        st.addItem(.greatBall, 2)
-        st.addItem(.potion, 3)
-        st.addItem(.superPotion, 2)
-        st.addItem(.fullHeal, 2)
-        st.addItem(.revive, 2)
-        for stone: GameItem in [.fireStone, .thunderStone, .waterStone, .leafStone,
-                                .moonStone, .sunStone, .linkCord, .friendCandy] {
-            st.addItem(stone, 1)
-        }
-    }
-
-    @objc private func debugHealAll() {
-        let st = RaisingState.shared
-        for i in st.party.indices { st.healMon(at: i) }
-    }
-
-    @objc private func debugSetStatus(_ sender: NSMenuItem) {
-        let key = sender.representedObject as? String ?? ""
-        RaisingState.shared.setStatusDebug(key.isEmpty ? nil : key)
-    }
-
-    /// Grant EXP through the real growth path (level-ups, move prompts,
-    /// evolution + burst) — exactly what a battle win would do.
-    private func debugGainExp(_ amount: Int) {
-        let st = RaisingState.shared
-        guard st.hasActiveGame, amount > 0 else { return }
-        let idx = st.save.activeIndex
-        let result = st.gainExp(amount)
-        for moveId in result.pendingMoves {
-            PromptCenter.shared.enqueue(.learnMove(monIndex: idx, moveId: moveId))
-        }
-    }
-
-    @objc private func debugLevelUp() {
-        guard let mon = RaisingState.shared.active else { return }
-        debugGainExp(mon.expToNext.remaining)
-    }
-
-    @objc private func debugLevelToEvolution() {
-        let st = RaisingState.shared
-        guard let mon = st.active, let s = mon.species, mon.level < 100 else { return }
-        // Jump to the nearest LEVEL-evolution threshold above the current
-        // level; species without one just gain a single level.
-        let target = s.evolutions
-            .filter { $0.method == "LEVEL" && $0.param1 > mon.level }
-            .map(\.param1)
-            .min()
-        guard let target, s.expCurve.indices.contains(target - 1) else {
-            debugLevelUp()
-            return
-        }
-        debugGainExp(s.expCurve[target - 1] - mon.exp)
     }
 
     // MARK: - Self-update

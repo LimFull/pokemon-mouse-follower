@@ -12,38 +12,9 @@ private let kCmdQuit: UINT_PTR = 2
 private let kCmdSettings: UINT_PTR = 3
 private let kCmdUpdate: UINT_PTR = 4
 
-// Debug submenu (dev runs only — mirrors the macOS status-bar debug menu).
-private let kCmdDebugEncounterBase: UINT_PTR = 200   // + index into debugEncounters
-private let kCmdDebugGiveItems: UINT_PTR = 220
-private let kCmdDebugHealAll: UINT_PTR = 221
-private let kCmdDebugLevelUp: UINT_PTR = 222
-private let kCmdDebugLevelToEvolution: UINT_PTR = 223
-private let kCmdDebugSpawnWild: UINT_PTR = 224
-private let kCmdDebugItemRandom: UINT_PTR = 225
-private let kCmdDebugItemPokeball: UINT_PTR = 226
-private let kCmdDebugStatusBase: UINT_PTR = 230      // + index into debugStatuses
-
-private let debugEncounters: [(String, Int)] = [
-    ("즉시 배틀: 랜덤", 0),
-    ("즉시 배틀: 피카츄 (마비)", 25),
-    ("즉시 배틀: 슬리프 (최면술·에스퍼)", 96),
-    ("즉시 배틀: 식스테일 (화상)", 37),
-    ("즉시 배틀: 아보 (독)", 23),
-    ("즉시 배틀: 루주라 (얼음·헤롱헤롱)", 124),
-    ("즉시 배틀: 별가사리 (물대포)", 120),
-    ("즉시 배틀: 메타몽 (변신)", 132),
-    ("즉시 배틀: 피콘 (자폭)", 204),
-    ("즉시 배틀: 뚜벅쵸 (흡수·드레인)", 43),
-    ("즉시 배틀: 삐삐 (작아지기)", 35),
-    ("즉시 배틀: 루기아 (날려버리기·강제교체)", 249),
-    ("즉시 배틀: 캐이시 (순간이동 도주)", 63),
-    ("즉시 배틀: 뿔카노 (뿔찌르기)", 111),
-]
-private let debugStatuses: [(String, String)] = [
-    ("내 포켓몬: 마비", "paralysis"), ("내 포켓몬: 화상", "burn"),
-    ("내 포켓몬: 독", "poison"), ("내 포켓몬: 수면", "sleep"),
-    ("내 포켓몬: 얼음", "freeze"), ("내 포켓몬: 상태 해제", ""),
-]
+// Debug panel opener (dev runs only — the actions themselves live in
+// DebugCatalog and render as one-click buttons in DebugPanelWin).
+private let kCmdDebugPanel: UINT_PTR = 200
 
 private let trayClassName = Array("PMFTray".utf16) + [0]
 
@@ -80,15 +51,8 @@ final class TrayIcon {
     var onQuit: (() -> Void)?
     var onSettings: (() -> Void)?
     var onCheckUpdate: (() -> Void)?
-    // Debug hooks (dev runs only; wired by main when PMF.isDevRun).
-    var onDebugEncounter: ((Int?) -> Void)?
-    var onDebugGiveItems: (() -> Void)?
-    var onDebugHealAll: (() -> Void)?
-    var onDebugLevelUp: (() -> Void)?
-    var onDebugLevelToEvolution: (() -> Void)?
-    var onDebugSpawnWild: (() -> Void)?
-    var onDebugSpawnItem: ((GameItem?) -> Void)?
-    var onDebugSetStatus: ((String?) -> Void)?
+    // Debug panel opener (dev runs only; wired by main when PMF.isDevRun).
+    var onOpenDebugPanel: (() -> Void)?
 
     /// Thread-safe quit: posts the Quit command to the tray window, so worker
     /// threads (the updater) can end the app from the main loop.
@@ -144,29 +108,10 @@ final class TrayIcon {
         appendSeparator(menu)
         appendItem(menu, id: kCmdSettings, text: L("menu.settings"))
         appendItem(menu, id: kCmdPause, text: paused ? L("menu.resume") : L("menu.pause"))
-        // Debug submenu: instant battles against curated opponents, item/EXP/
-        // heal shortcuts (macOS makeDebugMenu mirror). Dev runs only.
-        if PMF.isDevRun, let debug = CreatePopupMenu() {
-            for (i, entry) in debugEncounters.enumerated() {
-                appendItem(debug, id: kCmdDebugEncounterBase + UINT_PTR(i), text: entry.0)
-            }
-            appendSeparator(debug)
-            appendItem(debug, id: kCmdDebugGiveItems, text: "테스트 아이템 지급")
-            appendItem(debug, id: kCmdDebugHealAll, text: "파티 전체 회복")
-            appendItem(debug, id: kCmdDebugLevelUp, text: "활성 포켓몬 +1 레벨")
-            appendItem(debug, id: kCmdDebugLevelToEvolution, text: "활성 포켓몬 진화 레벨까지")
-            appendItem(debug, id: kCmdDebugSpawnWild, text: "야생 스폰 (배회)")
-            appendItem(debug, id: kCmdDebugItemRandom, text: "필드 아이템 스폰: 랜덤")
-            appendItem(debug, id: kCmdDebugItemPokeball, text: "필드 아이템 스폰: 몬스터볼")
-            appendSeparator(debug)
-            for (i, entry) in debugStatuses.enumerated() {
-                appendItem(debug, id: kCmdDebugStatusBase + UINT_PTR(i), text: entry.0)
-            }
-            let title = Array("디버그".utf16) + [0]
-            title.withUnsafeBufferPointer {
-                _ = AppendMenuW(menu, UINT(MF_POPUP | MF_STRING),
-                                UINT_PTR(UInt(bitPattern: debug)), $0.baseAddress)
-            }
+        // Debug panel (dev runs only): one item — the actions are buttons
+        // in DebugPanelWin so tests fire with single clicks.
+        if PMF.isDevRun {
+            appendItem(menu, id: kCmdDebugPanel, text: "디버그 패널")
         }
         appendSeparator(menu)
         appendItem(menu, id: 0, text: "\(L("menu.version")) \(AppVersion.string)", enabled: false)
@@ -193,19 +138,8 @@ final class TrayIcon {
             onSettings?()
         case kCmdUpdate:
             onCheckUpdate?()
-        case kCmdDebugGiveItems: onDebugGiveItems?()
-        case kCmdDebugHealAll: onDebugHealAll?()
-        case kCmdDebugLevelUp: onDebugLevelUp?()
-        case kCmdDebugLevelToEvolution: onDebugLevelToEvolution?()
-        case kCmdDebugSpawnWild: onDebugSpawnWild?()
-        case kCmdDebugItemRandom: onDebugSpawnItem?(nil)
-        case kCmdDebugItemPokeball: onDebugSpawnItem?(.pokeBall)
-        case kCmdDebugEncounterBase..<(kCmdDebugEncounterBase + UINT_PTR(debugEncounters.count)):
-            let dex = debugEncounters[Int(id - kCmdDebugEncounterBase)].1
-            onDebugEncounter?(dex > 0 ? dex : nil)
-        case kCmdDebugStatusBase..<(kCmdDebugStatusBase + UINT_PTR(debugStatuses.count)):
-            let key = debugStatuses[Int(id - kCmdDebugStatusBase)].1
-            onDebugSetStatus?(key.isEmpty ? nil : key)
+        case kCmdDebugPanel:
+            onOpenDebugPanel?()
         default:
             break
         }
