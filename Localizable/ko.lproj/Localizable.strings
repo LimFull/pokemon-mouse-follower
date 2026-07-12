@@ -1268,7 +1268,8 @@
 "log.skip.flewup" = "%@는(은) 하늘 높이 날아올랐다!";
 "log.skip.doveunder" = "%@는(은) 물속으로 숨었다!";
 "log.skip.vanished" = "%@는(은) 모습을 감췄다!";
-"log.selfhit.destinybond" = "%@는(은) 상대를 길동무로 삼았다!";
+"log.selfhit.destinybond" = "%@는(은) 길동무가 되어 함께 쓰러졌다!";
+"log.tag.bondedfates" = "%@는(은) 상대를 길동무로 삼으려 한다!";
 "log.selfhit.hurtitself" = "%@는(은) 영문도 모른 채 자신을 공격했다!";
 "log.selfhit.recoil" = "%@는(은) 반동 데미지를 입었다!";
 "log.selfhit.crashed" = "%@는(은) 기세가 넘쳐서 땅에 부딪쳤다!";

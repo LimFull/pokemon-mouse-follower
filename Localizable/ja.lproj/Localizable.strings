@@ -1202,7 +1202,8 @@
 "log.skip.flewup" = "%@は そらたかく とびあがった!";
 "log.skip.doveunder" = "%@は すいちゅうに もぐった!";
 "log.skip.vanished" = "%@は すがたを けした!";
-"log.selfhit.destinybond" = "%@は あいてを みちづれに した!";
+"log.selfhit.destinybond" = "%@は みちづれに されて たおれた!";
+"log.tag.bondedfates" = "%@は あいてを みちづれに しようとしている!";
 "log.selfhit.hurtitself" = "%@は わけも わからず じぶんを こうげきした!";
 "log.selfhit.recoil" = "%@は はんどうによる ダメージを うけた!";
 "log.selfhit.crashed" = "%@は いきおいあまって じめんに ぶつかった!";

@@ -143,8 +143,11 @@ def main():
         if not entry:
             skipped["none"] += 1
             continue
-        # Hit effect: anim3 first, falling back through the other slots.
-        slots = (entry["anim3"], entry["anim1"], entry["anim2"], entry["anim4"])
+        # Hit effect: anim3 first, falling back through anim1/anim2 — but
+        # NEVER anim4: that slot is the projectile, and moves whose only
+        # visual is anim4 (Barrage & co) must FLY it, not park it on the
+        # target (the generic particle spark covers the impact).
+        slots = (entry["anim3"], entry["anim1"], entry["anim2"])
         cands = [a for a in slots if 0 < a < len(general)]
         hit_slot = cands[0] if cands else None
         rec = resolve(general[hit_slot] if hit_slot is not None else None)

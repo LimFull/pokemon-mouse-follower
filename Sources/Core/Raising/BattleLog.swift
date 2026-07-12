@@ -226,6 +226,7 @@ enum BattleLog {
 
     private static let mechanicKey: [String: String] = [
         "substitute!": "log.tag.substitute",
+        "bonded fates": "log.tag.bondedfates",
         "transformed!": "log.tag.transformed",
         "seeded": "log.tag.seeded",
         "protected": "log.tag.protected",

@@ -138,7 +138,8 @@
 "log.skip.flewup" = "%@ flew up high!";
 "log.skip.doveunder" = "%@ hid underwater!";
 "log.skip.vanished" = "%@ vanished instantly!";
-"log.selfhit.destinybond" = "%@ took its foe down with it!";
+"log.selfhit.destinybond" = "%@ was taken down as its foe's destiny bond!";
+"log.tag.bondedfates" = "%@ is hoping to take its foe down with it!";
 "log.selfhit.hurtitself" = "%@ hurt itself in its confusion!";
 "log.selfhit.recoil" = "%@ is damaged by recoil!";
 "log.selfhit.crashed" = "%@ kept going and crashed!";

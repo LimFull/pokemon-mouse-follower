@@ -273,6 +273,9 @@ final class BattleSession {
     // A hit just broke this battler's substitute — emit() logs the break
     // right after the attack event so the order reads attack -> break.
     private var pendingSubBreak: Battler?
+    // The bond holder just fell: the attacker goes down right after the
+    // killing blow's event (mainline order), not before it.
+    private var pendingBond: Battler?
 
     /// The dragged-in replacement takes over mid-battle (fresh battle-local
     /// state; the wild's stages/volatiles stay, mainline-style).
@@ -354,6 +357,12 @@ final class BattleSession {
                 pendingSubBreak = nil
                 emit(.skip, actorIsPlayer: broke === player, reason: "sub broke")
             }
+            if kind == .attack, let bonded = pendingBond {
+                pendingBond = nil
+                bonded.currentHP = 0
+                emit(.selfHit, actorIsPlayer: bonded === player, reason: "Destiny Bond",
+                     damage: bonded.maxHP, targetIsPlayer: bonded === player)
+            }
         }
 
         /// Type effectiveness with the identification/levitation overrides:
@@ -404,9 +413,9 @@ final class BattleSession {
             else { def.specialTakenThisRound += dmg }
             if def.bideTurns > 0 { def.bideStored += dmg }
             if def.isFainted && def.destinyBond {
-                atk.currentHP = 0
-                emit(.selfHit, actorIsPlayer: atk === player, reason: "Destiny Bond",
-                     damage: atk.maxHP, targetIsPlayer: atk === player, status: "Destiny Bond!")
+                // Resolve AFTER the killing blow's event so the log/playback
+                // read: fatal hit -> faint -> "길동무" -> attacker drains.
+                pendingBond = atk
             }
         }
 
