@@ -185,7 +185,8 @@ enum EffectPlayer {
         if let cached = clipCache[key] { return cached }
         let built = build(moveId: moveId, file: file, anim: anim + idx, loop: ref.loop ?? false,
                           particle: ref.particle == true, tint: ref.tint == true,
-                          headAnchored: ref.point == "HEAD")
+                          headAnchored: ref.point == "HEAD",
+                          preserveOffsets: ref.dirs == true)
         clipCache[key] = built
         return built
     }
@@ -306,7 +307,7 @@ enum EffectPlayer {
         if let cached = coCache[key] { return cached }
         let built = build(moveId: moveId, file: c.file, anim: c.anim + idx, loop: c.loop,
                           particle: c.particle == true, tint: c.tint == true,
-                          headAnchored: false)
+                          headAnchored: false, preserveOffsets: c.dirs == true)
         coCache[key] = built
         return built
     }
@@ -324,14 +325,26 @@ enum EffectPlayer {
         let key = moveId * 8 + idx
         if let cached = projCache[key] { return cached }
         let built = build(moveId: moveId, file: p.file, anim: p.anim + idx, loop: p.loop,
-                          particle: p.particle == true, tint: p.tint == true, headAnchored: false)
+                          particle: p.particle == true, tint: p.tint == true,
+                          headAnchored: false, preserveOffsets: p.dirs == true)
         projCache[key] = built
         return built
     }
 
     private static func build(moveId: Int, file: Int, anim: Int, loop: Bool,
-                              particle: Bool, tint doTint: Bool, headAnchored: Bool) -> EffectClip? {
+                              particle: Bool, tint doTint: Bool, headAnchored: Bool,
+                              preserveOffsets: Bool = false) -> EffectClip? {
         guard var steps = rawSteps(file: file, anim: anim) else { return nil }
+        // A constant nonzero offset shared by EVERY frame of a
+        // non-directional clip is a stale EoS screen-anchor bias, not
+        // animation motion — Charge's ring carried (0,+19) and drew at the
+        // caster's feet (user report; Will-O-Wisp had (0,+4)). Directional
+        // sets keep theirs: there the offset IS the per-facing placement.
+        if !preserveOffsets, !particle, let first = steps.first,
+           (first.dx != 0 || first.dy != 0),
+           steps.allSatisfy({ $0.dx == first.dx && $0.dy == first.dy }) {
+            steps = steps.map { RawStep(image: $0.image, ticks: $0.ticks, dx: 0, dy: 0) }
+        }
         steps = cropAndCenter(steps)
         steps = capSize(steps)   // screen-filling art (Surf & co) fits battle scale
         // Source quirk: some drawn clips alternate real frames with BLANK
