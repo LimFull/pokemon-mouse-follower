@@ -461,9 +461,11 @@ final class RaisingPanelWin {
             checkbox(L("bag.capture"), x: 8, y: y, w: RaisingPanelWin.contentWidth - 8,
                      on: state.captureEnabled) { RaisingState.shared.setCaptureEnabled($0) }
             y += 22
+            // Two-line height: the caption wraps in every language at this
+            // width, and STATIC clips anything past its rect.
             label(L("bag.capture.caption"), x: 10, y: y, w: RaisingPanelWin.contentWidth - 12,
-                  mono: true, small: true)
-            y += 24
+                  h: 30, mono: true, small: true)
+            y += 36
             let bag = GameItem.allCases.filter { state.itemCount($0) > 0 }
             if bag.isEmpty {
                 label("—", x: 10, y: y, w: 60, mono: true)
@@ -480,9 +482,11 @@ final class RaisingPanelWin {
                 }
                 y += 24
                 if expandedBagItem == item {
+                    // Two lines for the same reason as the capture caption —
+                    // the longer descs (e.g. Great Ball's) wrap at this width.
                     label(item.desc, x: 34, y: y, w: RaisingPanelWin.contentWidth - 40,
-                          mono: true, small: true)
-                    y += 20
+                          h: 30, mono: true, small: true)
+                    y += 32
                     if item.isBall {
                         // Manual throw — only while a battle is running.
                         if let live = LiveBattle.current, live.playerGaugeFraction != nil {
