@@ -27,8 +27,9 @@ enum BattleLog {
         switch e.kind {
         case .attack:
             // Explosion moves already announced on their detonation beat
-            // (the selfHit that precedes this event) — don't repeat it.
-            if e.moveId > 0, !EffectPlayer.isExplosionMove(e.moveId) {
+            // (the selfHit that precedes this event), and a multi-hit
+            // follow-up strike continues the announced move — don't repeat.
+            if e.moveId > 0, !e.followUp, !EffectPlayer.isExplosionMove(e.moveId) {
                 add(LF("log.attack", actor, e.moveName), .start)
             }
             if e.damage > 0 {

@@ -37,6 +37,7 @@ private let debugEncounters: [(String, Int)] = [
     ("즉시 배틀: 삐삐 (작아지기)", 35),
     ("즉시 배틀: 루기아 (날려버리기·강제교체)", 249),
     ("즉시 배틀: 캐이시 (순간이동 도주)", 63),
+    ("즉시 배틀: 뿔카노 (뿔찌르기)", 111),
 ]
 private let debugStatuses: [(String, String)] = [
     ("내 포켓몬: 마비", "paralysis"), ("내 포켓몬: 화상", "burn"),

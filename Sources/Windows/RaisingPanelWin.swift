@@ -545,7 +545,7 @@ final class RaisingPanelWin {
         }
 
         // Stats (EoS model).
-        let st = GameData.stats(s, level: mon.level)
+        let st = GameData.stats(s, level: mon.level, ivs: mon.ivs)
         let statLines = [String(format: "ATTACK  %4d   DEFENSE %4d", st.atk, st.def),
                          String(format: "SP.ATK  %4d   SP.DEF  %4d", st.spAtk, st.spDef),
                          String(format: "SPEED   %4d", st.spe)]

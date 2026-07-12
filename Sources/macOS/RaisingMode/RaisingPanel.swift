@@ -449,7 +449,7 @@ final class RaisingPanelView: NSView {
         }
 
         // Stats block (EoS model: no Speed stat).
-        let st = GameData.stats(s, level: mon.level)
+        let st = GameData.stats(s, level: mon.level, ivs: mon.ivs)
         let statsText = [
             String(format: "ATTACK   %4d", st.atk),
             String(format: "DEFENSE  %4d", st.def),

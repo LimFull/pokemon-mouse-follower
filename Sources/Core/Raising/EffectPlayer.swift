@@ -34,6 +34,7 @@ struct MoveEffectRef: Codable {
     let particle: Bool?     // single-particle art: compose a burst of copies
     let tint: Bool?         // approximate palette: re-hue with the type color
     let screen: Bool?       // full-screen effect: type-colored flash + quake
+    let dirs: Bool?         // hit clip is an 8-facing set (Horn Attack & co)
     let proj: Proj?         // travel effect flown attacker -> target first
     let co: Proj?           // companion clip (ROM anim2 — e.g. Vine Whip's
                             // vine lash) played at the target before the hit
@@ -92,7 +93,7 @@ enum EffectPlayer {
     }
 
     private static var metaCache: [Int: FileMeta] = [:]
-    private static var clipCache: [Int: EffectClip?] = [:]   // hit clip per move id
+    private static var clipCache: [Int: EffectClip?] = [:]   // key: moveId*8 + facing
     private static var projCache: [Int: EffectClip?] = [:]   // key: moveId*8 + facing
     private static var coCache: [Int: EffectClip?] = [:]     // key: moveId*8 + facing
 
@@ -137,15 +138,22 @@ enum EffectPlayer {
 
     /// The on-target hit clip for `moveId` (fully corrected: cropped/centered,
     /// tinted, particle-composed), or nil when the move has no sprite effect.
-    static func clip(forMove moveId: Int) -> EffectClip? {
-        if let cached = clipCache[moveId] { return cached }
-        var built: EffectClip?
-        if let ref = MoveEffects.map[moveId], let file = ref.file, let anim = ref.anim {
-            built = build(moveId: moveId, file: file, anim: anim, loop: ref.loop ?? false,
+    /// Directional sets (Horn Attack's thrust & co) pick the rotation for
+    /// `octant` — their baked offsets start the art on the ATTACKER's side of
+    /// the anchor and drive it into the target, so the right facing also puts
+    /// the strike between the two mons.
+    static func clip(forMove moveId: Int, octant: Int = 6) -> EffectClip? {
+        guard let ref = MoveEffects.map[moveId], let file = ref.file, let anim = ref.anim else {
+            clipCache[moveId * 8] = nil
+            return nil
+        }
+        let idx = ref.dirs == true ? (2 + (octant & 7)) % 8 : 0
+        let key = moveId * 8 + idx
+        if let cached = clipCache[key] { return cached }
+        let built = build(moveId: moveId, file: file, anim: anim + idx, loop: ref.loop ?? false,
                           particle: ref.particle == true, tint: ref.tint == true,
                           headAnchored: ref.point == "HEAD")
-        }
-        clipCache[moveId] = built
+        clipCache[key] = built
         return built
     }
 

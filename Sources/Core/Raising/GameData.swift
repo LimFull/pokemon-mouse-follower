@@ -110,6 +110,7 @@ struct MoveData: Codable {
     let powerMain: Int?         // mainline base power (nil: status/variable/EoS-only)
     let contact: Bool?          // mainline "makes contact" (nil: EoS-only move)
     let sound: Bool?            // mainline "sound" flag (cries/songs; nil = no)
+    let accuracyMain: Int?      // mainline accuracy (0 = never misses; nil: EoS-only)
     let casterAnim: Int?        // ROM sprite anim group the USER plays (0..12;
                                 // nil: sentinel/unmapped -> Attack/Shoot heuristic)
     enum CodingKeys: String, CodingKey {
@@ -119,6 +120,7 @@ struct MoveData: Codable {
         case powerMain = "power_main"
         case contact
         case sound
+        case accuracyMain = "accuracy_main"
         case casterAnim = "caster_anim"
     }
     /// English JSON name — the key for the engine's name-keyed tables
@@ -148,9 +150,14 @@ struct MoveData: Codable {
         return power > 0 ? min(power * 5, 130) : 0
     }
 
+    /// The accuracy the engine rolls with: mainline when known (EoS's dungeon
+    /// balance runs much lower — Fury Attack 55 vs the mainline 85), EoS as
+    /// the fallback for moves the mainline never had.
+    var effectiveAccuracy: Int { accuracyMain ?? accuracy }
+
     /// "87%" for a real accuracy roll, "—" for moves that never miss
     /// (mirrors the battle engine's 1...100 check).
-    var accuracyText: String { (1...100).contains(accuracy) ? "\(accuracy)%" : "—" }
+    var accuracyText: String { (1...100).contains(effectiveAccuracy) ? "\(effectiveAccuracy)%" : "—" }
 
     /// Effective % chance to inflict `ailment` on a hit (status moves: always).
     var effectiveAilmentChance: Int {
@@ -161,7 +168,7 @@ struct MoveData: Codable {
 }
 
 /// Concrete stats of a mon at a given level.
-struct Stats {
+struct Stats: Codable {
     let hp, atk, def, spAtk, spDef, spe: Int
 }
 
@@ -204,13 +211,28 @@ enum GameData {
 
     /// Stats of `s` at `level`, from mainline base stats (IV/EV/nature omitted,
     /// design D4). Falls back to the EoS growth model if base stats are missing.
-    static func stats(_ s: SpeciesData, level: Int) -> Stats {
+    /// Roll a fresh mainline IV spread (0...31 per stat).
+    static func rollIVs<R: RandomNumberGenerator>(using rng: inout R) -> Stats {
+        func r() -> Int { Int.random(in: 0...31, using: &rng) }
+        return Stats(hp: r(), atk: r(), def: r(), spAtk: r(), spDef: r(), spe: r())
+    }
+
+    static func rollIVs() -> Stats {
+        var rng = SystemRandomNumberGenerator()
+        return rollIVs(using: &rng)
+    }
+
+    static func stats(_ s: SpeciesData, level: Int, ivs: Stats? = nil) -> Stats {
         let lv = max(1, level)
         if let b = s.base {
-            func st(_ base: Int) -> Int { (2 * base * lv) / 100 + 5 }
+            // Mainline formula with the mon's IVs (nil = 0 spread, the
+            // pre-IV behavior; EVs stay out of scope).
+            func st(_ base: Int, _ iv: Int) -> Int { ((2 * base + iv) * lv) / 100 + 5 }
             return Stats(
-                hp: (2 * b.hp * lv) / 100 + lv + 10,
-                atk: st(b.atk), def: st(b.def), spAtk: st(b.spa), spDef: st(b.spd), spe: st(b.spe))
+                hp: ((2 * b.hp + (ivs?.hp ?? 0)) * lv) / 100 + lv + 10,
+                atk: st(b.atk, ivs?.atk ?? 0), def: st(b.def, ivs?.def ?? 0),
+                spAtk: st(b.spa, ivs?.spAtk ?? 0), spDef: st(b.spd, ivs?.spDef ?? 0),
+                spe: st(b.spe, ivs?.spe ?? 0))
         }
         func cum(_ deltas: [Int], _ base: Int) -> Int {
             base + deltas.prefix(max(0, min(lv, deltas.count))).reduce(0, +)
@@ -257,7 +279,8 @@ enum GameData {
             type: nil, category: "Physical",
             power: 0, pp: 0, accuracy: 100,
             desc: "A plain typeless attack, used when every move is switched off.",
-            ailment: nil, ailmentChance: nil, powerMain: 20, contact: true, sound: nil, casterAnim: 1)
+            ailment: nil, ailmentChance: nil, powerMain: 20, contact: true, sound: nil,
+            accuracyMain: nil, casterAnim: 1)
         return out
     }
 }

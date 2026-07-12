@@ -38,9 +38,11 @@ struct OwnedPokemon: Codable {
     var disabledMoves: [Int]? // PMD-style OFF toggles — still known, AI won't pick them
     var gender: Gender
     var status: String?       // volatile/major status (nil = healthy); detailed in Phase 2
+    var ivs: Stats?           // mainline IVs (0...31 each); nil in pre-IV saves,
+                              // rolled once on load so old catches get theirs too
 
     var species: SpeciesData? { GameData.species[dex] }
-    var stats: Stats? { species.map { GameData.stats($0, level: level) } }
+    var stats: Stats? { species.map { GameData.stats($0, level: level, ivs: ivs) } }
     var maxHP: Int { stats?.hp ?? max(currentHP, 1) }
     var isFainted: Bool { currentHP <= 0 }
 
@@ -101,6 +103,14 @@ final class RaisingState {
         if save.activeIndex >= save.party.count {
             save.activeIndex = save.party.isEmpty ? -1 : 0
         }
+        // Pre-IV saves: every existing catch rolls its spread once, here —
+        // stats only go UP from the IV-0 baseline, so current HP stays valid.
+        if save.party.contains(where: { $0.ivs == nil }) {
+            for i in save.party.indices where save.party[i].ivs == nil {
+                save.party[i].ivs = GameData.rollIVs()
+            }
+            persist()
+        }
     }
 
     var party: [OwnedPokemon] { save.party }
@@ -148,7 +158,8 @@ final class RaisingState {
     /// and a random, ratio-respecting gender (D17 / G — genderless and
     /// gender-locked species come out right via the species' gender_rate).
     func makeMon(species s: SpeciesData, level: Int) -> OwnedPokemon {
-        let hp = GameData.stats(s, level: level).hp
+        let ivs = GameData.rollIVs()
+        let hp = GameData.stats(s, level: level, ivs: ivs).hp
         return OwnedPokemon(
             dex: s.dex,
             level: level,
@@ -156,7 +167,8 @@ final class RaisingState {
             currentHP: hp,
             moves: s.initialMoves(atLevel: level),
             gender: Gender.random(genderRate: s.genderRate),
-            status: nil)
+            status: nil,
+            ivs: ivs)
     }
 
     // MARK: party ops (D14)
@@ -184,7 +196,8 @@ final class RaisingState {
             currentHP: max(1, wild.currentHP),
             moves: wild.moves,
             gender: wild.gender,
-            status: wild.status?.rawValue)
+            status: wild.status?.rawValue,
+            ivs: wild.ivs ?? GameData.rollIVs())   // the caught individual keeps ITS spread
     }
 
     /// Add a wild mon caught in battle (party must have room).
@@ -277,10 +290,10 @@ final class RaisingState {
             let need = s.expCurve.indices.contains(next - 1) ? s.expCurve[next - 1] : Int.max
             if save.party[i].exp < need { break }
 
-            let beforeHP = GameData.stats(s, level: save.party[i].level).hp
+            let beforeHP = GameData.stats(s, level: save.party[i].level, ivs: save.party[i].ivs).hp
             save.party[i].level = next
             r.leveledTo = next
-            let afterHP = GameData.stats(s, level: next).hp
+            let afterHP = GameData.stats(s, level: next, ivs: save.party[i].ivs).hp
             save.party[i].currentHP = min(afterHP, save.party[i].currentHP + max(0, afterHP - beforeHP))
 
             for m in s.levelUpMoves where m.level == next && !save.party[i].moves.contains(m.moveId) {
@@ -297,7 +310,7 @@ final class RaisingState {
                 r.evolvedTo = evo.toDex
                 save.party[i].dex = evo.toDex
                 s = to
-                save.party[i].currentHP = min(save.party[i].currentHP, GameData.stats(s, level: next).hp)
+                save.party[i].currentHP = min(save.party[i].currentHP, GameData.stats(s, level: next, ivs: save.party[i].ivs).hp)
             }
         }
         persist()
@@ -476,7 +489,7 @@ final class RaisingState {
         } else if let evo = evolution(for: item, of: save.party[index]),
                   let to = GameData.species[evo.toDex] {
             save.party[index].dex = evo.toDex
-            let cap = GameData.stats(to, level: save.party[index].level).hp
+            let cap = GameData.stats(to, level: save.party[index].level, ivs: save.party[index].ivs).hp
             save.party[index].currentHP = min(save.party[index].currentHP, cap)
             evolvedTo = evo.toDex
         }

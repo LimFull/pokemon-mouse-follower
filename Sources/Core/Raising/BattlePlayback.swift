@@ -186,7 +186,8 @@ final class BattleController: LiveBattleBridge {
         204: 123,   // 피콘 → 자폭 (Selfdestruct)
         43: 135,    // 뚜벅쵸 → 흡수 (Absorb; L21+ would drop it for Mega Drain)
         35: 169,    // 삐삐 → 작아지기 (Minimize; learned at L19, later window drops it)
-        249: 268,   // 루기아 → 회오리바람 (Whirlwind; L1 move, L29+ window drops it)
+        249: 268,   // 루기아 → 날려버리기 (Whirlwind; L1 move, L29+ window drops it)
+        111: 176,   // 뿔카노 → 뿔찌르기 (Horn Attack; L1 move, later window drops it)
     ]
 
     func forceEncounter(dex: Int? = nil) {
@@ -815,7 +816,9 @@ final class BattleController: LiveBattleBridge {
             let wildPos = wildMon?.pos ?? playerPos
             let target = e.targetIsPlayer ? playerPos : wildPos
             let attacker = e.actorIsPlayer ? playerPos : wildPos
-            let travel = 18, windup = 20
+            // A follow-up strike continues an announced move: barely any
+            // windup, so the string raps out hit-hit-hit.
+            let travel = 18, windup = e.followUp ? 6 : 20
             var total = 0
             // Travel direction picks the projectile's facing (8-dir ROM sets).
             let ddx = target.x - attacker.x, ddy = target.y - attacker.y
@@ -842,49 +845,55 @@ final class BattleController: LiveBattleBridge {
             let cry = proj == nil && moveData?.sound == true && moveData?.category == "Status"
             let front = CGPoint(x: attacker.x + (target.x - attacker.x) * 0.3,
                                 y: attacker.y + (target.y - attacker.y) * 0.3)
+            // One multi-hit STRIKE per event (engine emits them separately):
+            // the strike visual raps 3 quick times per hit — the ROM clip is
+            // a single 5-tick poke, and EoS multiplies it engine-side.
+            let strikeReps = e.multiStrike ? 3 : 1
             var coTicks = 0
             if e.moveId > 0, !EffectPlayer.isExplosionMove(e.moveId),
                let co = EffectPlayer.coClip(forMove: e.moveId, octant: octant) {
-                let ticks = min(co.loop ? 24 : co.totalTicks, 36)
+                let ticks = min(co.loop ? 24 : co.totalTicks, e.multiStrike ? 8 : 36)
                 let delay = proj == nil ? windup : 0
-                // Directional companion sets (Absorb's gather, Growl's rings)
-                // are USER-side visuals anchored on the attacker. Sets with
-                // baked per-facing offsets (Absorb: ±24px) already sit in
-                // front of the caster; sets whose art carries no offset
-                // (Growl's rings — all zeros) get pushed one step ahead
-                // manually, or the cry sits on the caster's back (user
-                // report). Non-directional companions (Vine Whip's vine
-                // & co) land on the target as before.
+                // Companion anchor: drain gathers collect ON the caster and
+                // cries ring just ahead of it (both user-tuned); everything
+                // else — Vine Whip's vine, Fury Attack's horn thrusts — lands
+                // on the TARGET, where directional sets' baked offsets
+                // animate the approach from the attacker's side.
                 let coAnchor: CGPoint
-                if MoveEffects.map[e.moveId]?.co?.dirs == true {
-                    if co.steps.allSatisfy({ abs($0.dx) < 4 && abs($0.dy) < 4 }) {
-                        let d = max(0.001, hypot(ddx, ddy))
-                        let k = 24 * AppSettings.shared.scale
-                        coAnchor = CGPoint(x: attacker.x + ddx / d * k,
-                                           y: attacker.y + ddy / d * k)
-                    } else {
-                        coAnchor = attacker
-                    }
-                } else { coAnchor = cry ? front : target }
-                effects.append(RunningEffect(clip: co, anchor: coAnchor,
-                                             maxTicks: delay + ticks, delay: delay))
-                coTicks = ticks
-                total += ticks
+                if case .drain = MoveMechanics.mechanic(for: e.moveId) { coAnchor = attacker }
+                else if cry { coAnchor = front }
+                else { coAnchor = target }
+                for i in 0..<strikeReps {
+                    effects.append(RunningEffect(clip: co, anchor: coAnchor,
+                                                 maxTicks: (i == 0 ? delay : 0) + ticks,
+                                                 delay: i == 0 ? delay : 0))
+                }
+                coTicks = ticks * strikeReps
+                total += coTicks
             }
             impactAt = total
             // Explosion moves played their boom on the detonation beat (the
             // selfHit before this event) — this beat only lands the damage.
             if e.moveId > 0, !EffectPlayer.isExplosionMove(e.moveId),
-               let clip = EffectPlayer.clip(forMove: e.moveId) {
-                let hitTicks = min(clip.loop ? 40 : clip.totalTicks, 54)
+               let clip = EffectPlayer.clip(forMove: e.moveId, octant: octant) {
+                // The companion already carried the raps; without one, the
+                // hit clip itself raps.
+                let reps = coTicks > 0 ? 1 : strikeReps
+                let hitTicks = min(clip.loop ? 40 : clip.totalTicks, reps > 1 ? 8 : 54)
                 let delay = (proj == nil && coTicks == 0) ? windup : 0
-                effects.append(RunningEffect(clip: clip, anchor: cry ? front : target,
-                                             maxTicks: delay + hitTicks, delay: delay))
-                total += hitTicks
+                for i in 0..<reps {
+                    effects.append(RunningEffect(clip: clip, anchor: cry ? front : target,
+                                                 maxTicks: (i == 0 ? delay : 0) + hitTicks,
+                                                 delay: i == 0 ? delay : 0))
+                }
+                total += hitTicks * reps
             }
             hitAt = max(impactAt, min(total, 72))
             if EffectPlayer.isScreen(e.moveId) { hitAt = impactAt + 20 }   // flash duration
-            let resolve = e.damage > 0 ? 26 : (e.kind == .miss ? 24 : 10)
+            // Mid-string strikes drain briskly; the last one (carrying the
+            // "N hits!" tag) keeps the full pause so the tally can land.
+            let resolve = e.damage > 0 ? (e.multiStrike && e.statusApplied == nil ? 14 : 26)
+                                       : (e.kind == .miss ? 24 : 10)
             drainEnd = hitAt + resolve
             curTicks = drainEnd + (fast ? 8 : 16)   // beat gap before the reply
             // An inflicted ailment announces itself: its status clip queues up

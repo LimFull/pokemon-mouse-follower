@@ -55,6 +55,8 @@ final class Battler {
     var currentHP: Int
     var moves: [Int]             // var: Mimic/Sketch rewrite a slot battle-locally
     var disabledMoves: Set<Int> = []   // PMD-style OFF toggles (player's mon only)
+    var ivs: Stats?              // mainline IVs baked into `stats`; kept so a
+                                 // catch/rematch carries the individual's spread
 
     // Status state (D19). `status` persists across battles for the player's mon;
     // everything below it is battle-local.
@@ -138,23 +140,29 @@ final class Battler {
     convenience init?(mon: OwnedPokemon) {
         guard let s = mon.species else { return nil }
         self.init(dex: mon.dex, name: Characters.displayName(s.id), level: mon.level,
-                  type1: s.type1, type2: s.type2, stats: GameData.stats(s, level: mon.level),
+                  type1: s.type1, type2: s.type2,
+                  stats: GameData.stats(s, level: mon.level, ivs: mon.ivs),
                   gender: mon.gender, baseExp: s.baseExp ?? 60,
                   currentHP: mon.currentHP, moves: mon.moves,
                   status: mon.status.flatMap(Ailment.init(rawValue:)))
         disabledMoves = Set(mon.disabledMoves ?? [])
+        ivs = mon.ivs
     }
 
     /// A wild encounter of `dex` at `level`, full HP, level-appropriate moveset,
     /// ratio-respecting random gender (G).
     convenience init?(wildDex dex: Int, level: Int) {
         guard let s = GameData.species[dex] else { return nil }
-        let st = GameData.stats(s, level: level)
+        // Wild individuals roll their own IV spread — from the battle RNG so
+        // seeded runs (parity fixture) stay deterministic cross-OS.
+        let iv = GameData.rollIVs(using: &BattleRNG.g)
+        let st = GameData.stats(s, level: level, ivs: iv)
         let mv = Array(s.levelUpMoves.filter { $0.level <= level }.map { $0.moveId }.suffix(4))
         self.init(dex: dex, name: Characters.displayName(s.id), level: level,
                   type1: s.type1, type2: s.type2, stats: st,
                   gender: Gender.random(genderRate: s.genderRate), baseExp: s.baseExp ?? 60,
                   currentHP: st.hp, moves: mv)
+        ivs = iv
     }
 
     /// A wild battler at the END of a battle: same identity (species, level,
@@ -164,7 +172,7 @@ final class Battler {
     /// with the battle. Used for rematches and for the caught mon.
     convenience init?(resetting w: Battler) {
         guard let s = GameData.species[w.dex] else { return nil }
-        let st = GameData.stats(s, level: w.level)
+        let st = GameData.stats(s, level: w.level, ivs: w.ivs)
         let mv = Array(s.levelUpMoves.filter { $0.level <= w.level }.map { $0.moveId }.suffix(4))
         self.init(dex: w.dex, name: w.name, level: w.level,
                   type1: s.type1, type2: s.type2, stats: st,
@@ -204,6 +212,10 @@ struct BattleEvent {
     // recall waits for the stamped turn to finish (mainline flee timing).
     var turn: Int = 0
     var crit: Bool = false      // .attack: a critical hit landed
+    // Multi-hit moves (Fury Attack & co) emit ONE event PER STRIKE so each
+    // lands, drains, and can stop the sequence on a mid-string faint.
+    var multiStrike: Bool = false   // this event is one strike of a multi-hit
+    var followUp: Bool = false      // not the first strike: no announce/windup
     var shakes: Int = 0         // .ball: how many of the 4 shake checks passed
     var caught: Bool = false    // .ball: capture succeeded
     var ballId: Int = 0         // .ball: GameItem raw value (for the icon)
@@ -290,7 +302,8 @@ final class BattleSession {
 
         func emit(_ kind: BattleEvent.Kind, actorIsPlayer: Bool, move: MoveData? = nil,
                   reason: String = "", damage: Int = 0, eff: Double = 1,
-                  targetIsPlayer: Bool? = nil, status: String? = nil, crit: Bool = false) {
+                  targetIsPlayer: Bool? = nil, status: String? = nil, crit: Bool = false,
+                  multiStrike: Bool = false, followUp: Bool = false) {
             let tgtIsPlayer = targetIsPlayer ?? !actorIsPlayer
             let tgt = tgtIsPlayer ? player : wild
             let ev = BattleEvent(
@@ -299,6 +312,7 @@ final class BattleSession {
                 damage: damage, effectiveness: eff, targetIsPlayer: tgtIsPlayer,
                 targetHP: tgt.currentHP, targetMaxHP: tgt.maxHP, fainted: tgt.isFainted,
                 statusApplied: status, turn: turn, crit: crit,
+                multiStrike: multiStrike, followUp: followUp,
                 playerAsleep: player.status == .sleep, wildAsleep: wild.status == .sleep)
             roundEvents.append(ev)
             allEvents.append(ev)
@@ -351,10 +365,10 @@ final class BattleSession {
         /// Lock-On bypasses everything; an identified target loses its evasion.
         func rolls(_ m: MoveData, _ atk: Battler, _ def: Battler) -> Bool {
             if atk.lockedOnRounds > 0 { return true }
-            guard (1...100).contains(m.accuracy) else { return true }
+            guard (1...100).contains(m.effectiveAccuracy) else { return true }
             let eva = (def.identified || def.miracleEyed) ? min(0, def.stage(.eva)) : def.stage(.eva)
             let stage = max(-6, min(6, atk.stage(.acc) - eva))
-            let chance = Double(m.accuracy) * MoveMechanics.accuracyMultiplier(stage)
+            let chance = Double(m.effectiveAccuracy) * MoveMechanics.accuracyMultiplier(stage)
             return Double.random(in: 0..<100, using: &BattleRNG.g) < chance
         }
 
@@ -495,18 +509,24 @@ final class BattleSession {
             case .multiHit(let lo, let hi, let per):
                 guard eff > 0 else { emit(.miss, actorIsPlayer: isPlayer, move: m, eff: 0); return }
                 guard rolls(m, atk, def) else { emit(.miss, actorIsPlayer: isPlayer, move: m); return }
-                let hits = Int.random(in: lo...hi, using: &BattleRNG.g)
-                var total = 0
-                var anyCrit = false
-                for _ in 0..<hits where !def.isFainted {
+                // One event PER STRIKE (user-requested pacing): each lands
+                // and drains on its own beat, the string stops early when
+                // the target drops, and the LAST strike carries the
+                // "N hits!" tag so the tally logs after its damage —
+                // before the faint line when the string ended a mon.
+                let planned = Int.random(in: lo...hi, using: &BattleRNG.g)
+                var landed = 0
+                for _ in 0..<planned where !def.isFainted {
                     let crit = rollCrit(atk, def, m)
-                    anyCrit = anyCrit || crit
-                    total += BattleEngine.computeDamage(attacker: atk, defender: def, move: m,
+                    let dmg = BattleEngine.computeDamage(attacker: atk, defender: def, move: m,
                                            eff: eff, powerOverride: per, crit: crit)
+                    dealDamage(dmg, from: atk, to: def, physical: m.category == "Physical")
+                    landed += 1
+                    let isLast = def.isFainted || landed == planned
+                    emit(.attack, actorIsPlayer: isPlayer, move: m, damage: dmg, eff: eff,
+                         status: isLast ? "\(landed) hits!" : nil, crit: crit,
+                         multiStrike: true, followUp: landed > 1)
                 }
-                dealDamage(total, from: atk, to: def, physical: m.category == "Physical")
-                emit(.attack, actorIsPlayer: isPlayer, move: m, damage: total, eff: eff,
-                     status: "\(hits) hits!", crit: anyCrit)
 
             case .drain(let frac, let p):
                 guard eff > 0 else { emit(.miss, actorIsPlayer: isPlayer, move: m, eff: 0); return }

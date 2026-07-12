@@ -196,7 +196,7 @@ private func selftestRaisingIfRequested() {
         st.reset()
         st.startNewGame(dex: 1)
         if let m = st.active, let s = m.species {
-            let sv = GameData.stats(s, level: m.level)
+            let sv = GameData.stats(s, level: m.level, ivs: m.ivs)
             print("start: \(Characters.displayName(s.id)) Lv\(m.level) \(m.gender.rawValue) HP=\(m.currentHP)/\(m.maxHP) ATK\(sv.atk) DEF\(sv.def) moves=\(m.moves)")
         } else { print("start FAILED — GameData not loaded from bundle?") }
         // Growth: give enough EXP to level up through the L16 evolution.
