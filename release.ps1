@@ -1,4 +1,4 @@
-# Package the Windows build and (optionally) publish it to a GitHub Release.
+﻿# Package the Windows build and (optionally) publish it to a GitHub Release.
 #   .\release.ps1            -> builds build-win\...-windows.zip + Setup.exe
 #   .\release.ps1 publish    -> also creates tag v<version> and uploads both
 #
