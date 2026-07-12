@@ -67,6 +67,9 @@ final class Battler {
                                  // catch/rematch carries the individual's spread
     var hiddenState: HiddenState?   // semi-invulnerable charge turn (Dig & co)
     var furyCutterCount = 0      // consecutive Fury Cutter hits (doubles its power)
+    var rolloutMove: Int? = nil  // locked into Rollout/Ice Ball until it ends
+    var rolloutCount = 0         // completed rollout hits (doubles its power)
+    var defenseCurled = false    // Defense Curl used: Rollout hits double
 
     // Status state (D19). `status` persists across battles for the player's mon;
     // everything below it is battle-local.
@@ -294,12 +297,19 @@ final class BattleSession {
             b.chargingMove = nil
             b.hiddenState = nil
             b.furyCutterCount = 0
+            b.rolloutMove = nil
+            b.rolloutCount = 0
+            b.defenseCurled = false
         }
     }
 
     /// Replace the remaining ball stock mid-battle — the bag's capture toggle
     /// is live, so the controller re-syncs this at every round boundary.
     func setBallStock(_ balls: [GameItem]) { stock = balls }
+
+    /// Mid-Rollout the trainer can't intervene: no recall, no items — the
+    /// playback checks this before honoring either request.
+    var playerLockedIn: Bool { player.rolloutMove != nil }
 
     var isOver: Bool {
         player.isFainted || wild.isFainted || captured || playerFled || wildFled || turn >= 200
@@ -410,6 +420,7 @@ final class BattleSession {
                 atk.sleepTurns -= 1
                 if atk.sleepTurns > 0 {
                     atk.chargingMove = nil; atk.bideTurns = 0; atk.hiddenState = nil
+                    atk.rolloutMove = nil; atk.rolloutCount = 0
                     // Sleep Talk acts from within the nap with a random own move.
                     if let p = planned, case .sleepTalk? = MoveMechanics.mechanic(for: p) {
                         let pool = atk.moves.filter { id in
@@ -436,11 +447,13 @@ final class BattleSession {
                     emit(.recover, actorIsPlayer: isPlayer, reason: "thawed", targetIsPlayer: isPlayer)
                 } else {
                     atk.chargingMove = nil; atk.bideTurns = 0; atk.hiddenState = nil
+                    atk.rolloutMove = nil; atk.rolloutCount = 0
                     emit(.skip, actorIsPlayer: isPlayer, reason: "frozen"); return
                 }
             case .paralysis:
                 if Int.random(in: 0..<100, using: &BattleRNG.g) < 25 {
                     atk.chargingMove = nil; atk.bideTurns = 0; atk.hiddenState = nil
+                    atk.rolloutMove = nil; atk.rolloutCount = 0
                     emit(.skip, actorIsPlayer: isPlayer, reason: "paralyzed"); return
                 }
             default: break
@@ -451,7 +464,13 @@ final class BattleSession {
                 atk.confusionTurns -= 1
                 if atk.confusionTurns == 0 {
                     emit(.recover, actorIsPlayer: isPlayer, reason: "snapped out", targetIsPlayer: isPlayer)
-                } else if Int.random(in: 0..<3, using: &BattleRNG.g) == 0 {
+                } else {
+                    // Still confused: the dizzy beat plays BEFORE the outcome
+                    // (mainline pacing — the playback spins the confusion
+                    // clip over the actor), THEN 1/3 to clobber itself.
+                    emit(.skip, actorIsPlayer: isPlayer, reason: "confused")
+                }
+                if atk.confusionTurns > 0, Int.random(in: 0..<3, using: &BattleRNG.g) == 0 {
                     let base = ((2.0 * Double(atk.level) / 5.0 + 2.0) * 40.0
                                 * Double(atk.stats.atk) / Double(max(1, atk.stats.def))) / 50.0 + 2.0
                     let dmg = max(1, Int(base * Double.random(in: 0.85...1.0, using: &BattleRNG.g)))
@@ -501,6 +520,7 @@ final class BattleSession {
                      isPlayer: Bool, releasing: Bool) {
             atk.destinyBond = false   // the bond lasts until the next action
             if m.englishName != "Fury Cutter" { atk.furyCutterCount = 0 }   // streak broken
+            if m.englishName == "Defense Curl" { atk.defenseCurled = true }  // doubles Rollout
             let eff = effectiveness(m, def)
             guard let mech = MoveMechanics.mechanic(for: m.moveId) else {
                 executePlain(m, atk, def, isPlayer: isPlayer, eff: eff, powerOverride: nil)
@@ -546,6 +566,23 @@ final class BattleSession {
                 let landed = executePlain(m, atk, def, isPlayer: isPlayer, eff: eff,
                                           powerOverride: power)
                 atk.furyCutterCount = landed ? min(2, atk.furyCutterCount + 1) : 0
+
+            case .rollout(let p):
+                // Locked-in snowball (Rollout/Ice Ball): power doubles each
+                // of up to 5 turns (30 -> 480, doubled again after Defense
+                // Curl). While rolling, the user can't act otherwise — plan()
+                // repeats the move, and the playback refuses recalls/items.
+                var power = min(p * 16, p << atk.rolloutCount)
+                if atk.defenseCurled { power *= 2 }
+                let landed = executePlain(m, atk, def, isPlayer: isPlayer, eff: eff,
+                                          powerOverride: power)
+                if landed, atk.rolloutCount < 4 {
+                    atk.rolloutCount += 1
+                    atk.rolloutMove = m.moveId
+                } else {   // missed, or the 5-hit streak completed — unlock
+                    atk.rolloutCount = 0
+                    atk.rolloutMove = nil
+                }
 
             case .charge:   // release turn
                 executePlain(m, atk, def, isPlayer: isPlayer, eff: eff, powerOverride: nil)
@@ -1360,6 +1397,8 @@ enum BattleEngine {
     static func plan(_ atk: Battler, vs def: Battler) -> (moveId: Int?, priority: Int) {
         if atk.mustRecharge { return (nil, 0) }
         if let charging = atk.chargingMove { return (charging, MoveMechanics.priority(of: charging)) }
+        // Mid-Rollout: locked into the snowball until it ends or misses.
+        if let rolling = atk.rolloutMove { return (rolling, MoveMechanics.priority(of: rolling)) }
         if atk.bideTurns > 0 { return (nil, 1) }   // Bide releases at +1 (Gen 1/2)
         if atk.encoreRounds > 0, let encore = atk.encoreMove {
             return (encore, MoveMechanics.priority(of: encore))
@@ -1414,7 +1453,7 @@ enum BattleEngine {
             case .plain, .fixedDamage, .levelDamage, .psywave, .multiHit,
                  .recoil, .crashOnMiss, .recharge, .charge, .explosion,
                  .magnitude, .present, .payback, .revenge, .bide, .memento,
-                 .metronome, .splash, .futureSight, .trap, .furyCutter:
+                 .metronome, .splash, .futureSight, .trap, .furyCutter, .rollout:
                 return true
             // Escape moves aren't picked while pinned (trap/Mean Look/roots) —
             // saves the log from an endless "can't flee" loop.

@@ -1174,6 +1174,7 @@
 "log.skip.fled" = "%@は にげだした!";
 "log.skip.blownaway" = "%@は ふきとばされた!";
 "log.skip.cantflee" = "%@は にげられない!";
+"log.skip.confused" = "%@は こんらんしている!";
 "log.skip.dugin" = "%@は じめんに もぐった!";
 "log.skip.flewup" = "%@は そらたかく とびあがった!";
 "log.skip.doveunder" = "%@は すいちゅうに もぐった!";

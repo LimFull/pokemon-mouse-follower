@@ -1240,6 +1240,7 @@
 "log.skip.fled" = "%@는(은) 도망쳤다!";
 "log.skip.blownaway" = "%@는(은) 날려가 버렸다!";
 "log.skip.cantflee" = "%@는(은) 도망칠 수 없다!";
+"log.skip.confused" = "%@는(은) 혼란에 빠져 있다!";
 "log.skip.dugin" = "%@는(은) 땅속으로 파고들었다!";
 "log.skip.flewup" = "%@는(은) 하늘 높이 날아올랐다!";
 "log.skip.doveunder" = "%@는(은) 물속으로 숨었다!";

@@ -133,7 +133,40 @@ enum EffectPlayer {
     }()
 
     static func statusClip(_ key: String) -> EffectClip? {
-        statusMoveIds[key].flatMap { clip(forMove: $0) }
+        if key == "confused" { return confusionClip }   // dedicated orbit, below
+        return statusMoveIds[key].flatMap { clip(forMove: $0) }
+    }
+
+    /// Synthetic confusion orbit: two dizzy sparks circling over the head in
+    /// counter-phase — the mainline "birds circling" read. The ROM keeps this
+    /// visual engine-side; its only extractable trace is the lone orbiting
+    /// particle (effect_0000 anim 35), so we rebuild the full orbit here.
+    static let confusionClip: EffectClip? = makeConfusionClip()
+
+    private static func makeConfusionClip() -> EffectClip? {
+        let dot = 6, radius = 14, frames = 16
+        let canvas = 2 * radius + dot + 4
+        let spark = glowDot(width: dot, height: dot, color: RGBA(r: 1.0, g: 0.9, b: 0.35))
+        var raw: [RawStep] = []
+        for i in 0..<frames {
+            let t = Double(i) / Double(frames) * 2 * .pi
+            var out = RGBABuffer(width: canvas, height: canvas,
+                                 pixels: [UInt8](repeating: 0, count: canvas * canvas * 4))
+            let c = Double(canvas) / 2
+            for phase in [0.0, Double.pi] {          // two sparks, opposite sides
+                let x = c + cos(t + phase) * Double(radius) - Double(dot) / 2
+                // Flatten the orbit so it reads as a halo seen at an angle.
+                let y = c + sin(t + phase) * Double(radius) * 0.45 - Double(dot) / 2
+                blit(spark, onto: &out, x: Int(x), y: Int(y))
+            }
+            raw.append(RawStep(image: out, ticks: 2, dx: 0, dy: 0))
+        }
+        let rendered = raw.compactMap { s -> EffectClip.Step? in
+            guard let img = PlatformImageIO.makeImage(s.image) else { return nil }
+            return EffectClip.Step(image: img, ticks: s.ticks, dx: s.dx, dy: s.dy)
+        }
+        guard !rendered.isEmpty else { return nil }
+        return EffectClip(steps: rendered, loop: true, headAnchored: true)
     }
 
     /// The on-target hit clip for `moveId` (fully corrected: cropped/centered,

@@ -144,6 +144,8 @@ final class BattleController: LiveBattleBridge {
     /// turn machinery applies and the caller should recall immediately.
     func requestRecall() -> Bool {
         guard phase == .battling else { return false }
+        // Mid-Rollout the mon can't be pulled back (mainline lock-in).
+        guard session?.playerLockedIn != true else { return false }
         if recallTurn == nil {
             recallTurn = evIdx < events.count ? events[evIdx].turn
                                               : (events.last?.turn ?? 0)
@@ -401,7 +403,9 @@ final class BattleController: LiveBattleBridge {
                     return
                 }
                 var item: GameItem? = nil
-                if let queued = pendingItem {
+                // Items wait while the mon is locked mid-Rollout — the queued
+                // potion applies at the first free round boundary instead.
+                if let queued = pendingItem, !s.playerLockedIn {
                     pendingItem = nil
                     if RaisingState.shared.itemCount(queued) > 0 {
                         RaisingState.shared.consumeItem(queued)

@@ -110,6 +110,7 @@
 "log.skip.fled" = "%@ fled from battle!";
 "log.skip.blownaway" = "%@ was blown away!";
 "log.skip.cantflee" = "%@ can't get away!";
+"log.skip.confused" = "%@ is confused!";
 "log.skip.dugin" = "%@ burrowed underground!";
 "log.skip.flewup" = "%@ flew up high!";
 "log.skip.doveunder" = "%@ hid underwater!";

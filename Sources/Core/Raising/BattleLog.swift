@@ -151,6 +151,7 @@ enum BattleLog {
         "skip.fled": "log.skip.fled",
         "skip.blown away": "log.skip.blownaway",
         "skip.cant flee": "log.skip.cantflee",
+        "skip.confused": "log.skip.confused",
         "skip.dug in": "log.skip.dugin",
         "skip.flew up": "log.skip.flewup",
         "skip.dove under": "log.skip.doveunder",
