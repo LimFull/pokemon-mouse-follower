@@ -1174,6 +1174,10 @@
 "log.skip.fled" = "%@は にげだした!";
 "log.skip.blownaway" = "%@は ふきとばされた!";
 "log.skip.cantflee" = "%@は にげられない!";
+"log.skip.dugin" = "%@は じめんに もぐった!";
+"log.skip.flewup" = "%@は そらたかく とびあがった!";
+"log.skip.doveunder" = "%@は すいちゅうに もぐった!";
+"log.skip.vanished" = "%@は すがたを けした!";
 "log.selfhit.destinybond" = "%@は あいてを みちづれに した!";
 "log.selfhit.hurtitself" = "%@は わけも わからず じぶんを こうげきした!";
 "log.selfhit.recoil" = "%@は はんどうによる ダメージを うけた!";

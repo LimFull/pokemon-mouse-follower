@@ -58,10 +58,14 @@ SettingsDialog.onCharacterChanged = {
 // shared with macOS); the tray item just opens the button window.
 if PMF.isDevRun {
     tray.onOpenDebugPanel = {
-        DebugPanelWin.show(sections: DebugCatalog.sections(
-            forceEncounter: { battle.forceEncounter(dex: $0) },
-            spawnWild: { battle.forceSpawn() },
-            spawnItem: { items.forceSpawn($0, near: controller.position) }))
+        DebugPanelWin.show(
+            sections: DebugCatalog.sections(
+                forceEncounter: { battle.forceEncounter(dex: $0, moves: $1) },
+                spawnWild: { battle.forceSpawn() },
+                spawnItem: { items.forceSpawn($0, near: controller.position) }),
+            startCustom: { dex, moves in
+                battle.forceEncounter(dex: dex, moves: moves.isEmpty ? nil : moves)
+            })
     }
 }
 if CommandLine.arguments.contains("--show-settings") { SettingsDialog.show() }
@@ -194,7 +198,8 @@ func tickFrame() {
                         shadow: controller.currentShadow,
                         scale: s, showShadow: AppSettings.shared.showShadow,
                         glow: glow)
-    } else if recalled {
+    } else if recalled || scene?.playerVanished == true {
+        // Recalled — or hiding underground/airborne mid-Dig/Fly.
         overlay.hide()
     } else {
         let playerAlpha = scene.map { $0.flashPlayer ? 0.25 : $0.playerAlpha } ?? 1
@@ -206,10 +211,14 @@ func tickFrame() {
                         alpha: playerAlpha, rotation: controller.faintRotation)
     }
     if let sc = scene {
-        wildOverlay.present(frame: sc.wildFrame, worldPos: sc.wildPos,
-                            shadow: ShadowAnchor(offset: .zero, size: .zero),
-                            scale: s * sc.wildSpriteScale, showShadow: false,
-                            alpha: sc.flashWild ? 0.25 : sc.wildAlpha)
+        if sc.wildVanished {
+            wildOverlay.hide()   // hiding mid-Dig/Fly
+        } else {
+            wildOverlay.present(frame: sc.wildFrame, worldPos: sc.wildPos,
+                                shadow: ShadowAnchor(offset: .zero, size: .zero),
+                                scale: s * sc.wildSpriteScale, showShadow: false,
+                                alpha: sc.flashWild ? 0.25 : sc.wildAlpha)
+        }
         if let fx = sc.effectFrame {
             effectOverlay.present(frame: fx, worldPos: sc.effectPos,
                                   shadow: ShadowAnchor(offset: .zero, size: .zero),

@@ -206,6 +206,36 @@ enum MoveMechanics {
     ]
 
     /// High-critical-ratio moves (+1 crit stage, mainline).
+    /// Semi-invulnerable charge turns: where the user hides on turn 1.
+    static func hiddenState(forChargeOf name: String) -> HiddenState? {
+        switch name {
+        case "Dig": return .underground
+        case "Fly": return .airborne
+        case "Bounce": return .airborne
+        case "Dive": return .underwater
+        case "Shadow Force": return .vanished
+        default: return nil
+        }
+    }
+
+    /// Whether `name` reaches a mon hidden in `state`, and the damage
+    /// multiplier when it does (mainline: Earthquake crushes a digger at
+    /// double power; Gust/Twister swat a flier; Surf floods a diver).
+    /// nil = the move can't touch it (auto-miss).
+    static func pierceMultiplier(_ name: String, into state: HiddenState) -> Double? {
+        switch state {
+        case .underground:
+            return ["Earthquake", "Magnitude", "Fissure"].contains(name) ? 2 : nil
+        case .airborne:
+            if ["Gust", "Twister"].contains(name) { return 2 }
+            return ["Thunder", "Sky Uppercut", "Whirlwind"].contains(name) ? 1 : nil
+        case .underwater:
+            return ["Surf", "Whirlpool"].contains(name) ? 2 : nil
+        case .vanished:
+            return nil
+        }
+    }
+
     private static let critBonusByName: Set<String> = [
         "Karate Chop", "Razor Leaf", "Crabhammer", "Slash", "Aeroblast",
         "Cross Chop", "Night Slash", "Leaf Blade", "Blaze Kick", "Cross Poison",

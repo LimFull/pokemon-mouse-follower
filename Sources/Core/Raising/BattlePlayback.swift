@@ -46,6 +46,10 @@ struct BattleScene {
     // sprite itself; sticks for the battle like the stat stage it mirrors.
     var playerSpriteScale: CGFloat = 1
     var wildSpriteScale: CGFloat = 1
+    // Semi-invulnerable charge turns (Dig & co): the hider's sprite is off
+    // screen entirely until it pops back up to strike.
+    var playerVanished: Bool = false
+    var wildVanished: Bool = false
 }
 
 final class BattleController: LiveBattleBridge {
@@ -95,6 +99,9 @@ final class BattleController: LiveBattleBridge {
     // stages surviving; the player's resets on every battle entry.
     private var pBodyScale: CGFloat = 1, wBodyScale: CGFloat = 1
     private var pBodyTarget: CGFloat = 1, wBodyTarget: CGFloat = 1
+    // Dig/Fly/Dive/Shadow Force: who is currently hidden from view.
+    private var pVanish = false, wVanish = false
+    private static let hiddenReasons: Set<String> = ["dug in", "flew up", "dove under", "vanished"]
     private var playerAlpha = 1.0
     private var wildAlpha = 1.0
     private var result: BattleResult?
@@ -190,7 +197,7 @@ final class BattleController: LiveBattleBridge {
         111: 176,   // 뿔카노 → 뿔찌르기 (Horn Attack; L1 move, later window drops it)
     ]
 
-    func forceEncounter(dex: Int? = nil) {
+    func forceEncounter(dex: Int? = nil, moves: [Int]? = nil) {
         guard AppSettings.shared.raisingMode,
               let a = RaisingState.shared.active, !a.isFainted else { return }
         if phase != .idle { despawn() }
@@ -198,9 +205,12 @@ final class BattleController: LiveBattleBridge {
         guard let d = dex ?? GameData.wildPool(atLevel: level).randomElement(),
               let w = Battler(wildDex: d, level: level),
               let wm = WildMon(dex: d) else { return }
-        // Only explicitly requested spawns (dex != nil) get the pinned move —
-        // random encounters keep the natural last-4 moveset.
-        if dex != nil, let mid = Self.showcaseMoves[d], !w.moves.contains(mid) {
+        if let custom = moves?.filter({ GameData.moves[$0] != nil }), !custom.isEmpty {
+            // Debug custom battle: the wild fights with exactly this moveset.
+            w.moves = Array(custom.prefix(4))
+        } else if dex != nil, let mid = Self.showcaseMoves[d], !w.moves.contains(mid) {
+            // Only explicitly requested spawns get the pinned showcase move —
+            // random encounters keep the natural last-4 moveset.
             if w.moves.count < 4 { w.moves.append(mid) } else { w.moves[0] = mid }
         }
         wild = w
@@ -364,6 +374,7 @@ final class BattleController: LiveBattleBridge {
         pendingLog = []
         playerTransformedDex = nil   // the follower always re-enters as itself
         pBodyScale = 1; pBodyTarget = 1   // fresh mon, full size (wild's persists)
+        pVanish = false; wVanish = false  // nobody enters a battle mid-Dig
         pushLog(BattleLog.battleStart(wildName: w.name))
         phase = .battling
     }
@@ -425,6 +436,22 @@ final class BattleController: LiveBattleBridge {
         while let next = pendingLog.first, next.tick <= evTick {
             pushLog(next.text)
             pendingLog.removeFirst()
+        }
+        // Semi-invulnerable charges: the hider disappears at its dig-in beat
+        // and pops back up the next time it acts — or the moment a piercing
+        // hit lands on it (residual chips tick without surfacing it).
+        if evTick == impactAt {
+            let hides = e.kind == .skip && Self.hiddenReasons.contains(e.moveName)
+            let acts = e.kind == .attack || e.kind == .miss
+                || e.kind == .skip || e.kind == .selfHit
+            if e.actorIsPlayer {
+                if hides { pVanish = true } else if acts { pVanish = false }
+            } else {
+                if hides { wVanish = true } else if acts { wVanish = false }
+            }
+            if e.damage > 0, e.kind != .residual {
+                if e.targetIsPlayer { pVanish = false } else { wVanish = false }
+            }
         }
         // Minimize/Growth: the body itself shrinks/swells at the impact tick
         // (compounding on repeat use, clamped) and eases toward the target.
@@ -1124,6 +1151,7 @@ final class BattleController: LiveBattleBridge {
         floatText = nil; floatAlpha = 0; screenFlash = 0
         flashP = false; flashW = false
         wildAlpha = 1; playerAlpha = 1
+        pVanish = false; wVanish = false
         evIdx = 0; evTick = 0
         phase = .present
     }
@@ -1135,6 +1163,7 @@ final class BattleController: LiveBattleBridge {
         wildTransformedDex = nil
         pBodyScale = 1; wBodyScale = 1
         pBodyTarget = 1; wBodyTarget = 1
+        pVanish = false; wVanish = false
         recallTurn = nil
         session = nil
         pendingItem = nil
@@ -1171,7 +1200,9 @@ final class BattleController: LiveBattleBridge {
             playerSpriteDex: playerTransformedDex,
             wildSpriteDex: wildTransformedDex,
             playerSpriteScale: pBodyScale,
-            wildSpriteScale: wBodyScale)
+            wildSpriteScale: wBodyScale,
+            playerVanished: pVanish,
+            wildVanished: wVanish)
     }
 
     private func logAlpha(_ age: Int) -> Double {

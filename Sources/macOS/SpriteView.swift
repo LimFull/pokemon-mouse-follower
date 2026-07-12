@@ -135,7 +135,7 @@ final class SpriteView: NSView {
         let px = scene.playerPos.x - screenOrigin.x, py = scene.playerPos.y - screenOrigin.y
         CATransaction.begin(); CATransaction.setDisableActions(true)
 
-        wildLayer.isHidden = false
+        wildLayer.isHidden = scene.wildVanished   // hiding mid-Dig/Fly
         let ws = s * scene.wildSpriteScale   // Minimize/Growth body scale
         wildLayer.bounds = CGRect(x: 0, y: 0, width: CGFloat(scene.wildFrame.width) * ws,
                                   height: CGFloat(scene.wildFrame.height) * ws)

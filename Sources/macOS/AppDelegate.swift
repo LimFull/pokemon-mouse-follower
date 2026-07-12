@@ -139,13 +139,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let debugPanel = DebugPanelController()
 
     @objc private func showDebugPanel() {
-        debugPanel.show(sections: DebugCatalog.sections(
-            forceEncounter: { [weak self] in self?.battle.forceEncounter(dex: $0) },
-            spawnWild: { [weak self] in self?.battle.forceSpawn() },
-            spawnItem: { [weak self] item in
-                guard let self else { return }
-                self.items.forceSpawn(item, near: self.controller.position)
-            }))
+        debugPanel.show(
+            sections: DebugCatalog.sections(
+                forceEncounter: { [weak self] in self?.battle.forceEncounter(dex: $0, moves: $1) },
+                spawnWild: { [weak self] in self?.battle.forceSpawn() },
+                spawnItem: { [weak self] item in
+                    guard let self else { return }
+                    self.items.forceSpawn(item, near: self.controller.position)
+                }),
+            startCustom: { [weak self] dex, moves in
+                self?.battle.forceEncounter(dex: dex, moves: moves.isEmpty ? nil : moves)
+            })
     }
 
     private func setupTimer() {
@@ -238,7 +242,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 view.render(frame, globalPos: renderPos,
                             shadow: controller.currentShadow, glow: glow)
             } else {
-                view.render(recalled ? nil : controller.currentFrame,
+                // A recalled follower — or one hiding underground/airborne
+                // mid-Dig/Fly — draws nothing (shadow included).
+                let vanished = scene?.playerVanished == true
+                view.render((recalled || vanished) ? nil : controller.currentFrame,
                             globalPos: renderPos,
                             shadow: controller.currentShadow,
                             rotation: controller.faintRotation)

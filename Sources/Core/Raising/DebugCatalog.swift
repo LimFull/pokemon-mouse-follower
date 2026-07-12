@@ -42,12 +42,51 @@ enum DebugCatalog {
         ("수면", "sleep"), ("얼음", "freeze"), ("상태 해제", ""),
     ]
 
-    static func sections(forceEncounter: @escaping (Int?) -> Void,
+    /// All species pickable in the custom-battle UI (dex order, localized
+    /// display names — every gen1-2 species ships sprites).
+    static var speciesChoices: [(name: String, dex: Int)] {
+        GameData.species.values
+            .sorted { $0.dex < $1.dex }
+            .map { (Characters.displayName($0.id), $0.dex) }
+    }
+
+    /// Real battle moves only: the ROM's move table is padded with dummy
+    /// slots ("[M:D1]", "$$$") and EoS dungeon utilities (See-Trap, Warp...)
+    /// that mean nothing to this engine — keep a move iff the mainline knows
+    /// it (accuracy_main merged) or some species actually learns it.
+    private static var battleMoveIds: Set<Int> = {
+        var learnable = Set<Int>()
+        for s in GameData.species.values {
+            for m in s.levelUpMoves { learnable.insert(m.moveId) }
+        }
+        return Set(GameData.moves.values
+            .filter { $0.accuracyMain != nil || learnable.contains($0.moveId) }
+            .map(\.moveId))
+    }()
+
+    /// All moves pickable in the custom-battle UI — alphabetized in the UI
+    /// language (가나다순 for Korean) so a move is findable by name.
+    static var moveChoices: [(name: String, id: Int)] {
+        GameData.moves.values
+            .filter { battleMoveIds.contains($0.moveId) }
+            .map { ($0.displayName, $0.moveId) }
+            .sorted { $0.0.localizedStandardCompare($1.0) == .orderedAscending }
+    }
+
+    /// A fully random opponent: any species, four distinct random battle
+    /// moves — fuzzing fuel for effect/mechanic bug hunts.
+    static func randomLoadout() -> (dex: Int, moves: [Int]) {
+        let dex = GameData.species.keys.randomElement() ?? 25
+        let moves = Array(battleMoveIds.shuffled().prefix(4))
+        return (dex, moves)
+    }
+
+    static func sections(forceEncounter: @escaping (Int?, [Int]?) -> Void,
                          spawnWild: @escaping () -> Void,
                          spawnItem: @escaping (GameItem?) -> Void) -> [DebugSection] {
         [
             DebugSection(title: "즉시 배틀", actions: encounters.map { (title, dex) in
-                DebugAction(title: title) { forceEncounter(dex > 0 ? dex : nil) }
+                DebugAction(title: title) { forceEncounter(dex > 0 ? dex : nil, nil) }
             }),
             DebugSection(title: "파티·아이템", actions: [
                 DebugAction(title: "테스트 아이템 지급") { giveTestItems() },

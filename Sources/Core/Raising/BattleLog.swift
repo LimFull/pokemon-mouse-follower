@@ -151,6 +151,10 @@ enum BattleLog {
         "skip.fled": "log.skip.fled",
         "skip.blown away": "log.skip.blownaway",
         "skip.cant flee": "log.skip.cantflee",
+        "skip.dug in": "log.skip.dugin",
+        "skip.flew up": "log.skip.flewup",
+        "skip.dove under": "log.skip.doveunder",
+        "skip.vanished": "log.skip.vanished",
         // selfHit (hurt itself / self-pay)
         "selfhit.Destiny Bond": "log.selfhit.destinybond",
         "selfhit.hurt itself": "log.selfhit.hurtitself",

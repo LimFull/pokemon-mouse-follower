@@ -110,6 +110,10 @@
 "log.skip.fled" = "%@ fled from battle!";
 "log.skip.blownaway" = "%@ was blown away!";
 "log.skip.cantflee" = "%@ can't get away!";
+"log.skip.dugin" = "%@ burrowed underground!";
+"log.skip.flewup" = "%@ flew up high!";
+"log.skip.doveunder" = "%@ hid underwater!";
+"log.skip.vanished" = "%@ vanished instantly!";
 "log.selfhit.destinybond" = "%@ took its foe down with it!";
 "log.selfhit.hurtitself" = "%@ hurt itself in its confusion!";
 "log.selfhit.recoil" = "%@ is damaged by recoil!";

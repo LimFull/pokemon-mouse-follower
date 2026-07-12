@@ -41,6 +41,14 @@ enum Ailment: String {
     case burn, poison, paralysis, sleep, freeze
 }
 
+/// Where a semi-invulnerable two-turn move hides its user on the charge
+/// turn (Dig underground, Fly/Bounce airborne, Dive underwater, Shadow
+/// Force gone entirely). Most moves auto-miss it; a few pierce — see
+/// MoveMechanics.pierceMultiplier.
+enum HiddenState {
+    case underground, airborne, underwater, vanished
+}
+
 // MARK: - Battler
 
 final class Battler {
@@ -57,6 +65,7 @@ final class Battler {
     var disabledMoves: Set<Int> = []   // PMD-style OFF toggles (player's mon only)
     var ivs: Stats?              // mainline IVs baked into `stats`; kept so a
                                  // catch/rematch carries the individual's spread
+    var hiddenState: HiddenState?   // semi-invulnerable charge turn (Dig & co)
 
     // Status state (D19). `status` persists across battles for the player's mon;
     // everything below it is battle-local.
@@ -278,6 +287,12 @@ final class BattleSession {
         self.player = player
         self.wild = wild
         self.stock = balls
+        // A lingering wild keeps its Battler between battles (stages persist
+        // by design) — but a half-finished Dig/charge must not carry over.
+        for b in [player, wild] {
+            b.chargingMove = nil
+            b.hiddenState = nil
+        }
     }
 
     /// Replace the remaining ball stock mid-battle — the bag's capture toggle
@@ -364,6 +379,12 @@ final class BattleSession {
         /// Accuracy roll with acc/eva stages (moves outside 1...100 always hit).
         /// Lock-On bypasses everything; an identified target loses its evasion.
         func rolls(_ m: MoveData, _ atk: Battler, _ def: Battler) -> Bool {
+            // A hidden target (dug in / flown up / dived / vanished) dodges
+            // everything except its known piercers — even Lock-On waits.
+            if let h = def.hiddenState,
+               MoveMechanics.pierceMultiplier(m.englishName, into: h) == nil {
+                return false
+            }
             if atk.lockedOnRounds > 0 { return true }
             guard (1...100).contains(m.effectiveAccuracy) else { return true }
             let eva = (def.identified || def.miracleEyed) ? min(0, def.stage(.eva)) : def.stage(.eva)
@@ -386,7 +407,7 @@ final class BattleSession {
             case .sleep:
                 atk.sleepTurns -= 1
                 if atk.sleepTurns > 0 {
-                    atk.chargingMove = nil; atk.bideTurns = 0
+                    atk.chargingMove = nil; atk.bideTurns = 0; atk.hiddenState = nil
                     // Sleep Talk acts from within the nap with a random own move.
                     if let p = planned, case .sleepTalk? = MoveMechanics.mechanic(for: p) {
                         let pool = atk.moves.filter { id in
@@ -412,12 +433,12 @@ final class BattleSession {
                     atk.status = nil
                     emit(.recover, actorIsPlayer: isPlayer, reason: "thawed", targetIsPlayer: isPlayer)
                 } else {
-                    atk.chargingMove = nil; atk.bideTurns = 0
+                    atk.chargingMove = nil; atk.bideTurns = 0; atk.hiddenState = nil
                     emit(.skip, actorIsPlayer: isPlayer, reason: "frozen"); return
                 }
             case .paralysis:
                 if Int.random(in: 0..<100, using: &BattleRNG.g) < 25 {
-                    atk.chargingMove = nil; atk.bideTurns = 0
+                    atk.chargingMove = nil; atk.bideTurns = 0; atk.hiddenState = nil
                     emit(.skip, actorIsPlayer: isPlayer, reason: "paralyzed"); return
                 }
             default: break
@@ -467,6 +488,7 @@ final class BattleSession {
             guard let m = GameData.moves[moveId] else { return }
             let releasing = atk.chargingMove != nil
             atk.chargingMove = nil
+            atk.hiddenState = nil   // popping up to strike (or interrupted)
             atk.lastMoveUsed = moveId
 
             execute(m, atk, def, isPlayer: isPlayer, releasing: releasing)
@@ -485,7 +507,21 @@ final class BattleSession {
             // Two-turn moves wind up first (unless this IS the release turn).
             if case .charge = mech, !releasing {
                 atk.chargingMove = m.moveId
-                emit(.skip, actorIsPlayer: isPlayer, reason: "charging")
+                // Semi-invulnerable charges announce WHERE the user went and
+                // hide it (Dig & co); plain wind-ups keep "charging".
+                if let h = MoveMechanics.hiddenState(forChargeOf: m.englishName) {
+                    atk.hiddenState = h
+                    let reason: String
+                    switch h {
+                    case .underground: reason = "dug in"
+                    case .airborne:    reason = "flew up"
+                    case .underwater:  reason = "dove under"
+                    case .vanished:    reason = "vanished"
+                    }
+                    emit(.skip, actorIsPlayer: isPlayer, reason: reason)
+                } else {
+                    emit(.skip, actorIsPlayer: isPlayer, reason: "charging")
+                }
                 return
             }
 
@@ -1511,6 +1547,11 @@ enum BattleEngine {
         var base = ((2.0 * Double(attacker.level) / 5.0 + 2.0) * power * a / d) / 50.0 + 2.0
         if !crit, physical ? defender.reflectRounds > 0 : defender.lightScreenRounds > 0 { base /= 2 }
         if crit { base *= 2 }
+        // Piercing a hidden target: Earthquake vs a digger & co land double.
+        if let h = defender.hiddenState,
+           let mult = MoveMechanics.pierceMultiplier(m.englishName, into: h) {
+            base *= mult
+        }
         let stab = (m.type == attacker.type1 || m.type == attacker.type2) ? 1.5 : 1.0
         let rand = Double.random(in: 0.85...1.0, using: &BattleRNG.g)
         return max(1, Int(base * stab * eff * rand))
