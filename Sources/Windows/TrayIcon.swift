@@ -60,6 +60,20 @@ final class TrayIcon {
         PostMessageW(hwnd, UINT(WM_COMMAND), WPARAM(kCmdQuit), 0)
     }
 
+    /// Single-instance relaunch (main): ask the already-running instance to
+    /// open its Settings window, via its PMFTray message-only window.
+    /// Message-only windows are invisible to FindWindowW — enumerate under
+    /// HWND_MESSAGE. Returns false when no instance window was found.
+    @discardableResult
+    static func showRunningInstanceSettings() -> Bool {
+        let messageParent = HWND(bitPattern: -3)   // HWND_MESSAGE
+        let hwnd = trayClassName.withUnsafeBufferPointer {
+            FindWindowExW(messageParent, nil, $0.baseAddress, nil)
+        }
+        guard let hwnd else { return false }
+        return PostMessageW(hwnd, UINT(WM_COMMAND), WPARAM(kCmdSettings), 0)
+    }
+
     init?() {
         var wc = WNDCLASSW()
         wc.lpfnWndProc = { trayWndProc($0, $1, $2, $3) }

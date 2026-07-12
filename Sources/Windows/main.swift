@@ -11,6 +11,18 @@ runCoreSelftestsIfRequested()   // --selftest-core (exits in here)
 // Per-Monitor V2 DPI awareness (W4): all coordinates in physical pixels.
 _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT(bitPattern: -4))
 
+// One instance per session: re-launching the exe reads as "show me the app",
+// so the second process opens the running instance's Settings and exits.
+// The mutex handle stays open for the process lifetime on purpose. Dev runs
+// get their own namespace so a dev build can run beside an installed one.
+let singleInstanceName = Array(
+    "Local\\PokemonMouseFollower\(PMF.isDevRun ? ".dev" : "")".utf16) + [0]
+_ = singleInstanceName.withUnsafeBufferPointer { CreateMutexW(nil, false, $0.baseAddress) }
+if GetLastError() == DWORD(ERROR_ALREADY_EXISTS) {
+    TrayIcon.showRunningInstanceSettings()
+    exit(0)
+}
+
 ScreenAdapter.refresh()
 
 let controller = CharacterController()
