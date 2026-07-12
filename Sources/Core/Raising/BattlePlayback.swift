@@ -283,9 +283,20 @@ final class BattleController: LiveBattleBridge {
         guard let dex = GameData.wildPool(atLevel: level).randomElement(),
               let w = Battler(wildDex: dex, level: level),
               let wm = WildMon(dex: dex) else { spawnCooldown = 120; return }
-        let b = screenBounds()
-        wm.place(at: CGPoint(x: .random(in: b.minX + 80 ... b.maxX - 80),
-                             y: .random(in: b.minY + 80 ... b.maxY - 80)))
+        // On an actual screen, AND far enough from the follower that the
+        // spawn can't collide into an instant unwanted battle (contact
+        // starts at ~56*scale; keep several times that). Best-of-N sampling:
+        // take the first far-enough point, else the farthest seen.
+        let scale = AppSettings.shared.scale
+        let minDist = 320 * scale
+        var best = randomOnScreenPoint(margin: 80)
+        var bestDist = hypot(best.x - playerPos.x, best.y - playerPos.y)
+        for _ in 0..<11 where bestDist < minDist {
+            let c = randomOnScreenPoint(margin: 80)
+            let d = hypot(c.x - playerPos.x, c.y - playerPos.y)
+            if d > bestDist { best = c; bestDist = d }
+        }
+        wm.place(at: best)
         wild = w
         wildMon = wm
         despawnTicks = (fast ? 30 : 5 * 60) * 60

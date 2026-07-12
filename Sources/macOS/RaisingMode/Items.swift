@@ -159,12 +159,10 @@ final class ItemSpawner {
     }
 
     private func spawn() {
-        var r = CGRect.null
-        for s in NSScreen.screens { r = r.union(s.frame) }
-        if r.isNull { r = CGRect(x: 0, y: 0, width: 1440, height: 900) }
         current = GameItem.randomSpawn()
-        pos = CGPoint(x: .random(in: r.minX + 60 ... r.maxX - 60),
-                      y: .random(in: r.minY + 60 ... r.maxY - 60))
+        // On an actual monitor — the multi-monitor UNION has gaps on
+        // mixed-size setups that put the icon half off-screen (user report).
+        pos = randomOnScreenPoint(margin: 60)
         despawnTicks = (fast ? 60 : 10 * 60) * 60      // 1 min (fast) / 10 min
     }
 
@@ -173,15 +171,12 @@ final class ItemSpawner {
     /// on screen. Replaces whatever is out; the spawn timer restarts normally
     /// after the pickup/despawn.
     func forceSpawn(_ item: GameItem? = nil, near follower: CGPoint) {
-        var r = CGRect.null
-        for s in NSScreen.screens { r = r.union(s.frame) }
-        if r.isNull { r = CGRect(x: 0, y: 0, width: 1440, height: 900) }
         pickupTicks = 0
         current = item ?? GameItem.randomSpawn()
         let angle = CGFloat.random(in: 0 ..< 2 * .pi)
         let d = 220 * AppSettings.shared.scale
-        pos = CGPoint(x: min(max(follower.x + cos(angle) * d, r.minX + 60), r.maxX - 60),
-                      y: min(max(follower.y + sin(angle) * d, r.minY + 60), r.maxY - 60))
+        pos = clampToScreen(CGPoint(x: follower.x + cos(angle) * d,
+                                    y: follower.y + sin(angle) * d), margin: 60)
         despawnTicks = (fast ? 60 : 10 * 60) * 60
     }
 

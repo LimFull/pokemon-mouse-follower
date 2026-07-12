@@ -91,3 +91,31 @@ struct RGBABuffer {
 //   }
 //   func makePlatformSettingsBackend() -> SettingsBackend
 //   func platformPreferredLanguages() -> [String]
+
+// MARK: - On-screen spawn points
+
+/// A random point guaranteed to lie ON an actual monitor, inset by `margin`.
+/// Sampling the multi-monitor UNION rect (the old approach) lands in its
+/// gaps on mixed-size setups — e.g. below a shorter monitor's bottom edge —
+/// which put spawned items half off-screen and unreachable (user report).
+func randomOnScreenPoint(margin: CGFloat) -> CGPoint {
+    let screens = platformScreensWorld()
+    guard let s = screens.randomElement() else { return CGPoint(x: 720, y: 450) }
+    let r = s.insetBy(dx: min(margin, s.width / 3), dy: min(margin, s.height / 3))
+    return CGPoint(x: .random(in: r.minX...r.maxX), y: .random(in: r.minY...r.maxY))
+}
+
+/// Clamp `p` onto the screen that contains it — or the nearest screen —
+/// inset by `margin`, so a computed point can never straddle an edge or a
+/// monitor gap.
+func clampToScreen(_ p: CGPoint, margin: CGFloat) -> CGPoint {
+    let screens = platformScreensWorld()
+    let host = screens.first(where: { $0.contains(p) })
+        ?? screens.min(by: { a, b in
+            hypot(max(a.minX - p.x, 0, p.x - a.maxX), max(a.minY - p.y, 0, p.y - a.maxY))
+                < hypot(max(b.minX - p.x, 0, p.x - b.maxX), max(b.minY - p.y, 0, p.y - b.maxY))
+        })
+    guard let s = host else { return p }
+    let r = s.insetBy(dx: min(margin, s.width / 3), dy: min(margin, s.height / 3))
+    return CGPoint(x: min(max(p.x, r.minX), r.maxX), y: min(max(p.y, r.minY), r.maxY))
+}
