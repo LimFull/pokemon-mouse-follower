@@ -181,7 +181,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else if fainted {
             // A knocked-out active mon plays the faint animation once and stays
             // put where it fell (it doesn't follow the cursor).
-            if !wasFainted { controller.startFaint(); wasFainted = true }
+            if !wasFainted { controller.startFaint(near: cursor); wasFainted = true }
             controller.updateFainted()
         } else {
             wasFainted = false

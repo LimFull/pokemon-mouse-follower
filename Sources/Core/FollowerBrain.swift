@@ -313,7 +313,18 @@ final class CharacterController {
     }
 
     /// Restart the faint sequence (call once when the mon is knocked out).
-    func startFaint() { faintTick = 0 }
+    /// `near` seeds the position when the app launches with an already-fainted
+    /// active mon: update(mouseGlobal:) never runs while fainted, so without
+    /// this the sprite would render at the world origin — half off the
+    /// bottom-left screen corner. A mon that faints mid-run keeps its spot.
+    func startFaint(near target: CGPoint) {
+        faintTick = 0
+        if !started {
+            pos = clampToScreen(CGPoint(x: target.x, y: target.y - AppSettings.shared.followGap),
+                                margin: 60)
+            started = true
+        }
+    }
 
     /// Play the Faint animation once and hold its last frame, in place. When no
     /// Faint sheet exists, collapse the idle sprite onto its side instead.

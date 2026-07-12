@@ -144,7 +144,7 @@ func tickFrame() {
     if evolving || recalled {
         // hold position; no walking/facing while evolving or recalled
     } else if fainted {
-        if !wasFainted { controller.startFaint(); wasFainted = true }
+        if !wasFainted { controller.startFaint(near: cursor); wasFainted = true }
         controller.updateFainted()
     } else {
         wasFainted = false
