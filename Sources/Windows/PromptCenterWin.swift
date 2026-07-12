@@ -81,10 +81,12 @@ final class PromptCenterWin {
         let mon = RaisingState.shared.party[monIndex]
         let newName = GameData.moves[moveId]?.displayName ?? "Move \(moveId)"
         var subtitle = Characters.displayName(dex: mon.dex)
+        var desc: String? = nil
         if let m = GameData.moves[moveId] {
             subtitle += "  ·  \(m.type ?? "—")"
             if m.effectivePower > 0 { subtitle += "  \(L("move.power")) \(m.effectivePower)" }
             subtitle += "  \(L("move.accuracy")) \(m.accuracyText)"
+            desc = m.localizedDesc
         }
         var buttons: [(String, () -> Void)] = mon.moves.enumerated().map { (slot, id) in
             ("→ \(GameData.moves[id]?.displayName ?? "Move \(id)")", {
@@ -94,7 +96,10 @@ final class PromptCenterWin {
         buttons.append((L("learn.skip"), {
             RaisingState.shared.learnMove(moveId, replacing: nil, at: monIndex)
         }))
-        present(title: "\(L("learn.title"))  \(newName)", subtitle: subtitle, buttons: buttons)
+        // The move name gets its own line under the question, plus what
+        // the move actually does (user request).
+        present(title: L("learn.title"), headline: newName, subtitle: subtitle,
+                desc: desc, buttons: buttons)
     }
 
     private func showFullParty(captured mon: OwnedPokemon) {
@@ -112,7 +117,8 @@ final class PromptCenterWin {
     }
 
     /// Build and show the card window: title, subtitle, one button per choice.
-    private func present(title: String, subtitle: String, buttons: [(String, () -> Void)]) {
+    private func present(title: String, headline: String? = nil, subtitle: String,
+                         desc: String? = nil, buttons: [(String, () -> Void)]) {
         if !promptClassRegistered {
             var wc = WNDCLASSW()
             wc.lpfnWndProc = { promptWndProc($0, $1, $2, $3) }
@@ -136,11 +142,15 @@ final class PromptCenterWin {
 
         func px(_ v: Double) -> Int32 { Int32((v * k).rounded()) }
         let cardW = 360.0
-        let pad = 16.0
+        let pad = 16.0, padR = 26.0   // extra right padding (text sat flush)
         var y = pad
         let titleH = 22.0, subH = 18.0, btnH = 30.0
+        let headH = headline != nil ? 24.0 : 0.0
+        let descH = desc != nil ? 34.0 : 0.0   // two wrapped small lines
 
-        let totalH = pad + titleH + 4 + subH + 12 + Double(buttons.count) * (btnH + 6) + pad
+        let totalH = pad + titleH + (headline != nil ? headH + 2 : 0) + 4 + subH
+            + (desc != nil ? descH + 4 : 0) + 12
+            + Double(buttons.count) * (btnH + 6) + pad
         let left = work.left + (work.right - work.left - px(cardW)) / 2
         let top = work.bottom - px(totalH) - px(96)
 
@@ -180,12 +190,25 @@ final class PromptCenterWin {
             }
         }
 
-        addChild("STATIC", title, id: 0, x: pad, y: y, w: cardW - pad * 2, h: titleH,
+        addChild("STATIC", title, id: 0, x: pad, y: y, w: cardW - pad - padR, h: titleH,
                  style: 0, font: titleFont)
         y += titleH + 4
-        addChild("STATIC", subtitle, id: 0, x: pad, y: y, w: cardW - pad * 2, h: subH,
+        if let headline {
+            // The subject (new move's name) on its own line, title weight.
+            addChild("STATIC", headline, id: 0, x: pad, y: y, w: cardW - pad - padR,
+                     h: headH, style: 0, font: titleFont)
+            y += headH + 2
+        }
+        addChild("STATIC", subtitle, id: 0, x: pad, y: y, w: cardW - pad - padR, h: subH,
                  style: 0, font: bodyFont)
-        y += subH + 12
+        y += subH + 4
+        if let desc {
+            // What the move does — wrapped small text (STATIC wraps by default).
+            addChild("STATIC", desc, id: 0, x: pad, y: y, w: cardW - pad - padR,
+                     h: descH, style: 0, font: bodyFont)
+            y += descH + 4
+        }
+        y += 8
         for (i, b) in buttons.enumerated() {
             addChild("BUTTON", b.0, id: Int32(i + 1), x: pad, y: y, w: cardW - pad * 2,
                      h: btnH, style: 0, font: btnFont)

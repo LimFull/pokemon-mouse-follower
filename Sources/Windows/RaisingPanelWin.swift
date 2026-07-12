@@ -18,6 +18,18 @@ import Foundation
 private func wide(_ s: String) -> [UInt16] { Array(s.utf16) + [0] }
 
 @discardableResult
+private let kLB_ADDSTRING: UINT = 0x0180
+private let kLB_GETCURSEL: UINT = 0x0188
+private let kLB_SETCURSEL: UINT = 0x0186
+
+private func sendListString(_ h: HWND?, _ s: String) {
+    let units = Array(s.utf16) + [0]
+    units.withUnsafeBufferPointer {
+        _ = SendMessageW(h, kLB_ADDSTRING, 0,
+                         LPARAM(Int(bitPattern: UnsafeRawPointer($0.baseAddress!))))
+    }
+}
+
 private func send(_ h: HWND?, _ m: UINT, _ w: WPARAM = 0, _ l: LPARAM = 0) -> LRESULT {
     SendMessageW(h, m, w, l)
 }
@@ -202,6 +214,7 @@ final class RaisingPanelWin {
     private static let idStarterCombo: Int32 = 2001
     private static let idEncounterSlider: Int32 = 2002
     private static let idEncounterValue: Int32 = 2003
+    private static let idRememberList: Int32 = 2004
 
     /// 1x-unit x offset of the panel inside the settings window.
     static let panelX = 410.0
@@ -220,6 +233,9 @@ final class RaisingPanelWin {
     private var expandedMove: Int?
     private var bagExpanded = false
     private var expandedBagItem: GameItem?   // accordion row (desc + use UI)
+    private var rememberExpanded = false     // move-reminder disclosure (detail)
+    private var rememberChoices: [Int] = []  // move ids behind the LISTBOX rows
+    private var rememberListBox: HWND?
     private var observer: NSObjectProtocol?
     private var timerTicks = 0
 
@@ -641,6 +657,45 @@ final class RaisingPanelWin {
             label(L("detail.moves.alloff"), x: 0, y: y, w: RaisingPanelWin.contentWidth, h: 30,
                   small: true)
             y += 32
+        }
+
+        // Move reminder (macOS mirror): full learnset up to the current
+        // level is relearnable; a full moveset routes through the replace
+        // prompt.
+        let remember = state.relearnableMoves(at: idx)
+        if !remember.isEmpty {
+            let arrow = rememberExpanded ? "▾" : "▸"
+            button("💭 \(L("detail.remember")) · \(remember.count)  \(arrow)",
+                   x: 0, y: y, w: 220, h: 22, small: true) { [weak self] in
+                self?.rememberExpanded.toggle()
+                self?.rebuild()
+            }
+            y += 26
+            if rememberExpanded {
+                // Long learnsets scroll in a LISTBOX (native scrollbar)
+                // capped at ~6 rows, with a learn button reading the
+                // selection — a button per move would stretch the panel.
+                rememberChoices = remember.map(\.moveId)
+                let listH = Double(min(remember.count, 6)) * 17 + 6
+                rememberListBox = child("LISTBOX", "", id: RaisingPanelWin.idRememberList,
+                                        x: 10, y: y, w: 250, h: listH,
+                                        style: DWORD(WS_VSCROLL | WS_BORDER | LBS_NOTIFY))
+                for (moveId, lv) in remember {
+                    let name = GameData.moves[moveId]?.displayName ?? "#\(moveId)"
+                    let lvText = String(format: L("detail.remember.lv"), String(lv))
+                    sendListString(rememberListBox, "\(name)  ·  \(lvText)")
+                }
+                send(rememberListBox, kLB_SETCURSEL, 0, 0)
+                y += listH + 6
+                button(L("detail.remember"), x: 10, y: y, w: 150, h: 24) { [weak self] in
+                    guard let self else { return }
+                    let sel = Int(send(self.rememberListBox, kLB_GETCURSEL))
+                    guard self.rememberChoices.indices.contains(sel) else { return }
+                    RaisingState.shared.relearn(self.rememberChoices[sel], at: idx)
+                    self.rebuild()
+                }
+                y += 30
+            }
         }
 
         // Usable items (potions stay visible-but-disabled mid-battle at full HP).

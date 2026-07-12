@@ -35,6 +35,8 @@
 "detail.hp" = "HP";
 "detail.stats" = "のうりょく";
 "detail.moves" = "わざ";
+"detail.remember" = "わざを おもいだす";
+"detail.remember.lv" = "Lv.%@で おぼえる";
 "detail.party" = "パーティ";
 "detail.gender.male" = "♂";
 "detail.gender.female" = "♀";

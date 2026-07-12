@@ -376,10 +376,48 @@ final class RaisingState {
         if let slot, save.party[i].moves.indices.contains(slot) {
             save.party[i].moves[slot] = moveId
             // The forgotten move's OFF toggle must not linger (or shadow the
-            // same move if relearned later).
-            save.party[i].disabledMoves?.removeAll { !save.party[i].moves.contains($0) }
+            // same move if relearned later). Snapshot the moves first: the
+            // removeAll closure reading save.party[i] while disabledMoves is
+            // being mutated is an exclusivity violation — a guaranteed crash
+            // on both platforms (Swift enforces it at runtime).
+            let known = save.party[i].moves
+            save.party[i].disabledMoves?.removeAll { !known.contains($0) }
             persist()
             notifyChanged()
+        }
+    }
+
+    /// Moves this member could relearn (move-reminder, user feature):
+    /// every level-up move of its CURRENT species learnable at or below its
+    /// level and not currently known — so a wild caught with the last-4
+    /// window regains access to its whole learnset. Sorted by learn level.
+    func relearnableMoves(at index: Int) -> [(moveId: Int, level: Int)] {
+        guard save.party.indices.contains(index),
+              let s = save.party[index].species else { return [] }
+        let mon = save.party[index]
+        var seen = Set<Int>()
+        var out: [(Int, Int)] = []
+        for lm in s.levelUpMoves.sorted(by: { $0.level < $1.level })
+        where lm.level <= mon.level
+            && !mon.moves.contains(lm.moveId)
+            && GameData.moves[lm.moveId] != nil
+            && seen.insert(lm.moveId).inserted {
+            out.append((lm.moveId, lm.level))
+        }
+        return out
+    }
+
+    /// Relearn `moveId`: straight into an empty slot, or through the same
+    /// replace prompt a level-up's fifth move uses when all four are taken.
+    func relearn(_ moveId: Int, at index: Int) {
+        guard save.party.indices.contains(index),
+              relearnableMoves(at: index).contains(where: { $0.moveId == moveId }) else { return }
+        if save.party[index].moves.count < 4 {
+            save.party[index].moves.append(moveId)
+            persist()
+            notifyChanged()
+        } else {
+            PromptRelay.enqueue(.learnMove(monIndex: index, moveId: moveId))
         }
     }
 

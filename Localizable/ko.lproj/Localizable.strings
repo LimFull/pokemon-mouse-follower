@@ -35,6 +35,8 @@
 "detail.hp" = "HP";
 "detail.stats" = "능력치";
 "detail.moves" = "기술";
+"detail.remember" = "기술 떠올리기";
+"detail.remember.lv" = "Lv.%@에 배움";
 "detail.party" = "파티";
 "detail.gender.male" = "♂";
 "detail.gender.female" = "♀";

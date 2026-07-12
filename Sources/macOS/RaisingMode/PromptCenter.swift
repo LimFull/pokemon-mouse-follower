@@ -53,10 +53,13 @@ final class PromptCenter: NSObject {
         let mon = RaisingState.shared.party[monIndex]
         let newName = GameData.moves[moveId]?.displayName ?? "Move \(moveId)"
         var subtitle = Characters.displayName(dex: mon.dex)
+        var desc: String? = nil
+        var moveType: String? = nil
         if let m = GameData.moves[moveId] {
-            subtitle += "  ·  \(m.type ?? "—")"
-            if m.effectivePower > 0 { subtitle += "  \(L("move.power")) \(m.effectivePower)" }
+            moveType = m.type            // rendered as the settings-style badge
+            if m.effectivePower > 0 { subtitle += "  ·  \(L("move.power")) \(m.effectivePower)" }
             subtitle += "  \(L("move.accuracy")) \(m.accuracyText)"
+            desc = m.localizedDesc
         }
         var buttons: [(String, () -> Void)] = mon.moves.enumerated().map { (slot, id) in
             ("→ \(GameData.moves[id]?.displayName ?? "Move \(id)")", {
@@ -66,7 +69,10 @@ final class PromptCenter: NSObject {
         buttons.append((L("learn.skip"), {
             RaisingState.shared.learnMove(moveId, replacing: nil, at: monIndex)
         }))
-        present(title: "\(L("learn.title"))  \(newName)", subtitle: subtitle, buttons: buttons)
+        // The move name gets its own line under the question, and the
+        // card shows what the move actually does (user request).
+        present(title: L("learn.title"), headline: newName, subtitle: subtitle,
+                type: moveType, desc: desc, buttons: buttons)
     }
 
     private func showFullParty(captured mon: OwnedPokemon) {
@@ -84,25 +90,54 @@ final class PromptCenter: NSObject {
     }
 
     /// Build and show the card window: title, subtitle, one button per choice.
-    private func present(title: String, subtitle: String, buttons: [(String, () -> Void)]) {
+    private func present(title: String, headline: String? = nil, subtitle: String,
+                         type: String? = nil, desc: String? = nil,
+                         buttons: [(String, () -> Void)]) {
         actions = buttons.map { $0.1 }
 
         let stack = NSStackView()
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 8
-        stack.edgeInsets = NSEdgeInsets(top: 14, left: 16, bottom: 14, right: 16)
+        // Extra right inset: the longest line otherwise sits flush against
+        // the card edge (user report).
+        stack.edgeInsets = NSEdgeInsets(top: 14, left: 16, bottom: 14, right: 26)
         stack.translatesAutoresizingMaskIntoConstraints = false
 
         let t = NSTextField(labelWithString: title)
         t.font = .rounded(14, .bold)
         t.textColor = Palette.label
         stack.addArrangedSubview(t)
+        if let headline {
+            // The subject (new move's name) on its own line — with its type
+            // as the settings-style colored badge when one is given.
+            let h = NSTextField(labelWithString: headline)
+            h.font = .rounded(15, .heavy)
+            h.textColor = Palette.label
+            if let type {
+                let row = NSStackView(views: [h, TypeBadge(type)])
+                row.orientation = .horizontal
+                row.alignment = .centerY
+                row.spacing = 8
+                stack.addArrangedSubview(row)
+            } else {
+                stack.addArrangedSubview(h)
+            }
+        }
         let s = NSTextField(labelWithString: subtitle)
         s.font = .rounded(11, .medium)
         s.textColor = Palette.ink
         stack.addArrangedSubview(s)
-        stack.setCustomSpacing(12, after: s)
+        var last: NSView = s
+        if let desc {
+            let d = NSTextField(wrappingLabelWithString: desc)
+            d.font = .rounded(11, .regular)
+            d.textColor = .secondaryLabelColor
+            d.preferredMaxLayoutWidth = 300
+            stack.addArrangedSubview(d)
+            last = d
+        }
+        stack.setCustomSpacing(12, after: last)
 
         for (i, b) in buttons.enumerated() {
             let btn = NSButton(title: b.0, target: self, action: #selector(choiceTapped(_:)))

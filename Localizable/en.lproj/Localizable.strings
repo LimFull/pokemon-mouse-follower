@@ -35,6 +35,8 @@
 "detail.hp" = "HP";
 "detail.stats" = "Stats";
 "detail.moves" = "Moves";
+"detail.remember" = "Remember moves";
+"detail.remember.lv" = "learned at Lv.%@";
 "detail.party" = "Party";
 "detail.gender.male" = "♂";
 "detail.gender.female" = "♀";

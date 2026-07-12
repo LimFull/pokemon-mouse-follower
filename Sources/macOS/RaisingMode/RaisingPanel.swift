@@ -12,6 +12,7 @@ final class RaisingPanelView: NSView {
     private var expandedMove: Int?         // move id whose description is expanded
     private var bagExpanded = false        // bag card disclosure state
     private var expandedBagItem: GameItem?  // accordion row showing desc + use UI
+    private var rememberExpanded = false    // move-reminder disclosure (detail)
     private var starterPopup: NSPopUpButton?
 
     /// Called whenever a refresh may have changed the content height, so the
@@ -616,6 +617,60 @@ final class RaisingPanelView: NSView {
             inner.addArrangedSubview(hint)
         }
 
+        // Move reminder (user feature): everything the species could know at
+        // this level is relearnable — a caught wild regains its full
+        // learnset. Same accordion pattern as the bag; a full moveset routes
+        // through the level-up replace prompt.
+        if let idx0 = detailIndex {
+            let remember = RaisingState.shared.relearnableMoves(at: idx0)
+            if !remember.isEmpty {
+                let head = NSButton(title: "💭 \(L("detail.remember")) · \(remember.count)  \(rememberExpanded ? "▾" : "▸")",
+                                    target: self, action: #selector(rememberToggled))
+                head.isBordered = false
+                head.alignment = .left
+                head.font = .rounded(12, .bold)
+                head.contentTintColor = Palette.ink
+                inner.addArrangedSubview(head)
+                if rememberExpanded {
+                    // Long learnsets scroll instead of stretching the panel
+                    // (user request): cap at ~6 rows, bag-list pattern.
+                    let list = NSStackView()
+                    list.orientation = .vertical
+                    list.alignment = .leading
+                    list.spacing = 4
+                    list.translatesAutoresizingMaskIntoConstraints = false
+                    for (moveId, lv) in remember {
+                        let name = GameData.moves[moveId]?.displayName ?? "#\(moveId)"
+                        let b = NSButton(title: "\(name)  ·  \(String(format: L("detail.remember.lv"), String(lv)))",
+                                         target: self, action: #selector(rememberTapped(_:)))
+                        b.bezelStyle = .rounded
+                        b.controlSize = .small
+                        b.font = .systemFont(ofSize: 11)
+                        b.tag = moveId
+                        list.addArrangedSubview(b)
+                    }
+                    let doc = FlippedView()
+                    doc.addSubview(list)
+                    NSLayoutConstraint.activate([
+                        list.topAnchor.constraint(equalTo: doc.topAnchor),
+                        list.leadingAnchor.constraint(equalTo: doc.leadingAnchor),
+                        list.trailingAnchor.constraint(equalTo: doc.trailingAnchor),
+                    ])
+                    doc.layoutSubtreeIfNeeded()
+                    let contentH = list.fittingSize.height
+                    doc.frame = NSRect(x: 0, y: 0, width: Self.contentWidth - 40, height: contentH)
+                    let scroll = NSScrollView()
+                    scroll.translatesAutoresizingMaskIntoConstraints = false
+                    scroll.hasVerticalScroller = true
+                    scroll.drawsBackground = false
+                    scroll.documentView = doc
+                    scroll.heightAnchor.constraint(equalToConstant: min(150, contentH)).isActive = true
+                    scroll.widthAnchor.constraint(equalToConstant: Self.contentWidth - 36).isActive = true
+                    inner.addArrangedSubview(scroll)
+                }
+            }
+        }
+
         // Usable items on this mon (Phase 3c): potions when hurt, a revive
         // when fainted, evolution items when they'd trigger one (C3/D8-1).
         // While its battle plays, the follower's potions stay VISIBLE even at
@@ -768,6 +823,17 @@ final class RaisingPanelView: NSView {
 
     @objc private func moveTapped(_ sender: NSButton) {
         expandedMove = (expandedMove == sender.tag) ? nil : sender.tag
+        refresh()
+    }
+
+    @objc private func rememberToggled() {
+        rememberExpanded.toggle()
+        refresh()
+    }
+
+    @objc private func rememberTapped(_ sender: NSButton) {
+        guard let idx = detailIndex else { return }
+        RaisingState.shared.relearn(sender.tag, at: idx)
         refresh()
     }
 
