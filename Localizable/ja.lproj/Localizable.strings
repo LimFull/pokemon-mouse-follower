@@ -1175,6 +1175,10 @@
 "log.skip.blownaway" = "%@は ふきとばされた!";
 "log.skip.cantflee" = "%@は にげられない!";
 "log.skip.confused" = "%@は こんらんしている!";
+"log.skip.flinched" = "%@は ひるんで うごけない!";
+"log.tag.magnitude" = "マグニチュード%@!";
+"log.skip.subbroke" = "%@の みがわりは こわれてしまった!";
+"log.tag.substitute" = "%@は みがわりを だした!";
 "log.skip.dugin" = "%@は じめんに もぐった!";
 "log.skip.flewup" = "%@は そらたかく とびあがった!";
 "log.skip.doveunder" = "%@は すいちゅうに もぐった!";

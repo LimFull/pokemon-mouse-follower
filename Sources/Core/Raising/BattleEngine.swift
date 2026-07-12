@@ -70,6 +70,8 @@ final class Battler {
     var rolloutMove: Int? = nil  // locked into Rollout/Ice Ball until it ends
     var rolloutCount = 0         // completed rollout hits (doubles its power)
     var defenseCurled = false    // Defense Curl used: Rollout hits double
+    var flinched = false         // hit by a flincher before acting this round
+    var substituteHP = 0         // the doll's remaining HP (0 = no substitute)
 
     // Status state (D19). `status` persists across battles for the player's mon;
     // everything below it is battle-local.
@@ -268,6 +270,9 @@ final class BattleSession {
     // makes us a trainer, not a lone wild), or marks the player fled when
     // nobody else can battle.
     private(set) var playerDraggedOut = false
+    // A hit just broke this battler's substitute — emit() logs the break
+    // right after the attack event so the order reads attack -> break.
+    private var pendingSubBreak: Battler?
 
     /// The dragged-in replacement takes over mid-battle (fresh battle-local
     /// state; the wild's stages/volatiles stay, mainline-style).
@@ -300,6 +305,8 @@ final class BattleSession {
             b.rolloutMove = nil
             b.rolloutCount = 0
             b.defenseCurled = false
+            b.substituteHP = 0
+            b.flinched = false
         }
     }
 
@@ -343,6 +350,10 @@ final class BattleSession {
                 playerAsleep: player.status == .sleep, wildAsleep: wild.status == .sleep)
             roundEvents.append(ev)
             allEvents.append(ev)
+            if kind == .attack, let broke = pendingSubBreak {
+                pendingSubBreak = nil
+                emit(.skip, actorIsPlayer: broke === player, reason: "sub broke")
+            }
         }
 
         /// Type effectiveness with the identification/levitation overrides:
@@ -377,6 +388,17 @@ final class BattleSession {
         /// Apply direct move damage: records counter/bide bookkeeping and
         /// resolves Destiny Bond when the hit is fatal.
         func dealDamage(_ dmg: Int, from atk: Battler, to def: Battler, physical: Bool) {
+            // A substitute soaks the whole hit: the body takes nothing, no
+            // counter/bide bookkeeping accrues, and the break notice queues
+            // so it logs AFTER the attack line (emit flushes it).
+            if def.substituteHP > 0, atk !== def {
+                def.substituteHP -= dmg
+                if def.substituteHP <= 0 {
+                    def.substituteHP = 0
+                    pendingSubBreak = def
+                }
+                return
+            }
             def.currentHP = max(0, def.currentHP - dmg)
             if physical { def.physicalTakenThisRound += dmg }
             else { def.specialTakenThisRound += dmg }
@@ -460,6 +482,11 @@ final class BattleSession {
             }
 
             // --- volatile gates -------------------------------------------
+            if atk.flinched {
+                atk.flinched = false
+                emit(.skip, actorIsPlayer: isPlayer, reason: "flinched")
+                return
+            }
             if atk.confusionTurns > 0 {
                 atk.confusionTurns -= 1
                 if atk.confusionTurns == 0 {
@@ -746,10 +773,19 @@ final class BattleSession {
                                    power: doubled ? 120 : 60)
 
             case .magnitude:
-                let table = [(10, 5), (30, 10), (50, 20), (70, 30), (90, 20), (110, 10), (150, 5)]
-                var roll = Int.random(in: 0..<100, using: &BattleRNG.g), power = 70
-                for (p, w) in table { if roll < w { power = p; break }; roll -= w }
-                executePlainScaled(m, atk, def, isPlayer: isPlayer, eff: eff, power: power)
+                // Mainline: magnitude 4..10 on the classic weights. The
+                // "매그니튜드 7!" call-out gets its own beat, then the quake
+                // lands at that magnitude's power.
+                let table = [(4, 10, 5), (5, 30, 10), (6, 50, 20), (7, 70, 30),
+                             (8, 90, 20), (9, 110, 10), (10, 150, 5)]
+                var roll = Int.random(in: 0..<100, using: &BattleRNG.g)
+                var magnitude = 7, power = 70
+                for (mag, pw, w) in table {
+                    if roll < w { magnitude = mag; power = pw; break }
+                    roll -= w
+                }
+                executePlainScaled(m, atk, def, isPlayer: isPlayer, eff: eff, power: power,
+                                   extraTag: "magnitude \(magnitude)")
 
             case .present:
                 guard rolls(m, atk, def) else { emit(.miss, actorIsPlayer: isPlayer, move: m); return }
@@ -822,7 +858,8 @@ final class BattleSession {
                 guard eff > 0 else { emit(.miss, actorIsPlayer: isPlayer, move: m, eff: 0); return }
                 // Magic Coat bounces the drop back onto the user.
                 let victim = def.magicCoatTurn == turn ? atk : def
-                guard victim.mistRounds == 0, rolls(m, atk, def) else {
+                guard victim.substituteHP == 0 || victim === atk,   // the doll blocks drops
+                      victim.mistRounds == 0, rolls(m, atk, def) else {
                     emit(.miss, actorIsPlayer: isPlayer, move: m); return
                 }
                 var applied: [(BattleStat, Int)] = []
@@ -985,6 +1022,20 @@ final class BattleSession {
                 guard !def.cantEscape else { emit(.miss, actorIsPlayer: isPlayer, move: m); return }
                 def.cantEscape = true
                 emit(.attack, actorIsPlayer: isPlayer, move: m, status: "can't escape!")
+
+            case .substitute:
+                // Pay a quarter of max HP for a doll that soaks damage and
+                // blocks foe-inflicted status/stat drops until it breaks.
+                let cost = max(1, atk.maxHP / 4)
+                guard atk.substituteHP == 0, atk.currentHP > cost else {
+                    emit(.miss, actorIsPlayer: isPlayer, move: m); return
+                }
+                atk.currentHP -= cost
+                emit(.selfHit, actorIsPlayer: isPlayer, reason: "cut its own HP",
+                     damage: cost, targetIsPlayer: isPlayer)
+                atk.substituteHP = cost
+                emit(.attack, actorIsPlayer: isPlayer, move: m,
+                     targetIsPlayer: isPlayer, status: "substitute!")
 
             case .splash:
                 emit(.attack, actorIsPlayer: isPlayer, move: m, targetIsPlayer: isPlayer, status: "nothing happened")
@@ -1167,7 +1218,8 @@ final class BattleSession {
         /// Returns true when the move connected.
         @discardableResult
         func executePlain(_ m: MoveData, _ atk: Battler, _ def: Battler,
-                          isPlayer: Bool, eff: Double, powerOverride: Int?) -> Bool {
+                          isPlayer: Bool, eff: Double, powerOverride: Int?,
+                          extraTag: String? = nil) -> Bool {
             guard rolls(m, atk, def) else { emit(.miss, actorIsPlayer: isPlayer, move: m); return false }
             if eff == 0 { emit(.miss, actorIsPlayer: isPlayer, move: m, eff: 0); return false }
             var dmg = 0
@@ -1186,14 +1238,43 @@ final class BattleSession {
                 emit(.miss, actorIsPlayer: isPlayer, move: m)
                 return false
             }
+            // Mainline secondaries on a landed hit, both data-driven:
+            // stat shifts (Psychic's SpDef drop, Overheat's self -2, ...)
+            // and flinch (Bite, Rock Slide, Iron Head, ... — only if the
+            // target hasn't acted yet this round).
+            var secTag: String? = nil
+            if dmg > 0, let sec = m.secStats, !sec.isEmpty,
+               Int.random(in: 0..<100, using: &BattleRNG.g) < (m.secChance ?? 100) {
+                let victim = m.secSelf == true ? atk : def
+                // A substitute blocks foe-inflicted secondary drops.
+                if victim.substituteHP == 0 || victim === atk {
+                    var applied: [(BattleStat, Int)] = []
+                    for (name, delta) in sec.sorted(by: { $0.key < $1.key }) {
+                        guard let st = BattleStat(rawValue: name), !victim.isFainted else { continue }
+                        let got = victim.bump(st, delta)
+                        if got != 0 { applied.append((st, got)) }
+                    }
+                    if !applied.isEmpty {
+                        secTag = (m.secSelf == true ? "self " : "") + statTag(applied)
+                    }
+                }
+            }
+            if dmg > 0, !def.isFainted, !def.actedThisRound, def.substituteHP == 0,
+               let chance = MoveMechanics.flinchChanceByMoveId[m.moveId],
+               Int.random(in: 0..<100, using: &BattleRNG.g) < chance {
+                def.flinched = true
+            }
             emit(.attack, actorIsPlayer: isPlayer, move: m, damage: dmg, eff: eff,
-                 targetIsPlayer: bounced ? isPlayer : !isPlayer, status: inflicted, crit: crit)
+                 targetIsPlayer: bounced ? isPlayer : !isPlayer,
+                 status: inflicted ?? secTag ?? extraTag, crit: crit)
             return true
         }
 
         func executePlainScaled(_ m: MoveData, _ atk: Battler, _ def: Battler,
-                                isPlayer: Bool, eff: Double, power: Int) {
-            executePlain(m, atk, def, isPlayer: isPlayer, eff: eff, powerOverride: power)
+                                isPlayer: Bool, eff: Double, power: Int,
+                                extraTag: String? = nil) {
+            executePlain(m, atk, def, isPlayer: isPlayer, eff: eff, powerOverride: power,
+                         extraTag: extraTag)
         }
 
         /// End-of-round upkeep: chips, seeds, delayed hits, perish, timers.
@@ -1318,6 +1399,7 @@ final class BattleSession {
             b.physicalTakenThisRound = 0
             b.specialTakenThisRound = 0
             b.actedThisRound = false
+            b.flinched = false   // a flinch only ever eats the CURRENT round's action
         }
         let pPlan: (moveId: Int?, priority: Int) =
             playerItem != nil ? (nil, 6) : BattleEngine.plan(player, vs: wild)
@@ -1461,6 +1543,8 @@ enum BattleEngine {
                 return attacker.trapRounds == 0 && !attacker.cantEscape && !attacker.rooted
             case .fleeFoe: return !defender.rooted
             case .noEscape: return !defender.cantEscape
+            case .substitute:
+                return attacker.substituteHP == 0 && attacker.currentHP > attacker.maxHP / 4
             case .counterPhysical, .counterSpecial:
                 return true   // gambles on being hit first, like the games
             case .superFang: return defender.currentHP > 1
@@ -1611,6 +1695,7 @@ enum BattleEngine {
     /// Try to inflict `m`'s ailment on `def`; returns its name when applied.
     fileprivate static func applyAilment(of m: MoveData, from atk: Battler, to def: Battler) -> String? {
         guard let name = m.ailment, !def.isFainted,
+              def.substituteHP == 0 || atk === def,   // the doll blocks foe-inflicted status
               Int.random(in: 1...100, using: &BattleRNG.g) <= m.effectiveAilmentChance else { return nil }
         switch name {
         case "confusion":

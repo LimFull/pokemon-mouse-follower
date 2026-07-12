@@ -203,9 +203,13 @@ func tickFrame() {
         overlay.hide()
     } else {
         let playerAlpha = scene.map { $0.flashPlayer ? 0.25 : $0.playerAlpha } ?? 1
-        // Minimize/Growth body scale rides the draw scale (shadow included).
+        // Minimize/Growth body scale rides the draw scale (shadow included);
+        // behind a Substitute, the doll stands in for the body.
         let bodyScale = scene?.playerSpriteScale ?? 1
-        overlay.present(frame: controller.currentFrame, worldPos: renderPos,
+        let playerFrame = scene?.playerSubstitute == true
+            ? (BattleController.substituteDoll ?? controller.currentFrame)
+            : controller.currentFrame
+        overlay.present(frame: playerFrame, worldPos: renderPos,
                         shadow: controller.currentShadow,
                         scale: s * bodyScale, showShadow: AppSettings.shared.showShadow,
                         alpha: playerAlpha, rotation: controller.faintRotation)

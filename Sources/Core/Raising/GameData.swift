@@ -113,6 +113,9 @@ struct MoveData: Codable {
     let accuracyMain: Int?      // mainline accuracy (0 = never misses; nil: EoS-only)
     let casterAnim: Int?        // ROM sprite anim group the USER plays (0..12;
                                 // nil: sentinel/unmapped -> Attack/Shoot heuristic)
+    let secStats: [String: Int]?   // secondary stat shifts on a landed hit
+    let secChance: Int?            // % chance for secStats (100 = always)
+    let secSelf: Bool?             // the shifts hit the USER (Overheat & co)
     enum CodingKeys: String, CodingKey {
         case moveId = "move_id", names, type, category, power, pp, accuracy, desc
         case ailment
@@ -122,6 +125,9 @@ struct MoveData: Codable {
         case sound
         case accuracyMain = "accuracy_main"
         case casterAnim = "caster_anim"
+        case secStats = "sec_stats"
+        case secChance = "sec_chance"
+        case secSelf = "sec_self"
     }
     /// English JSON name — the key for the engine's name-keyed tables
     /// (MoveMechanics & co), which must not follow the UI language.
@@ -280,7 +286,7 @@ enum GameData {
             power: 0, pp: 0, accuracy: 100,
             desc: "A plain typeless attack, used when every move is switched off.",
             ailment: nil, ailmentChance: nil, powerMain: 20, contact: true, sound: nil,
-            accuracyMain: nil, casterAnim: 1)
+            accuracyMain: nil, casterAnim: 1, secStats: nil, secChance: nil, secSelf: nil)
         return out
     }
 }

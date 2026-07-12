@@ -32,13 +32,19 @@ enum BattleLog {
             if e.moveId > 0, !e.followUp, !EffectPlayer.isExplosionMove(e.moveId) {
                 add(LF("log.attack", actor, e.moveName), .start)
             }
+            // Magnitude's call-out lands between the announce and the damage.
+            if let tag = e.statusApplied, tag.hasPrefix("magnitude ") {
+                add(LF("log.tag.magnitude", String(tag.dropFirst("magnitude ".count))), .impact)
+            }
             if e.damage > 0 {
                 if e.crit { add(L("log.crit"), .impact) }
                 if e.effectiveness > 1 { add(L("log.eff.super"), .impact) }
                 else if e.effectiveness > 0, e.effectiveness < 1 { add(L("log.eff.notvery"), .impact) }
                 add(LF("log.damage", target, String(e.damage)), .resolve)
             }
-            for line in statusLines(e.statusApplied, name: target) { add(line, .resolve) }
+            if e.statusApplied?.hasPrefix("magnitude ") != true {
+                for line in statusLines(e.statusApplied, name: target) { add(line, .resolve) }
+            }
             if e.fainted { add(LF("log.faint", target), .resolve) }
         case .miss:
             if e.moveId > 0, !EffectPlayer.isExplosionMove(e.moveId) {
@@ -152,6 +158,8 @@ enum BattleLog {
         "skip.blown away": "log.skip.blownaway",
         "skip.cant flee": "log.skip.cantflee",
         "skip.confused": "log.skip.confused",
+        "skip.flinched": "log.skip.flinched",
+        "skip.sub broke": "log.skip.subbroke",
         "skip.dug in": "log.skip.dugin",
         "skip.flew up": "log.skip.flewup",
         "skip.dove under": "log.skip.doveunder",
@@ -217,6 +225,7 @@ enum BattleLog {
     ]
 
     private static let mechanicKey: [String: String] = [
+        "substitute!": "log.tag.substitute",
         "transformed!": "log.tag.transformed",
         "seeded": "log.tag.seeded",
         "protected": "log.tag.protected",

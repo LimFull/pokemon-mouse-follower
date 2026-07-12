@@ -243,9 +243,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                             shadow: controller.currentShadow, glow: glow)
             } else {
                 // A recalled follower — or one hiding underground/airborne
-                // mid-Dig/Fly — draws nothing (shadow included).
+                // mid-Dig/Fly — draws nothing (shadow included); behind a
+                // Substitute, the doll stands in for the body.
                 let vanished = scene?.playerVanished == true
-                view.render((recalled || vanished) ? nil : controller.currentFrame,
+                let frame = scene?.playerSubstitute == true
+                    ? (BattleController.substituteDoll ?? controller.currentFrame)
+                    : controller.currentFrame
+                view.render((recalled || vanished) ? nil : frame,
                             globalPos: renderPos,
                             shadow: controller.currentShadow,
                             rotation: controller.faintRotation)

@@ -11,7 +11,7 @@
 import Foundation
 
 /// A battle-local stat whose stage (-6...+6) multiplies the flat stat.
-enum BattleStat: CaseIterable {
+enum BattleStat: String, CaseIterable {
     case atk, def, spa, spd, spe, acc, eva
 
     var label: String {
@@ -58,6 +58,7 @@ enum MoveMechanic {
     case trap(Int)                        // mainline power + 1/16 chip 2–5 rounds
     case furyCutter(Int)                  // power doubles per consecutive hit (cap x4)
     case rollout(Int)                     // locked-in 5-turn snowball (Rollout/Ice Ball)
+    case substitute                       // pay 1/4 max HP for a damage-eating doll
     case curse                            // ghost: pay half, curse foe; else stats
     case nightmare                        // sleeping foe loses 1/4 per round
     case yawn                             // foe sleeps at end of next round
@@ -129,6 +130,7 @@ enum MoveMechanics {
         // --- drain / recoil / crash ---------------------------------------
         "Absorb": .drain(0.5, 20), "Mega Drain": .drain(0.5, 40),
         "Giga Drain": .drain(0.5, 60), "Leech Life": .drain(0.5, 20),
+        "Drain Punch": .drain(0.5, 75),
         "Dream Eater": .drain(0.5, 100),   // usable only on a sleeping foe
         "Take Down": .recoil(0.25, 90), "Double-Edge": .recoil(1.0 / 3.0, 120),
         "Submission": .recoil(0.25, 80), "Volt Tackle": .recoil(1.0 / 3.0, 120),
@@ -143,6 +145,7 @@ enum MoveMechanics {
         // --- healing / status care ----------------------------------------
         "Recover": .healSelf(0.5), "Softboiled": .healSelf(0.5),
         "Milk Drink": .healSelf(0.5), "Slack Off": .healSelf(0.5),
+        "Heal Order": .healSelf(0.5),
         "Roost": .healSelf(0.5), "Moonlight": .healSelf(0.5),
         "Morning Sun": .healSelf(0.5), "Synthesis": .healSelf(0.5),
         "Rest": .rest, "Wish": .wish,
@@ -183,6 +186,7 @@ enum MoveMechanics {
         "Leech Seed": .leechSeed,
         "Fury Cutter": .furyCutter(40),
         "Rollout": .rollout(30), "Ice Ball": .rollout(30),
+        "Substitute": .substitute,
         "Wrap": .trap(15), "Bind": .trap(15), "Fire Spin": .trap(35),
         "Clamp": .trap(35), "Whirlpool": .trap(35), "Sand Tomb": .trap(35),
         "Curse": .curse, "Nightmare": .nightmare, "Yawn": .yawn,
@@ -244,8 +248,29 @@ enum MoveMechanics {
         "Karate Chop", "Razor Leaf", "Crabhammer", "Slash", "Aeroblast",
         "Cross Chop", "Night Slash", "Leaf Blade", "Blaze Kick", "Cross Poison",
         "Psycho Cut", "Shadow Claw", "Stone Edge", "Air Cutter", "Attack Order",
-        "Razor Wind", "Sky Attack", "Spacial Rend",
+        "Razor Wind", "Sky Attack", "Spacial Rend", "Poison Tail",
     ]
+
+    /// Mainline flinch chances (% on a landed hit; the target must not have
+    /// acted yet this round). Data audit 2026-07-12 vs PokeAPI move meta.
+    private static let flinchChanceByName: [String: Int] = [
+        "Fake Out": 100,
+        "Snore": 30, "Rock Slide": 30, "Astonish": 30, "Bite": 30,
+        "Sky Attack": 30, "Headbutt": 30, "Needle Arm": 30, "Stomp": 30,
+        "Rolling Kick": 30, "Iron Head": 30, "Air Slash": 30,
+        "Waterfall": 20, "Twister": 20, "Dark Pulse": 20, "Zen Headbutt": 20,
+        "Dragon Rush": 20,
+        "Extrasensory": 10, "Hyper Fang": 10, "Bone Club": 10,
+        "Thunder Fang": 10, "Ice Fang": 10, "Fire Fang": 10,
+    ]
+
+    static let flinchChanceByMoveId: [Int: Int] = {
+        var out: [Int: Int] = [:]
+        for (id, m) in GameData.moves {
+            if let c = flinchChanceByName[m.englishName] { out[id] = c }
+        }
+        return out
+    }()
 
     /// Move priority by English name (mainline brackets; 0 when absent).
     private static let priorityByName: [String: Int] = [

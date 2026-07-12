@@ -111,6 +111,10 @@
 "log.skip.blownaway" = "%@ was blown away!";
 "log.skip.cantflee" = "%@ can't get away!";
 "log.skip.confused" = "%@ is confused!";
+"log.skip.flinched" = "%@ flinched and couldn't move!";
+"log.tag.magnitude" = "Magnitude %@!";
+"log.skip.subbroke" = "%@'s substitute broke!";
+"log.tag.substitute" = "%@ put up a substitute!";
 "log.skip.dugin" = "%@ burrowed underground!";
 "log.skip.flewup" = "%@ flew up high!";
 "log.skip.doveunder" = "%@ hid underwater!";

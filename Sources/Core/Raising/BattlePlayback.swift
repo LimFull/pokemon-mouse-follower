@@ -50,6 +50,9 @@ struct BattleScene {
     // screen entirely until it pops back up to strike.
     var playerVanished: Bool = false
     var wildVanished: Bool = false
+    // Substitute up: the platform draws the doll instead of the follower
+    // (the wild's frame is swapped inside scene() directly).
+    var playerSubstitute: Bool = false
 }
 
 final class BattleController: LiveBattleBridge {
@@ -102,6 +105,12 @@ final class BattleController: LiveBattleBridge {
     // Dig/Fly/Dive/Shadow Force: who is currently hidden from view.
     private var pVanish = false, wVanish = false
     private static let hiddenReasons: Set<String> = ["dug in", "flew up", "dove under", "vanished"]
+    // Substitute: who currently fights behind the doll.
+    private var pSub = false, wSub = false
+    /// The mainline doll sprite (PokeAPI art; the ROM never draws one —
+    /// its Substitute effect is just the shared particle).
+    static let substituteDoll: PMFImage? =
+        Sprite.loadBuffer("substitute", subdir: "gamedata").flatMap { PlatformImageIO.makeImage($0) }
     private var playerAlpha = 1.0
     private var wildAlpha = 1.0
     private var result: BattleResult?
@@ -377,6 +386,7 @@ final class BattleController: LiveBattleBridge {
         playerTransformedDex = nil   // the follower always re-enters as itself
         pBodyScale = 1; pBodyTarget = 1   // fresh mon, full size (wild's persists)
         pVanish = false; wVanish = false  // nobody enters a battle mid-Dig
+        pSub = false; wSub = false        // ...or behind last battle's doll
         pushLog(BattleLog.battleStart(wildName: w.name))
         phase = .battling
     }
@@ -440,6 +450,16 @@ final class BattleController: LiveBattleBridge {
         while let next = pendingLog.first, next.tick <= evTick {
             pushLog(next.text)
             pendingLog.removeFirst()
+        }
+        // Substitute: the doll goes up at its tag and comes down at the
+        // break notice.
+        if evTick == impactAt {
+            if e.statusApplied == "substitute!" {
+                if e.actorIsPlayer { pSub = true } else { wSub = true }
+            }
+            if e.kind == .skip, e.moveName == "sub broke" {
+                if e.actorIsPlayer { pSub = false } else { wSub = false }
+            }
         }
         // Semi-invulnerable charges: the hider disappears at its dig-in beat
         // and pops back up the next time it acts — or the moment a piercing
@@ -999,6 +1019,25 @@ final class BattleController: LiveBattleBridge {
             // back up — the lerp is direction-agnostic. Pure cures ("woke up")
             // carry an unchanged snapshot and stay flat.
             impactAt = 6; hitAt = 8
+            // A heal MOVE (Recover, Milk Drink, Moonlight...) plays its own
+            // clip(s) over the healer before the gauge fills — this beat
+            // never appended one, so every self-heal was gauge-only (user
+            // report). Passive recoveries (woke up, drained) stay clip-less.
+            if e.moveId > 0 {
+                let healer = e.targetIsPlayer ? playerPos : (wildMon?.pos ?? playerPos)
+                var t = 0
+                if let co = EffectPlayer.coClip(forMove: e.moveId) {
+                    let ticks = min(co.loop ? 24 : co.totalTicks, 36)
+                    effects.append(RunningEffect(clip: co, anchor: healer, maxTicks: ticks))
+                    t += ticks
+                }
+                if let clip = EffectPlayer.clip(forMove: e.moveId) {
+                    let ticks = min(clip.loop ? 30 : clip.totalTicks, 44)
+                    effects.append(RunningEffect(clip: clip, anchor: healer, maxTicks: ticks))
+                    t += ticks
+                }
+                hitAt = max(hitAt, t)
+            }
             drainEnd = hitAt + 22
             curTicks = drainEnd + 12
         case .item:
@@ -1156,6 +1195,7 @@ final class BattleController: LiveBattleBridge {
         flashP = false; flashW = false
         wildAlpha = 1; playerAlpha = 1
         pVanish = false; wVanish = false
+        pSub = false; wSub = false
         evIdx = 0; evTick = 0
         phase = .present
     }
@@ -1168,6 +1208,7 @@ final class BattleController: LiveBattleBridge {
         pBodyScale = 1; wBodyScale = 1
         pBodyTarget = 1; wBodyTarget = 1
         pVanish = false; wVanish = false
+        pSub = false; wSub = false
         recallTurn = nil
         session = nil
         pendingItem = nil
@@ -1186,7 +1227,7 @@ final class BattleController: LiveBattleBridge {
         let fx = ballFrame.map { ($0, ballPos) }
             ?? effects.first?.current(scale: AppSettings.shared.scale)
         return BattleScene(
-            wildFrame: frame,
+            wildFrame: (wSub ? Self.substituteDoll : nil) ?? frame,
             wildPos: CGPoint(x: wm.pos.x + wildDodge.x, y: wm.pos.y + wildDodge.y),
             playerPos: playerPos,
             playerHP: curPHP, wildHP: curWHP, flashPlayer: flashP, flashWild: flashW,
@@ -1206,7 +1247,8 @@ final class BattleController: LiveBattleBridge {
             playerSpriteScale: pBodyScale,
             wildSpriteScale: wBodyScale,
             playerVanished: pVanish,
-            wildVanished: wVanish)
+            wildVanished: wVanish,
+            playerSubstitute: pSub)
     }
 
     private func logAlpha(_ age: Int) -> Double {

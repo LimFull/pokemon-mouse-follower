@@ -1241,6 +1241,10 @@
 "log.skip.blownaway" = "%@는(은) 날려가 버렸다!";
 "log.skip.cantflee" = "%@는(은) 도망칠 수 없다!";
 "log.skip.confused" = "%@는(은) 혼란에 빠져 있다!";
+"log.skip.flinched" = "%@는(은) 풀죽어서 움직일 수 없었다!";
+"log.tag.magnitude" = "매그니튜드 %@!";
+"log.skip.subbroke" = "%@의 대타 인형이 부서졌다!";
+"log.tag.substitute" = "%@는(은) 대타 인형을 내보냈다!";
 "log.skip.dugin" = "%@는(은) 땅속으로 파고들었다!";
 "log.skip.flewup" = "%@는(은) 하늘 높이 날아올랐다!";
 "log.skip.doveunder" = "%@는(은) 물속으로 숨었다!";
