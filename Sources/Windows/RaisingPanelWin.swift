@@ -17,7 +17,6 @@ import Foundation
 
 private func wide(_ s: String) -> [UInt16] { Array(s.utf16) + [0] }
 
-@discardableResult
 private let kLB_ADDSTRING: UINT = 0x0180
 private let kLB_GETCURSEL: UINT = 0x0188
 private let kLB_SETCURSEL: UINT = 0x0186
@@ -30,6 +29,7 @@ private func sendListString(_ h: HWND?, _ s: String) {
     }
 }
 
+@discardableResult
 private func send(_ h: HWND?, _ m: UINT, _ w: WPARAM = 0, _ l: LPARAM = 0) -> LRESULT {
     SendMessageW(h, m, w, l)
 }

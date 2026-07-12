@@ -5,5 +5,5 @@
 // site buttons + in-app updaters resolve per-platform assets.
 
 enum AppVersion {
-    static let string = "2.10.2"
+    static let string = "2.11.0"
 }
