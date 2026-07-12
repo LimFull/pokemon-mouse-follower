@@ -92,6 +92,8 @@ private func dumpEffectIfRequested() {
         dump(EffectPlayer.coClip(forMove: moveId), "co")
         dump(EffectPlayer.drainClip, "drain")
         dump(EffectPlayer.confusionClip, "confusion")
+        dump(EffectPlayer.statAura(.atk, rising: true), "aura-atk-up")
+        dump(EffectPlayer.statAura(.def, rising: false), "aura-def-down")
         dump(EffectPlayer.projectile(forMove: moveId), "proj")
         dump(EffectPlayer.projectile(forMove: moveId, octant: 0), "projE")   // flying east
         exit(0)

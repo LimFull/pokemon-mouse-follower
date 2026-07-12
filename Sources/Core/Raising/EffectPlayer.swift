@@ -241,6 +241,58 @@ enum EffectPlayer {
         return EffectClip(steps: rendered, loop: false, headAnchored: false)
     }
 
+    /// Stat-change aura (mainline-style): particles in the STAT's color
+    /// sweep upward for a raise, sink downward for a drop — the ROM keeps
+    /// this visual engine-side (nothing extractable), same as the screen
+    /// flash and the confusion orbit.
+    private static var statAuraCache: [String: EffectClip?] = [:]
+
+    static func statAura(_ stat: BattleStat, rising: Bool) -> EffectClip? {
+        let key = "\(stat.rawValue)+\(rising)"
+        if let cached = statAuraCache[key] { return cached }
+        let color: RGBA
+        switch stat {
+        case .atk: color = RGBA(r: 1.00, g: 0.36, b: 0.30)   // red
+        case .def: color = RGBA(r: 0.38, g: 0.58, b: 1.00)   // blue
+        case .spa: color = RGBA(r: 0.85, g: 0.45, b: 1.00)   // purple
+        case .spd: color = RGBA(r: 0.35, g: 0.90, b: 0.70)   // teal
+        case .spe: color = RGBA(r: 1.00, g: 0.85, b: 0.30)   // yellow
+        case .acc: color = RGBA(r: 1.00, g: 0.62, b: 0.25)   // orange
+        case .eva: color = RGBA(r: 0.88, g: 0.90, b: 0.95)   // silver
+        }
+        let built = makeStatAura(color: color, rising: rising)
+        statAuraCache[key] = built
+        return built
+    }
+
+    private static func makeStatAura(color: RGBA, rising: Bool) -> EffectClip? {
+        let w = 40, h = 46, dot = 4, frames = 14, count = 6
+        let spark = glowDot(width: dot, height: dot, color: color)
+        var raw: [RawStep] = []
+        for f in 0..<frames {
+            var out = RGBABuffer(width: w, height: h,
+                                 pixels: [UInt8](repeating: 0, count: w * h * 4))
+            let progress = Double(f) / Double(frames - 1)
+            for j in 0..<count {
+                // Columns spread by golden-angle hash; each particle staggers
+                // its start so the aura streams instead of pulsing.
+                let x = Double((j * 29) % (w - dot))
+                var t = progress + Double((j * 37) % 10) / 10.0
+                t -= t.rounded(.down)                       // wrap 0..1
+                let yTravel = t * Double(h - dot)
+                let y = rising ? Double(h - dot) - yTravel : yTravel
+                blit(spark, onto: &out, x: Int(x), y: Int(y))
+            }
+            raw.append(RawStep(image: out, ticks: 2, dx: 0, dy: 0))
+        }
+        let rendered = raw.compactMap { s -> EffectClip.Step? in
+            guard let img = PlatformImageIO.makeImage(s.image) else { return nil }
+            return EffectClip.Step(image: img, ticks: s.ticks, dx: s.dx, dy: s.dy)
+        }
+        guard !rendered.isEmpty else { return nil }
+        return EffectClip(steps: rendered, loop: false, headAnchored: false)
+    }
+
     /// The companion clip (ROM anim2) played at the target just before the
     /// hit clip — the part the hit-slot priority used to drop entirely
     /// (Vine Whip's vine, Cut's slash arc, String Shot's threads, ...).

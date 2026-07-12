@@ -614,6 +614,26 @@ final class BattleController: LiveBattleBridge {
     /// a whiff, "Super Effective!"/"Not Very Effective.." by type matchup.
     /// Floating damage number ("-23") rising off the hit side while its
     /// gauge drains — settings-gated (label.damagenumbers).
+    /// "self ATK -1 DEF -1" / "SP.ATK +2" -> the stat deltas inside a tag.
+    /// Tokens pair a BattleStat label with a signed count; anything else
+    /// (ailment names, "3 hits!", "substitute!") yields nothing.
+    static func statChanges(in tag: String) -> [(BattleStat, Int)] {
+        let labelToStat = Dictionary(uniqueKeysWithValues:
+            BattleStat.allCases.map { ($0.label, $0) })
+        let tokens = tag.split(separator: " ").map(String.init)
+        var out: [(BattleStat, Int)] = []
+        var i = 0
+        while i + 1 < tokens.count {
+            if let stat = labelToStat[tokens[i]], let delta = Int(tokens[i + 1]), delta != 0 {
+                out.append((stat, delta))
+                i += 2
+            } else {
+                i += 1
+            }
+        }
+        return out
+    }
+
     private func tickDamageNumber(_ e: BattleEvent) {
         dmgText = nil; dmgAlpha = 0
         guard AppSettings.shared.damageNumbersEnabled, e.damage > 0,
@@ -1003,6 +1023,25 @@ final class BattleController: LiveBattleBridge {
                                                  delay: i == 0 ? delay : 0))
                 }
                 total += hitTicks * reps
+            }
+            // Stat-change auras: any "ATK +1"-style token in the tag queues
+            // the stat's colored aura on WHOSE stats moved — rising for a
+            // raise, sinking for a drop. Covers status moves, secondaries,
+            // and self-drops alike (they all ride statTag).
+            if let tag = e.statusApplied {
+                let changes = Self.statChanges(in: tag)
+                if !changes.isEmpty {
+                    let anchor = tag.hasPrefix("self ") ? attacker
+                        : (e.targetIsPlayer ? playerPos : wildPos)
+                    for (stat, delta) in changes.prefix(3) {
+                        if let aura = EffectPlayer.statAura(stat, rising: delta > 0) {
+                            let ticks = min(aura.totalTicks, 30)
+                            effects.append(RunningEffect(clip: aura, anchor: anchor,
+                                                         maxTicks: ticks))
+                            total += ticks
+                        }
+                    }
+                }
             }
             hitAt = max(impactAt, min(total, 72))
             if EffectPlayer.isScreen(e.moveId) { hitAt = impactAt + 20 }   // flash duration
