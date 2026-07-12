@@ -218,15 +218,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 RaisingState.shared.regenTick()
             }
         }
-        // Daily full heal (D23) fires at the actual date change, not just
-        // whenever the panel next opens: fainted members revive at local
-        // midnight with the settings window closed too. Deferred past a
-        // battle in progress — its pre-simulated outcome would overwrite
-        // the fresh HP at finishBattle.
+        // Timed revive (3h after fainting) + daily full heal (D23) at the
+        // actual date change, with the settings window closed too. Deferred
+        // past a battle in progress — its pre-simulated outcome would
+        // overwrite the fresh HP at finishBattle.
         dailyHealCounter += 1
         if dailyHealCounter >= 10 * 60 {
             dailyHealCounter = 0
-            if !battle.isBattling { RaisingState.shared.dailyHealIfNeeded() }
+            if !battle.isBattling {
+                RaisingState.shared.timedReviveIfNeeded()
+                RaisingState.shared.dailyHealIfNeeded()
+            }
         }
         // Items: the mon picks one up by walking over it (not mid-battle).
         let itemScene = items.update(followerPos: controller.position,

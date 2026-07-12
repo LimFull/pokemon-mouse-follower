@@ -63,6 +63,7 @@ final class RaisingPanelView: NSView {
     }
 
     func refresh() {
+        RaisingState.shared.timedReviveIfNeeded()
         RaisingState.shared.dailyHealIfNeeded()
         subviews.forEach { $0.removeFromSuperview() }
 
@@ -562,8 +563,8 @@ final class RaisingPanelView: NSView {
         inner.addArrangedSubview(hpRow)
         inner.addArrangedSubview(HPBarView(current: mon.currentHP, max: mon.maxHP, width: Self.contentWidth - 28))
         if mon.isFainted {
-            // Countdown to the daily heal (D23) that will revive it.
-            let l = monoLabel("\(L("detail.revive.in"))  \(OwnedPokemon.timeUntilDailyHeal)", 11, .semibold)
+            // Countdown to the timed revive (3h after fainting).
+            let l = monoLabel("\(L("detail.revive.in"))  \(mon.timeUntilRevive)", 11, .semibold)
             l.textColor = .systemRed
             inner.addArrangedSubview(l)
         }
@@ -1013,7 +1014,7 @@ final class PartyRowView: NSView {
         addSubview(bar)
 
         let hp = NSTextField(labelWithString: mon.isFainted
-            ? "\(L("detail.revive.in")) \(OwnedPokemon.timeUntilDailyHeal)"
+            ? "\(L("detail.revive.in")) \(mon.timeUntilRevive)"
             : "\(mon.currentHP)/\(mon.maxHP)")
         hp.font = .monospacedSystemFont(ofSize: 9, weight: .medium)
         hp.textColor = mon.isFainted ? .systemRed : Palette.label

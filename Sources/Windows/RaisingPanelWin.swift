@@ -340,6 +340,7 @@ final class RaisingPanelWin {
     // MARK: refresh
 
     func rebuild() {
+        _ = RaisingState.shared.timedReviveIfNeeded()
         _ = RaisingState.shared.dailyHealIfNeeded()
         destroyChildren()
         var y = 16.0
@@ -431,7 +432,7 @@ final class RaisingPanelWin {
             }
             hpBar(mon.currentHP, mon.maxHP, x: 46, y: y + 27, w: 150)
             let hpText = mon.isFainted
-                ? "\(L("detail.revive.in")) \(OwnedPokemon.timeUntilDailyHeal)"
+                ? "\(L("detail.revive.in")) \(mon.timeUntilRevive)"
                 : "\(mon.currentHP)/\(mon.maxHP)"
             label(hpText, x: 200, y: y + 24, w: 66, h: 14, mono: true, right: true)
             if !mon.isFainted, i != activeIdx {
@@ -587,7 +588,7 @@ final class RaisingPanelWin {
         hpBar(mon.currentHP, mon.maxHP, x: 0, y: y, w: RaisingPanelWin.contentWidth - 20)
         y += 14
         if mon.isFainted {
-            label("\(L("detail.revive.in"))  \(OwnedPokemon.timeUntilDailyHeal)", x: 0, y: y,
+            label("\(L("detail.revive.in"))  \(mon.timeUntilRevive)", x: 0, y: y,
                   w: RaisingPanelWin.contentWidth, mono: true, small: true)
             y += 18
         }

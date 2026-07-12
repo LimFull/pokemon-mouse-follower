@@ -33,7 +33,17 @@ struct OwnedPokemon: Codable {
     var dex: Int
     var level: Int
     var exp: Int              // total accumulated experience
-    var currentHP: Int
+    var currentHP: Int {
+        // Every faint/revive flows through here (battle outcome write-back,
+        // items, heals), so the timestamp can't be missed. Observers don't
+        // fire during decode, which keeps the stored faintedAt of a loaded
+        // fainted mon intact.
+        didSet {
+            if currentHP <= 0, oldValue > 0 { faintedAt = Date() }
+            else if currentHP > 0 { faintedAt = nil }
+        }
+    }
+    var faintedAt: Date?      // when it fainted (nil while conscious)
     var moves: [Int]          // up to 4 move ids
     var disabledMoves: [Int]? // PMD-style OFF toggles — still known, AI won't pick them
     var gender: Gender
@@ -59,12 +69,15 @@ struct OwnedPokemon: Codable {
         status = nil
     }
 
-    /// "3h 12m" until the next daily heal (local midnight, D23) revives this
-    /// mon — shown for fainted members so a reset isn't tempting.
-    static var timeUntilDailyHeal: String {
-        let cal = Calendar.current
-        let midnight = cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: Date())) ?? Date()
-        let mins = max(0, Int(midnight.timeIntervalSince(Date())) / 60)
+    /// A fainted mon gets back up on its own this long after fainting
+    /// (was: at the next local midnight via the daily heal).
+    static let reviveDelay: TimeInterval = 3 * 60 * 60
+
+    /// "2h 12m" until this fainted mon revives — shown for fainted members
+    /// so a reset isn't tempting.
+    var timeUntilRevive: String {
+        let end = (faintedAt ?? Date()).addingTimeInterval(Self.reviveDelay)
+        let mins = max(0, Int(end.timeIntervalSince(Date())) / 60)
         return mins >= 60 ? "\(mins / 60)h \(mins % 60)m" : "\(mins)m"
     }
 
@@ -530,17 +543,43 @@ final class RaisingState {
         }
     }
 
-    // MARK: daily heal (D23)
+    // MARK: timed revive + daily heal (D23)
 
-    /// Fully heal the whole party if the local calendar day changed since the
-    /// last heal. Returns true if a heal happened. Notifies so panels redraw
-    /// even when the heal fires from the app tick at midnight (the nested
-    /// panel refresh this can cause is a one-shot: the second call is a no-op).
+    /// Revive (full heal) every member fainted at least reviveDelay ago —
+    /// called from the same ~10s app poll as the daily heal. A fainted mon
+    /// from a pre-timestamp save starts its countdown here.
+    @discardableResult
+    func timedReviveIfNeeded() -> Bool {
+        var changed = false
+        for i in save.party.indices where save.party[i].isFainted {
+            guard let t = save.party[i].faintedAt else {
+                save.party[i].faintedAt = Date()
+                changed = true
+                continue
+            }
+            if Date().timeIntervalSince(t) >= OwnedPokemon.reviveDelay {
+                save.party[i].heal()
+                changed = true
+            }
+        }
+        if changed {
+            persist()
+            notifyChanged()
+        }
+        return changed
+    }
+
+    /// Fully heal the conscious party members if the local calendar day
+    /// changed since the last heal. Fainted members are NOT revived here —
+    /// they get back up on their own 3h timer (timedReviveIfNeeded).
+    /// Returns true if a heal happened. Notifies so panels redraw even when
+    /// the heal fires from the app tick at midnight (the nested panel
+    /// refresh this can cause is a one-shot: the second call is a no-op).
     @discardableResult
     func dailyHealIfNeeded() -> Bool {
         let today = RaisingState.today()
         guard save.lastHealDay != today else { return false }
-        for i in save.party.indices { save.party[i].heal() }
+        for i in save.party.indices where !save.party[i].isFainted { save.party[i].heal() }
         save.lastHealDay = today
         persist()
         notifyChanged()
