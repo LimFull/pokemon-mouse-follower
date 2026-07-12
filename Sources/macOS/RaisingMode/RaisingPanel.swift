@@ -11,6 +11,7 @@ final class RaisingPanelView: NSView {
     private var detailIndex: Int?          // nil = list/empty mode
     private var expandedMove: Int?         // move id whose description is expanded
     private var bagExpanded = false        // bag card disclosure state
+    private var expandedBagItem: GameItem?  // accordion row showing desc + use UI
     private var starterPopup: NSPopUpButton?
 
     /// Called whenever a refresh may have changed the content height, so the
@@ -287,6 +288,15 @@ final class RaisingPanelView: NSView {
         toggle.translatesAutoresizingMaskIntoConstraints = false
         card.addSubview(toggle)
 
+        // What the toggle actually does (auto-throw rule) — one small line.
+        let caption = monoLabel(L("bag.capture.caption"), 10, .regular)
+        caption.textColor = .secondaryLabelColor
+        caption.lineBreakMode = .byWordWrapping
+        caption.maximumNumberOfLines = 2
+        caption.preferredMaxLayoutWidth = Self.contentWidth - 28
+        caption.translatesAutoresizingMaskIntoConstraints = false
+        card.addSubview(caption)
+
         let divider = NSBox()
         divider.boxType = .separator
         divider.translatesAutoresizingMaskIntoConstraints = false
@@ -305,6 +315,9 @@ final class RaisingPanelView: NSView {
         }
         for item in bag {
             stack.addArrangedSubview(bagRow(item, count: RaisingState.shared.itemCount(item)))
+            if expandedBagItem == item {
+                stack.addArrangedSubview(bagExpansion(item))
+            }
         }
         let doc = FlippedView()
         doc.addSubview(stack)
@@ -324,12 +337,15 @@ final class RaisingPanelView: NSView {
         scroll.documentView = doc
         card.addSubview(scroll)
 
-        let listH = min(150, contentH)
+        let listH = min(expandedBagItem == nil ? 150 : 230, contentH)
         NSLayoutConstraint.activate([
             card.widthAnchor.constraint(equalToConstant: Self.contentWidth),
             toggle.topAnchor.constraint(equalTo: card.topAnchor, constant: 9),
             toggle.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 12),
-            divider.topAnchor.constraint(equalTo: toggle.bottomAnchor, constant: 8),
+            caption.topAnchor.constraint(equalTo: toggle.bottomAnchor, constant: 2),
+            caption.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 14),
+            caption.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -12),
+            divider.topAnchor.constraint(equalTo: caption.bottomAnchor, constant: 8),
             divider.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 10),
             divider.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -10),
             scroll.topAnchor.constraint(equalTo: divider.bottomAnchor, constant: 2),
@@ -345,6 +361,96 @@ final class RaisingPanelView: NSView {
         RaisingState.shared.setCaptureEnabled(sender.state == .on)
     }
 
+    @objc private func bagRowTapped(_ g: NSClickGestureRecognizer) {
+        guard let tag = g.view?.identifier.flatMap({ Int($0.rawValue) }),
+              let item = GameItem(rawValue: tag) else { return }
+        expandedBagItem = expandedBagItem == item ? nil : item
+        refresh()
+    }
+
+    /// Accordion under a tapped bag row: the item's description, then the
+    /// use UI — party target buttons, or the manual throw button for balls
+    /// while a battle is running.
+    private func bagExpansion(_ item: GameItem) -> NSView {
+        let box = NSStackView()
+        box.orientation = .vertical
+        box.alignment = .leading
+        box.spacing = 5
+        box.edgeInsets = NSEdgeInsets(top: 2, left: 26, bottom: 4, right: 8)
+
+        let desc = monoLabel(item.desc, 11, .regular)
+        desc.textColor = .secondaryLabelColor
+        desc.lineBreakMode = .byWordWrapping
+        desc.maximumNumberOfLines = 3
+        desc.preferredMaxLayoutWidth = Self.contentWidth - 80
+        box.addArrangedSubview(desc)
+
+        let state = RaisingState.shared
+        if item.isBall {
+            // Manual throw: only meaningful while a battle is running.
+            if let bc = BattleController.current, bc.playerGaugeFraction != nil {
+                let queued = bc.ballPending
+                let b = NSButton(title: queued ? L("bag.throw.queued") : L("bag.throw"),
+                                 target: self, action: #selector(bagThrowTapped(_:)))
+                b.bezelStyle = .rounded
+                b.controlSize = .small
+                b.font = .systemFont(ofSize: 11)
+                b.tag = item.rawValue
+                b.isEnabled = !queued
+                box.addArrangedSubview(b)
+            }
+        } else {
+            // Party targets — disabled where the item can't apply.
+            let anyTarget = state.party.indices.contains { state.canUseItem(item, at: $0) }
+            if anyTarget {
+                let row = NSStackView()
+                row.orientation = .horizontal
+                row.spacing = 5
+                row.addArrangedSubview(monoLabel(L("bag.use"), 11, .medium))
+                for (i, mon) in state.party.enumerated() {
+                    let b = NSButton(title: Characters.displayName(dex: mon.dex),
+                                     target: self, action: #selector(bagUseTapped(_:)))
+                    b.bezelStyle = .rounded
+                    b.controlSize = .small
+                    b.font = .systemFont(ofSize: 10)
+                    b.tag = item.rawValue * 100 + i
+                    b.isEnabled = state.canUseItem(item, at: i)
+                    row.addArrangedSubview(b)
+                }
+                let scroll = NSScrollView()
+                scroll.translatesAutoresizingMaskIntoConstraints = false
+                scroll.hasHorizontalScroller = false
+                scroll.drawsBackground = false
+                scroll.verticalScrollElasticity = .none
+                row.frame = NSRect(origin: .zero, size: row.fittingSize)
+                scroll.documentView = row
+                scroll.heightAnchor.constraint(equalToConstant: row.fittingSize.height + 2).isActive = true
+                scroll.widthAnchor.constraint(equalToConstant: Self.contentWidth - 80).isActive = true
+                box.addArrangedSubview(scroll)
+            }
+        }
+        return box
+    }
+
+    @objc private func bagThrowTapped(_ sender: NSButton) {
+        guard let item = GameItem(rawValue: sender.tag) else { return }
+        _ = BattleController.current?.requestBall(item)
+        refresh()
+    }
+
+    @objc private func bagUseTapped(_ sender: NSButton) {
+        let item = GameItem(rawValue: sender.tag / 100)
+        let idx = sender.tag % 100
+        guard let item, RaisingState.shared.party.indices.contains(idx) else { return }
+        if let to = RaisingState.shared.useItem(item, at: idx) {
+            let a = NSAlert()
+            a.messageText = Characters.displayName(dex: to)
+            a.informativeText = L("evo.suffix")
+            a.runModal()
+        }
+        refresh()
+    }
+
     /// One bag line: pixel icon + name, count right-aligned like a game menu.
     private func bagRow(_ item: GameItem, count: Int) -> NSView {
         let icon = NSImageView()
@@ -358,12 +464,17 @@ final class RaisingPanelView: NSView {
         let name = monoLabel(item.displayName, 12, .medium)
         let qty = monoLabel("×\(count)", 12, .semibold)
         qty.textColor = Palette.ink
-        let row = NSStackView(views: [icon, name, NSView(), qty])
+        let arrow = monoLabel(expandedBagItem == item ? "▾" : "▸", 10, .regular)
+        arrow.textColor = .secondaryLabelColor
+        let row = NSStackView(views: [icon, name, NSView(), qty, arrow])
         row.orientation = .horizontal
         row.alignment = .centerY
         row.spacing = 8
         row.translatesAutoresizingMaskIntoConstraints = false
         row.widthAnchor.constraint(equalToConstant: Self.contentWidth - 44).isActive = true
+        row.identifier = NSUserInterfaceItemIdentifier("\(item.rawValue)")
+        row.addGestureRecognizer(NSClickGestureRecognizer(target: self,
+                                                          action: #selector(bagRowTapped(_:))))
         return row
     }
 

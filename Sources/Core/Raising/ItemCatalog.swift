@@ -31,6 +31,9 @@ enum GameItem: Int, CaseIterable, Codable {
         }
     }
     var displayName: String { L(nameKey) }
+    /// Bag description ("HP를 50 회복한다." & co) — <nameKey>.desc in strings.
+    var desc: String { L(nameKey + ".desc") }
+    var isBall: Bool { ballBonus > 0 }
 
     /// Catch-rate multiplier for balls (0 = not a ball).
     var ballBonus: Double {

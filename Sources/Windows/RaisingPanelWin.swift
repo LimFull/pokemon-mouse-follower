@@ -219,6 +219,7 @@ final class RaisingPanelWin {
     private var detailIndex: Int?
     private var expandedMove: Int?
     private var bagExpanded = false
+    private var expandedBagItem: GameItem?   // accordion row (desc + use UI)
     private var observer: NSObjectProtocol?
     private var timerTicks = 0
 
@@ -459,7 +460,10 @@ final class RaisingPanelWin {
         if bagExpanded {
             checkbox(L("bag.capture"), x: 8, y: y, w: RaisingPanelWin.contentWidth - 8,
                      on: state.captureEnabled) { RaisingState.shared.setCaptureEnabled($0) }
-            y += 26
+            y += 22
+            label(L("bag.capture.caption"), x: 10, y: y, w: RaisingPanelWin.contentWidth - 12,
+                  mono: true, small: true)
+            y += 24
             let bag = GameItem.allCases.filter { state.itemCount($0) > 0 }
             if bag.isEmpty {
                 label("—", x: 10, y: y, w: 60, mono: true)
@@ -467,9 +471,46 @@ final class RaisingPanelWin {
             }
             for item in bag {
                 well(renderItemIcon(item, box: Int(Double(px(18)))), x: 10, y: y, w: 18, h: 18)
-                label(item.displayName, x: 34, y: y + 1, w: 190, mono: true, small: true)
-                label("×\(state.itemCount(item))", x: 230, y: y + 1, w: 50, mono: true, right: true)
-                y += 22
+                let arrow = expandedBagItem == item ? "▾" : "▸"
+                button("\(item.displayName)  ×\(state.itemCount(item))  \(arrow)",
+                       x: 34, y: y - 2, w: 246, h: 22) { [weak self] in
+                    guard let self else { return }
+                    self.expandedBagItem = self.expandedBagItem == item ? nil : item
+                    self.rebuild()
+                }
+                y += 24
+                if expandedBagItem == item {
+                    label(item.desc, x: 34, y: y, w: RaisingPanelWin.contentWidth - 40,
+                          mono: true, small: true)
+                    y += 20
+                    if item.isBall {
+                        // Manual throw — only while a battle is running.
+                        if let live = LiveBattle.current, live.playerGaugeFraction != nil {
+                            let queued = live.ballPending
+                            button(queued ? L("bag.throw.queued") : L("bag.throw"),
+                                   x: 34, y: y, w: 200, h: 24) { [weak self] in
+                                _ = LiveBattle.current?.requestBall(item)
+                                self?.rebuild()
+                            }
+                            y += 28
+                        }
+                    } else if state.party.indices.contains(where: { state.canUseItem(item, at: $0) }) {
+                        label(L("bag.use"), x: 34, y: y + 4, w: 44, mono: true, small: true)
+                        var x = 80.0
+                        for (i, mon) in state.party.enumerated() where state.canUseItem(item, at: i) {
+                            let name = Characters.displayName(dex: mon.dex)
+                            let w = max(56.0, Double(name.count) * 9 + 18)
+                            if x + w > RaisingPanelWin.contentWidth { break }   // narrow panel: first fits
+                            button(name, x: x, y: y, w: w, h: 24) { [weak self] in
+                                _ = RaisingState.shared.useItem(item, at: i)
+                                self?.rebuild()
+                            }
+                            x += w + 6
+                        }
+                        y += 28
+                    }
+                    y += 2
+                }
             }
             y += 4
         }

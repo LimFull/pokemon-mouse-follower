@@ -125,6 +125,7 @@ final class BattleController: LiveBattleBridge {
     private var result: BattleResult?
     private var session: BattleSession?  // stepwise sim: one round per batch
     private var pendingItem: GameItem?   // healing item queued for the next round
+    private var pendingBall: GameItem?   // manual ball throw queued from the bag
     private var endTicks = 0
     private var endTotal = 1             // endTicks' starting value (tag timing)
     private var recallTurn: Int?         // flee after this simulated turn ends
@@ -187,6 +188,20 @@ final class BattleController: LiveBattleBridge {
 
     /// A healing item is queued and not yet spent (panels disable buttons).
     var itemPending: Bool { pendingItem != nil }
+
+    /// Manual ball throw from the bag: queued as the follower's next action
+    /// (turn-spending, like an item). The battle-end settlement consumes it
+    /// via the session's used-ball list, same as auto-throws.
+    func requestBall(_ item: GameItem) -> Bool {
+        guard phase == .battling, item.isBall, pendingBall == nil,
+              session?.isOver == false else { return false }
+        let alreadyUsed = session?.used.filter { $0 == item }.count ?? 0
+        guard RaisingState.shared.itemCount(item) > alreadyUsed else { return false }
+        pendingBall = item
+        return true
+    }
+
+    var ballPending: Bool { pendingBall != nil }
 
     /// The follower's live gauge fraction while a battle plays (panel gating).
     var playerGaugeFraction: Double? { phase == .battling ? curPHP : nil }
@@ -397,6 +412,7 @@ final class BattleController: LiveBattleBridge {
         session = s
         result = nil
         pendingItem = nil
+        pendingBall = nil
         events = s.nextRound()
         curPStatus = mon.status
         evIdx = 0; evTick = 0; curPHP = startPHP; curWHP = startWHP
@@ -442,8 +458,16 @@ final class BattleController: LiveBattleBridge {
                         item = queued
                     }
                 }
+                // Manual ball throw: same gate; finishBattle settles the bag
+                // through the session's used list, so no consume here.
+                var ball: GameItem? = nil
+                if let queued = pendingBall, !s.playerLockedIn, item == nil {
+                    pendingBall = nil
+                    let alreadyUsed = s.used.filter { $0 == queued }.count
+                    if RaisingState.shared.itemCount(queued) > alreadyUsed { ball = queued }
+                }
                 s.setBallStock(ballStock(used: s.used))   // capture toggle is live
-                events = s.nextRound(playerItem: item)
+                events = s.nextRound(playerItem: item, playerBall: ball)
                 evIdx = 0; evTick = 0
                 return
             }
@@ -1229,6 +1253,8 @@ final class BattleController: LiveBattleBridge {
         recallTurn = nil
         session = nil
         pendingItem = nil
+        pendingBall = nil
+        pendingBall = nil
         events = []; result = nil; effects = []; ballFrame = nil
         playerPose = (.stand, 0)
         playerDodge = .zero; wildDodge = .zero
@@ -1254,6 +1280,7 @@ final class BattleController: LiveBattleBridge {
         recallTurn = nil
         session = nil
         pendingItem = nil
+        pendingBall = nil
         levelUpTo = nil
         floatText = nil; floatAlpha = 0
         wild = nil; wildMon = nil; events = []; result = nil; effects = []; ballFrame = nil

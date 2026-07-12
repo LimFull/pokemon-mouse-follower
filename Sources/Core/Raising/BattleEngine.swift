@@ -1391,7 +1391,7 @@ final class BattleSession {
     /// Simulate ONE round and return its events. `playerItem` replaces the
     /// follower's action with a healing item (mainline: an item costs the
     /// turn) and resolves before moves.
-    func nextRound(playerItem: GameItem? = nil) -> [BattleEvent] {
+    func nextRound(playerItem: GameItem? = nil, playerBall: GameItem? = nil) -> [BattleEvent] {
         roundEvents = []
         guard !isOver else { return [] }
         turn += 1
@@ -1417,24 +1417,18 @@ final class BattleSession {
                 useHealingItem(item)
                 continue
             }
+            // Manual throw from the bag: the trainer's explicit call beats
+            // the auto-throw heuristic and ignores its catchable gate.
+            if isPlayer, let ball = playerBall {
+                throwBall(ball)
+                continue
+            }
             // Throw a ball instead of attacking when the wild is catchable:
             // hurt to half or carrying a status (max 3 throws per battle).
             if isPlayer, !stock.isEmpty, used.count < 3,
                wild.currentHP * 100 <= wild.maxHP * 50 || wild.status != nil {
                 let ball = stock.removeFirst()
-                used.append(ball)
-                let (ok, shakes) = BattleEngine.attemptCapture(wild: wild, ball: ball)
-                captured = ok
-                let ev = BattleEvent(
-                    kind: .ball, actorIsPlayer: true, moveId: 0,
-                    moveName: ball.displayName, damage: 0, effectiveness: 1,
-                    targetIsPlayer: false, targetHP: wild.currentHP,
-                    targetMaxHP: wild.maxHP, fainted: false, statusApplied: nil,
-                    turn: turn, shakes: shakes, caught: ok, ballId: ball.rawValue,
-                    playerAsleep: player.status == .sleep,
-                    wildAsleep: wild.status == .sleep)
-                roundEvents.append(ev)
-                allEvents.append(ev)
+                throwBall(ball)
                 continue
             }
             act(atk, def, isPlayer: isPlayer, planned: planned)
@@ -1443,6 +1437,25 @@ final class BattleSession {
         // belong to whoever gets dragged in next round, not to it.
         if !captured, !playerDraggedOut { endOfRound() }
         return roundEvents
+    }
+
+    /// Throw `ball` at the wild as the player's action (auto or manual):
+    /// capture math, the wobble event, and the used-ball accounting that
+    /// finishBattle settles against the bag.
+    private func throwBall(_ ball: GameItem) {
+        used.append(ball)
+        let (ok, shakes) = BattleEngine.attemptCapture(wild: wild, ball: ball)
+        captured = ok
+        let ev = BattleEvent(
+            kind: .ball, actorIsPlayer: true, moveId: 0,
+            moveName: ball.displayName, damage: 0, effectiveness: 1,
+            targetIsPlayer: false, targetHP: wild.currentHP,
+            targetMaxHP: wild.maxHP, fainted: false, statusApplied: nil,
+            turn: turn, shakes: shakes, caught: ok, ballId: ball.rawValue,
+            playerAsleep: player.status == .sleep,
+            wildAsleep: wild.status == .sleep)
+        roundEvents.append(ev)
+        allEvents.append(ev)
     }
 
     /// The follower's trainer uses a potion or Full Heal: heal/cure, and the

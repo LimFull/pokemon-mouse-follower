@@ -14,6 +14,10 @@ protocol LiveBattleBridge: AnyObject {
     /// Returns false when no battle is running (apply to the saved state).
     func requestItem(_ item: GameItem) -> Bool
     var itemPending: Bool { get }
+    /// Queue a manual ball throw as the follower's next battle action
+    /// (bag "던지기" button). Returns false when no battle is running.
+    func requestBall(_ item: GameItem) -> Bool
+    var ballPending: Bool { get }
     /// Live HP fraction of the player's mon while a battle plays (nil otherwise).
     var playerGaugeFraction: Double? { get }
     /// Live major-status of the player's mon while a battle plays (nil otherwise).
