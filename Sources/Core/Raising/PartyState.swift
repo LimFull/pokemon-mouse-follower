@@ -13,6 +13,8 @@ extension Notification.Name {
     static let raisingChanged = Notification.Name("raisingChanged")
     /// Posted right after a mon evolves, so the overlay can play the burst.
     static let raisingEvolved = Notification.Name("raisingEvolved")
+    /// The settings checkbox toggled the raising shortcut icon on/off.
+    static let raisingIconChanged = Notification.Name("raisingIconChanged")
 }
 
 enum Gender: String, Codable {

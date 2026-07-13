@@ -109,6 +109,23 @@ final class AppSettings {
         get { d.has("damageNumbersEnabled") ? d.bool("damageNumbersEnabled") : true }
         set { d.set(newValue, "damageNumbersEnabled") }
     }
+    // Floating shortcut icon that opens the standalone raising panel window
+    // (default off). Its position persists across launches; nil = never moved.
+    var raisingIconEnabled: Bool {
+        get { d.bool("raisingIconEnabled") }
+        set { d.set(newValue, "raisingIconEnabled") }
+    }
+    var raisingIconPos: CGPoint? {
+        get {
+            guard d.has("raisingIconX"), d.has("raisingIconY") else { return nil }
+            return CGPoint(x: d.double("raisingIconX"), y: d.double("raisingIconY"))
+        }
+        set {
+            guard let p = newValue else { return }
+            d.set(Double(p.x), "raisingIconX")
+            d.set(Double(p.y), "raisingIconY")
+        }
+    }
     // UI language: "auto" follows the system; "en"/"ko"/"ja" force one (W10).
     var language: String {
         get { d.string("language") ?? "auto" }

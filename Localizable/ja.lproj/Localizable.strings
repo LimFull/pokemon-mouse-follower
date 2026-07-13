@@ -1,4 +1,5 @@
 "menu.settings" = "設定…";
+"menu.raising" = "育成…";
 "menu.pause" = "一時停止";
 "menu.resume" = "再開";
 "menu.quit" = "終了";
@@ -24,6 +25,7 @@
 "label.shadow" = "影";
 "label.launch" = "ログイン時に起動";
 "label.raising" = "育成モード";
+"label.raisingicon" = "育成ショートカットアイコン";
 "button.details" = "詳細…";
 "detail.window.title" = "育成モード";
 "detail.empty" = "まだポケモンがいません。\nスターターを選んで育成を始めましょう。";

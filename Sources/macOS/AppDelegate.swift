@@ -18,6 +18,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var timer: Timer?
     private var running = true
     private var settingsController: SettingsWindowController?
+    private var raisingWindowController: RaisingWindowController?
+    private let raisingIcon = RaisingShortcutIcon()
     // Self-update: retained for the lifetime of a download so the delegate lives.
     private var updateInProgress = false
     private var downloader: Downloader?
@@ -36,6 +38,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self, selector: #selector(raisingChanged), name: .raisingChanged, object: nil)
         NotificationCenter.default.addObserver(
             self, selector: #selector(raisingEvolved(_:)), name: .raisingEvolved, object: nil)
+        // Shortcut icon: click toggles the standalone raising window.
+        raisingIcon.onClick = { [weak self] in
+            guard let self else { return }
+            self.raisingWC().toggle(near: self.raisingIcon.window?.frame)
+        }
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(raisingIconChanged), name: .raisingIconChanged, object: nil)
+        raisingIcon.setVisible(AppSettings.shared.raisingIconEnabled)
         if CommandLine.arguments.contains("--show-settings") { showSettings() }
         // Debug: preview the on-overlay prompts (C1) without earning them.
         if ProcessInfo.processInfo.environment["PMF_TEST_PROMPT"] != nil,
@@ -92,7 +102,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    @objc private func screensChanged() { setupWindows() }
+    @objc private func screensChanged() {
+        setupWindows()
+        raisingIcon.clampToScreen()   // a lost monitor could strand the icon
+    }
 
     /// A menu item wired to self. `tag`/`represented` ride along for the
     /// handlers that reuse one selector across several items.
@@ -119,6 +132,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(NSMenuItem(title: "Pokémon Mouse Follower", action: nil, keyEquivalent: ""))
         menu.addItem(.separator())
         menu.addItem(menuItem(L("menu.settings"), action: #selector(showSettings), key: ","))
+        menu.addItem(menuItem(L("menu.raising"), action: #selector(showRaisingPanel), key: "r"))
         menu.addItem(menuItem(L("menu.pause"), action: #selector(toggleRunning), key: "p"))
         // Debug submenu: instant battles against curated opponents (each
         // exercises a status/effect path), plus item/EXP/heal shortcuts.
@@ -266,6 +280,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             settingsController = SettingsWindowController(controller: controller)
         }
         settingsController?.show()
+    }
+
+    private func raisingWC() -> RaisingWindowController {
+        if raisingWindowController == nil { raisingWindowController = RaisingWindowController() }
+        return raisingWindowController!
+    }
+
+    @objc private func showRaisingPanel() {
+        raisingWC().show()
+    }
+
+    @objc private func raisingIconChanged() {
+        raisingIcon.setVisible(AppSettings.shared.raisingIconEnabled)
     }
 
     @objc private func toggleRunning(_ sender: NSMenuItem) {

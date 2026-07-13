@@ -11,6 +11,7 @@ private let kCmdPause: UINT_PTR = 1
 private let kCmdQuit: UINT_PTR = 2
 private let kCmdSettings: UINT_PTR = 3
 private let kCmdUpdate: UINT_PTR = 4
+private let kCmdRaising: UINT_PTR = 5
 
 // Debug panel opener (dev runs only — the actions themselves live in
 // DebugCatalog and render as one-click buttons in DebugPanelWin).
@@ -35,6 +36,7 @@ private func trayWndProc(_ hwnd: HWND?, _ msg: UINT, _ wParam: WPARAM, _ lParam:
         return 0
     case UINT(WM_DISPLAYCHANGE):
         ScreenAdapter.refresh()
+        trayInstance?.onDisplayChange?()
         return 0
     case UINT(WM_DESTROY):
         return 0
@@ -50,7 +52,10 @@ final class TrayIcon {
     var onPauseToggle: (() -> Void)?
     var onQuit: (() -> Void)?
     var onSettings: (() -> Void)?
+    var onRaising: (() -> Void)?
     var onCheckUpdate: (() -> Void)?
+    // Display topology changed (wired by main: re-clamp the shortcut icon).
+    var onDisplayChange: (() -> Void)?
     // Debug panel opener (dev runs only; wired by main when PMF.isDevRun).
     var onOpenDebugPanel: (() -> Void)?
 
@@ -121,6 +126,7 @@ final class TrayIcon {
         appendItem(menu, id: 0, text: "Pokémon Mouse Follower", enabled: false)
         appendSeparator(menu)
         appendItem(menu, id: kCmdSettings, text: L("menu.settings"))
+        appendItem(menu, id: kCmdRaising, text: L("menu.raising"))
         appendItem(menu, id: kCmdPause, text: paused ? L("menu.resume") : L("menu.pause"))
         // Debug panel (dev runs only): one item — the actions are buttons
         // in DebugPanelWin so tests fire with single clicks.
@@ -150,6 +156,8 @@ final class TrayIcon {
             onQuit?()
         case kCmdSettings:
             onSettings?()
+        case kCmdRaising:
+            onRaising?()
         case kCmdUpdate:
             onCheckUpdate?()
         case kCmdDebugPanel:

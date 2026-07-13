@@ -1,4 +1,5 @@
 "menu.settings" = "Settings…";
+"menu.raising" = "Raising…";
 "menu.pause" = "Pause";
 "menu.resume" = "Resume";
 "menu.quit" = "Quit";
@@ -24,6 +25,7 @@
 "label.shadow" = "Shadow";
 "label.launch" = "Launch at login";
 "label.raising" = "Raising mode";
+"label.raisingicon" = "Raising shortcut icon";
 "button.details" = "Details…";
 "detail.window.title" = "Raising Mode";
 "detail.empty" = "No Pokémon yet.\nPick a starter to begin raising.";

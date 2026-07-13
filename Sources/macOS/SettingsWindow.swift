@@ -11,6 +11,7 @@ final class SettingsWindowController: NSObject {
     private var popup: NSPopUpButton!
     private var preview: CharacterPreviewView!
     private var raisingPanel: RaisingPanelView?
+    private var raisingCheckbox: NSButton?
     private let raisingPanelWidth: CGFloat = 340
     private var grid: NSGridView!
     private var topStack: NSStackView!      // character preview area (normal mode only)
@@ -31,6 +32,24 @@ final class SettingsWindowController: NSObject {
         super.init()
         buildUI()
         window.center()
+        // Raising mode can flip on outside this window (picking a starter in
+        // the standalone raising window) — keep the checkbox and the mode
+        // layout in step.
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(raisingStateChanged), name: .raisingChanged, object: nil)
+    }
+
+    deinit { NotificationCenter.default.removeObserver(self) }
+
+    /// Sync the checkbox + mode layout when the setting changed elsewhere;
+    /// a no-op when this window's own toggle was the source.
+    @objc private func raisingStateChanged() {
+        let on = AppSettings.shared.raisingMode
+        guard let cb = raisingCheckbox, cb.state != (on ? .on : .off) else { return }
+        cb.state = on ? .on : .off
+        updateModeVisibility()
+        raisingPanel?.refresh()
+        applyWindowSize(animate: true)
     }
 
     private func buildUI() {
@@ -58,7 +77,10 @@ final class SettingsWindowController: NSObject {
         grid.addRow(with: [makeLabel(L("label.shadow")), makeCheckbox(on: AppSettings.shared.showShadow, action: #selector(shadowToggled(_:))), NSGridCell.emptyContentView])
         grid.addRow(with: [makeLabel(L("label.launch")), makeCheckbox(on: LoginItem.isEnabled, action: #selector(launchToggled(_:))), NSGridCell.emptyContentView])
         grid.addRow(with: [makeLabel(L("label.uiscale")), makeUIScalePopup(), NSGridCell.emptyContentView])
-        grid.addRow(with: [makeLabel(L("label.raising")), makeCheckbox(on: AppSettings.shared.raisingMode, action: #selector(raisingToggled(_:))), NSGridCell.emptyContentView])
+        let raisingCB = makeCheckbox(on: AppSettings.shared.raisingMode, action: #selector(raisingToggled(_:)))
+        raisingCheckbox = raisingCB
+        grid.addRow(with: [makeLabel(L("label.raising")), raisingCB, NSGridCell.emptyContentView])
+        grid.addRow(with: [makeLabel(L("label.raisingicon")), makeCheckbox(on: AppSettings.shared.raisingIconEnabled, action: #selector(raisingIconToggled(_:))), NSGridCell.emptyContentView])
 
         grid.column(at: 0).xPlacement = .trailing
         grid.column(at: 1).width = 180
@@ -259,6 +281,11 @@ final class SettingsWindowController: NSObject {
         if !LoginItem.setEnabled(wantOn) {
             sender.state = wantOn ? .off : .on   // revert on failure
         }
+    }
+
+    @objc private func raisingIconToggled(_ sender: NSButton) {
+        AppSettings.shared.raisingIconEnabled = (sender.state == .on)
+        NotificationCenter.default.post(name: .raisingIconChanged, object: nil)
     }
 
     @objc private func raisingToggled(_ sender: NSButton) {

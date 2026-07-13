@@ -216,11 +216,13 @@ final class RaisingPanelWin {
     private static let idEncounterValue: Int32 = 2003
     private static let idRememberList: Int32 = 2004
 
-    /// 1x-unit x offset of the panel inside the settings window.
+    /// 1x-unit x offset of the panel inside the settings window (the default;
+    /// the standalone raising window hosts the panel at its own left margin).
     static let panelX = 410.0
     static let contentWidth = 300.0
 
     private let parent: HWND
+    private let panelX: Double            // 1x-unit x offset inside `parent`
     private let k: Double                 // DPI scale
     private let font: HFONT?
     private let smallFont: HFONT?
@@ -243,8 +245,10 @@ final class RaisingPanelWin {
     var onContentChanged: (() -> Void)?
     private(set) var contentHeight = 0.0
 
-    init(parent: HWND, k: Double, font: HFONT?, smallFont: HFONT?, monoFont: HFONT?) {
+    init(parent: HWND, k: Double, font: HFONT?, smallFont: HFONT?, monoFont: HFONT?,
+         panelX: Double = RaisingPanelWin.panelX) {
         self.parent = parent
+        self.panelX = panelX
         self.k = k
         self.font = font
         self.smallFont = smallFont
@@ -298,7 +302,7 @@ final class RaisingPanelWin {
             wide(text).withUnsafeBufferPointer { txt in
                 CreateWindowExW(0, cls.baseAddress, txt.baseAddress,
                                 DWORD(WS_CHILD | WS_VISIBLE) | style,
-                                px(RaisingPanelWin.panelX + x), px(y), px(w), px(h),
+                                px(panelX + x), px(y), px(w), px(h),
                                 parent, HMENU(bitPattern: UInt(Int(id))),
                                 GetModuleHandleW(nil), nil)
             }
@@ -413,6 +417,12 @@ final class RaisingPanelWin {
             guard let self else { return }
             let sel = Int(send(self.findChild(RaisingPanelWin.idStarterCombo), kCB_GETCURSEL))
             guard GameData.starters.indices.contains(sel) else { return }
+            // Picking a starter IS choosing raising mode (macOS startTapped
+            // mirror): from the standalone raising window the settings toggle
+            // may still be off. Set it before startNewGame so its
+            // raisingChanged observers (follower swap, settings-dialog sync)
+            // see the final state.
+            AppSettings.shared.raisingMode = true
             RaisingState.shared.startNewGame(dex: GameData.starters[sel].dex)
             self.detailIndex = nil
             self.rebuild()

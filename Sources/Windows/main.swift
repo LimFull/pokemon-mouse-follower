@@ -59,9 +59,20 @@ var quitRequested = false
 tray.onQuit = { quitRequested = true }
 tray.onPauseToggle = { if tray.paused { hideAllOverlays() } }
 tray.onSettings = { SettingsDialog.show() }
+tray.onRaising = { RaisingWindowWin.show() }
+tray.onDisplayChange = { RaisingShortcutIconWin.shared?.clampToScreen() }
 tray.onCheckUpdate = { [weak tray] in
     UpdaterWin.checkForUpdate { tray?.requestQuit() }
 }
+// Shortcut icon: click toggles the standalone raising window next to it.
+RaisingShortcutIconWin.onClick = {
+    RaisingWindowWin.toggle(near: RaisingShortcutIconWin.shared?.frameRect)
+}
+let raisingIconObserver = NotificationCenter.default.addObserver(
+    forName: .raisingIconChanged, object: nil, queue: nil) { _ in
+    RaisingShortcutIconWin.setVisible(AppSettings.shared.raisingIconEnabled)
+}
+RaisingShortcutIconWin.setVisible(AppSettings.shared.raisingIconEnabled)
 SettingsDialog.onCharacterChanged = {
     controller.setCharacter(RaisingState.shared.followerFolder)   // raising mon keeps priority
 }
@@ -292,5 +303,6 @@ while !quitRequested {
 
 NotificationCenter.default.removeObserver(raisingObserver)
 NotificationCenter.default.removeObserver(evolvedObserver)
+NotificationCenter.default.removeObserver(raisingIconObserver)
 tray.remove()
 if smokeTicks > 0 { print("smoke run complete: \(tick) ticks") }

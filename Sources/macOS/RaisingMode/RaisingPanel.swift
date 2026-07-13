@@ -116,6 +116,13 @@ final class RaisingPanelView: NSView {
 
     @objc private func startTapped() {
         guard let dex = starterPopup?.selectedItem?.tag, dex > 0 else { return }
+        // Picking a starter IS choosing raising mode: from the standalone
+        // raising window the settings toggle may still be off, and a party
+        // the follower never shows would read as broken. Set it before
+        // startNewGame so its raisingChanged observers (follower swap,
+        // settings-window sync) see the final state. UI-level on purpose —
+        // selftests drive startNewGame directly and must not touch settings.
+        AppSettings.shared.raisingMode = true
         RaisingState.shared.startNewGame(dex: dex)
         detailIndex = nil
         refresh()

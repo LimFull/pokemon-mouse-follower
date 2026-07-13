@@ -16,6 +16,7 @@ private let idShadow: Int32 = 131
 private let idLaunch: Int32 = 132
 private let idRaising: Int32 = 133
 private let idCharLabel: Int32 = 134
+private let idRaisingIcon: Int32 = 135
 private let idLanguage: Int32 = 140
 private let idPrev: Int32 = 150
 private let idNext: Int32 = 151
@@ -98,6 +99,10 @@ private func settingsWndProc(_ hwnd: HWND?, _ msg: UINT, _ wParam: WPARAM, _ lPa
     case kWM_DESTROY:
         KillTimer(hwnd, 1)
         KillTimer(hwnd, 2)
+        if let observer = dlg.raisingObserver {
+            NotificationCenter.default.removeObserver(observer)
+            dlg.raisingObserver = nil
+        }
         dlg.panel = nil
         SettingsDialog.shared = nil
         return 0
@@ -138,6 +143,9 @@ final class SettingsDialog {
     private var k: Double = 1   // DPI scale (96 = 1x)
     /// The raising panel on the right (nil while raising mode is off).
     var panel: RaisingPanelWin?
+    /// Raising mode can flip on outside this dialog (picking a starter in
+    /// the standalone raising window) — keep the checkbox and layout in step.
+    var raisingObserver: NSObjectProtocol?
 
     // Preview animation state (idle-down frames of the selected character).
     private var previewFrames: [RGBABuffer] = []
@@ -178,10 +186,23 @@ final class SettingsDialog {
         updateModeVisibility()
         applyWindowSize()
         reloadPreview()
+        raisingObserver = NotificationCenter.default.addObserver(
+            forName: .raisingChanged, object: nil, queue: nil) { _ in
+            SettingsDialog.shared?.syncRaisingMode()
+        }
         SetTimer(hwnd, 1, 150, nil)
         SetTimer(hwnd, 2, 1000, nil)   // raising panel: battle/fainted refresh
         ShowWindow(hwnd, SW_SHOW)
         SetForegroundWindow(hwnd)
+    }
+
+    /// Sync the checkbox + mode layout when the setting changed elsewhere;
+    /// a no-op when this dialog's own toggle was the source.
+    func syncRaisingMode() {
+        let on = AppSettings.shared.raisingMode
+        guard (send(controls[idRaising], kBM_GETCHECK) == 1) != on else { return }
+        send(controls[idRaising], kBM_SETCHECK, on ? 1 : 0)
+        updateModeVisibility()
     }
 
     /// Show/hide the character-picker block and the raising panel per the
@@ -315,7 +336,8 @@ final class SettingsDialog {
         for (id, text, on) in [(idAltColor, L("label.altcolor"), s.altColor),
                                (idShadow, L("label.shadow"), s.showShadow),
                                (idLaunch, L("label.launch"), LoginItem.isEnabled),
-                               (idRaising, L("label.raising"), s.raisingMode)] {
+                               (idRaising, L("label.raising"), s.raisingMode),
+                               (idRaisingIcon, L("label.raisingicon"), s.raisingIconEnabled)] {
             _ = child("BUTTON", text, id: id, x: ctrlX, y: y, w: 240, h: 22,
                       style: DWORD(BS_AUTOCHECKBOX))
             send(controls[id], kBM_SETCHECK, on ? 1 : 0)
@@ -377,6 +399,9 @@ final class SettingsDialog {
             s.raisingMode = send(controls[idRaising], kBM_GETCHECK) == 1
             updateModeVisibility()
             NotificationCenter.default.post(name: .raisingChanged, object: nil)   // switch follower
+        case idRaisingIcon:
+            s.raisingIconEnabled = send(controls[idRaisingIcon], kBM_GETCHECK) == 1
+            NotificationCenter.default.post(name: .raisingIconChanged, object: nil)
         case idLanguage where code == kCBN_SELCHANGE:
             let i = Int(send(controls[idLanguage], kCB_GETCURSEL))
             s.language = ["auto", "en", "ko", "ja"][max(0, min(3, i))]

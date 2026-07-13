@@ -1,4 +1,5 @@
 "menu.settings" = "설정…";
+"menu.raising" = "키우기…";
 "menu.pause" = "일시정지";
 "menu.resume" = "다시 시작";
 "menu.quit" = "종료";
@@ -24,6 +25,7 @@
 "label.shadow" = "그림자";
 "label.launch" = "로그인 시 자동 실행";
 "label.raising" = "키우기 모드";
+"label.raisingicon" = "키우기 바로가기 아이콘";
 "button.details" = "상세 정보…";
 "detail.window.title" = "키우기 모드";
 "detail.empty" = "아직 포켓몬이 없습니다.\n스타터를 선택해 키우기를 시작하세요.";
