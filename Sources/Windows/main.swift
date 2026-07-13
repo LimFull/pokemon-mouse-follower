@@ -198,7 +198,7 @@ func tickFrame() {
             RaisingState.shared.regenTick()
         }
     }
-    // Timed revive (3h after fainting) + daily full heal (D23) at the actual
+    // Timed revive (level-scaled, capped at 1h) + daily full heal (D23) at the actual
     // date change, both deferred past battles.
     dailyHealCounter += 1
     if dailyHealCounter >= 10 * 60 {

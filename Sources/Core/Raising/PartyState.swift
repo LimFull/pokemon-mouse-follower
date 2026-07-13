@@ -72,13 +72,16 @@ struct OwnedPokemon: Codable {
     }
 
     /// A fainted mon gets back up on its own this long after fainting
-    /// (was: at the next local midnight via the daily heal).
-    static let reviveDelay: TimeInterval = 3 * 60 * 60
+    /// (was: a flat 3h): level × 2 minutes, capped at an hour — a Lv5
+    /// starter is back in 10 minutes, anything Lv30+ waits the full 60.
+    var reviveDelay: TimeInterval {
+        min(60, Double(level) * 2) * 60
+    }
 
     /// "2h 12m" until this fainted mon revives — shown for fainted members
     /// so a reset isn't tempting.
     var timeUntilRevive: String {
-        let end = (faintedAt ?? Date()).addingTimeInterval(Self.reviveDelay)
+        let end = (faintedAt ?? Date()).addingTimeInterval(reviveDelay)
         let mins = max(0, Int(end.timeIntervalSince(Date())) / 60)
         return mins >= 60 ? "\(mins / 60)h \(mins % 60)m" : "\(mins)m"
     }
@@ -597,7 +600,7 @@ final class RaisingState {
                 changed = true
                 continue
             }
-            if Date().timeIntervalSince(t) >= OwnedPokemon.reviveDelay {
+            if Date().timeIntervalSince(t) >= save.party[i].reviveDelay {
                 save.party[i].heal()
                 changed = true
             }
@@ -611,7 +614,7 @@ final class RaisingState {
 
     /// Fully heal the conscious party members if the local calendar day
     /// changed since the last heal. Fainted members are NOT revived here —
-    /// they get back up on their own 3h timer (timedReviveIfNeeded).
+    /// they get back up on their own level-scaled timer (timedReviveIfNeeded).
     /// Returns true if a heal happened. Notifies so panels redraw even when
     /// the heal fires from the app tick at midnight (the nested panel
     /// refresh this can cause is a one-shot: the second call is a no-op).

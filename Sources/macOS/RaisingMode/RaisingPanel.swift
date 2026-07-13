@@ -571,7 +571,7 @@ final class RaisingPanelView: NSView {
         inner.addArrangedSubview(hpRow)
         inner.addArrangedSubview(HPBarView(current: mon.currentHP, max: mon.maxHP, width: Self.contentWidth - 28))
         if mon.isFainted {
-            // Countdown to the timed revive (3h after fainting).
+            // Countdown to the timed revive (level × 2 min, capped at 1h).
             let l = monoLabel("\(L("detail.revive.in"))  \(mon.timeUntilRevive)", 11, .semibold)
             l.textColor = .systemRed
             inner.addArrangedSubview(l)

@@ -232,7 +232,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 RaisingState.shared.regenTick()
             }
         }
-        // Timed revive (3h after fainting) + daily full heal (D23) at the
+        // Timed revive (level-scaled, capped at 1h) + daily full heal (D23) at the
         // actual date change, with the settings window closed too. Deferred
         // past a battle in progress — its pre-simulated outcome would
         // overwrite the fresh HP at finishBattle.
