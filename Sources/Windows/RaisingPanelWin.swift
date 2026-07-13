@@ -223,6 +223,10 @@ final class RaisingPanelWin {
 
     private let parent: HWND
     private let panelX: Double            // 1x-unit x offset inside `parent`
+    /// False in the standalone raising window (macOS mirror): party + bag
+    /// only — the raising options (encounter interval, spawn toggles, reset)
+    /// live in the Settings host alone.
+    private let showsSettings: Bool
     private let k: Double                 // DPI scale
     private let font: HFONT?
     private let smallFont: HFONT?
@@ -246,9 +250,10 @@ final class RaisingPanelWin {
     private(set) var contentHeight = 0.0
 
     init(parent: HWND, k: Double, font: HFONT?, smallFont: HFONT?, monoFont: HFONT?,
-         panelX: Double = RaisingPanelWin.panelX) {
+         panelX: Double = RaisingPanelWin.panelX, showsSettings: Bool = true) {
         self.parent = parent
         self.panelX = panelX
+        self.showsSettings = showsSettings
         self.k = k
         self.font = font
         self.smallFont = smallFont
@@ -545,6 +550,9 @@ final class RaisingPanelWin {
             }
             y += 4
         }
+
+        // The standalone raising window stops here: party + bag only.
+        guard showsSettings else { return }
 
         // Raising-only settings.
         y += 10

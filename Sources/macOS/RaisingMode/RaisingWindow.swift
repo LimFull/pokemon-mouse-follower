@@ -16,7 +16,7 @@ final class RaisingWindowController: NSObject, NSWindowDelegate {
     private let panelWidth: CGFloat = 340
 
     override init() {
-        panel = RaisingPanelView(frame: .zero)
+        panel = RaisingPanelView(frame: .zero, showsSettings: false)
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: panelWidth, height: 400),
                           styleMask: [.titled, .closable], backing: .buffered, defer: false)
         super.init()

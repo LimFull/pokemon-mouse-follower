@@ -8,6 +8,10 @@
 import AppKit
 
 final class RaisingPanelView: NSView {
+    /// False in the standalone raising window (user request): party + bag
+    /// only — the raising options (encounter interval, spawn toggles, reset)
+    /// live in the Settings host alone.
+    private let showsSettings: Bool
     private var detailIndex: Int?          // nil = list/empty mode
     private var expandedMove: Int?         // move id whose description is expanded
     private var bagExpanded = false        // bag card disclosure state
@@ -28,7 +32,8 @@ final class RaisingPanelView: NSView {
 
     private static let contentWidth: CGFloat = 300
 
-    override init(frame: NSRect) {
+    init(frame: NSRect, showsSettings: Bool = true) {
+        self.showsSettings = showsSettings
         super.init(frame: frame)
         refresh()
         // Live refresh on captures, pickups, evolutions, party edits.
@@ -172,6 +177,9 @@ final class RaisingPanelView: NSView {
         root.setCustomSpacing(16, after: root.arrangedSubviews.last ?? root)
         root.addArrangedSubview(bagHeader())
         if bagExpanded { root.addArrangedSubview(bagCard()) }
+
+        // The standalone raising window stops here: party + bag only.
+        guard showsSettings else { return }
 
         // Raising-only settings (moved off the general pane): encounter
         // interval + master switches for wild and item spawns.

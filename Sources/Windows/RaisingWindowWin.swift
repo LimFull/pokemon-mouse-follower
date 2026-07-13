@@ -128,7 +128,7 @@ final class RaisingWindowWin {
         monoFont = makeUIMonoFont(11, k: k)
         let p = RaisingPanelWin(parent: hwnd, k: k, font: font,
                                 smallFont: smallFont, monoFont: monoFont,
-                                panelX: panelMargin)
+                                panelX: panelMargin, showsSettings: false)
         p.onContentChanged = { [weak self] in self?.applyWindowSize() }
         panel = p
         applyWindowSize()
