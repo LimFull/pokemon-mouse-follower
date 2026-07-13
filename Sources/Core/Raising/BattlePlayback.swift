@@ -1246,6 +1246,10 @@ final class BattleController: LiveBattleBridge {
             phase = .present
         }
         playerTransformedDex = nil
+        // The fatal hit's damage number outlives its event (its fade window
+        // runs past curTicks) and nothing ticks it outside .battling — clear
+        // it, or a faint leaves the last "-NN" frozen while the wild lingers.
+        dmgText = nil; dmgAlpha = 0
         // The battle ended during the turn the flee was waiting on — the
         // outcome stands (applied above), THEN the recall goes through.
         if recallTurn != nil {
