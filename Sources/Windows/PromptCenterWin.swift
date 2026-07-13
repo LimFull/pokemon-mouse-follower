@@ -146,7 +146,10 @@ final class PromptCenterWin {
         var y = pad
         let titleH = 22.0, subH = 18.0, btnH = 30.0
         let headH = headline != nil ? 24.0 : 0.0
-        let descH = desc != nil ? 34.0 : 0.0   // two wrapped small lines
+        // STATIC wraps but never grows — size it to the estimated line count.
+        let descH = desc.map {
+            Double(estimatedWrappedLines($0, width: cardW - pad - padR)) * 15 + 4
+        } ?? 0.0
 
         let totalH = pad + titleH + (headline != nil ? headH + 2 : 0) + 4 + subH
             + (desc != nil ? descH + 4 : 0) + 12

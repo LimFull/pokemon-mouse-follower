@@ -399,7 +399,6 @@ final class BattleController: LiveBattleBridge {
         // Balls to throw (D11) — only when the bag's capture toggle is on; a
         // full party still catches (the release-or-abandon prompt resolves it
         // afterwards). Re-synced at every round boundary so the toggle is live.
-        let st = RaisingState.shared
         let balls = ballStock(used: [])
         // Gauges start at the REAL current/max ratio (a hurt mon enters hurt;
         // a rematched wild keeps its damage) — captured before the first

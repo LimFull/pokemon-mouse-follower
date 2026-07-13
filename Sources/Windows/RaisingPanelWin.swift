@@ -8,9 +8,8 @@
 // uses with NSStackView.
 //
 // Visual simplifications vs macOS (functional parity kept): type/status show
-// as text instead of colored chips, move descriptions are not expanded
-// inline (type/category/power/accuracy still are), and the bag list is not
-// scrollable (it grows the panel; 14 item kinds max).
+// as text instead of colored chips, and the bag list is not scrollable (it
+// grows the panel; 14 item kinds max).
 
 import WinSDK
 import Foundation
@@ -27,6 +26,18 @@ private func sendListString(_ h: HWND?, _ s: String) {
         _ = SendMessageW(h, kLB_ADDSTRING, 0,
                          LPARAM(Int(bitPattern: UnsafeRawPointer($0.baseAddress!))))
     }
+}
+
+/// Rough wrapped-line count for Segoe UI text at the given size: CJK glyphs
+/// advance ~one em, Latin/digits/punctuation about half. STATIC controls wrap
+/// but never auto-grow, so callers size them from this; a slight overshoot
+/// just leaves a few blank pixels. Shared with PromptCenterWin.
+func estimatedWrappedLines(_ text: String, width: Double, fontSize: Double = 11) -> Int {
+    var w = 0.0
+    for ch in text.unicodeScalars {
+        w += ch.value >= 0x1100 ? fontSize : fontSize * 0.55
+    }
+    return max(1, Int((w / width).rounded(.up)))
 }
 
 @discardableResult
@@ -669,6 +680,13 @@ final class RaisingPanelWin {
                 meta += "  \(L("move.accuracy")) \(m.accuracyText)"
                 label(meta, x: 16, y: y, w: RaisingPanelWin.contentWidth - 16, mono: true, small: true)
                 y += 20
+                // What the move does — same expansion as the macOS panel.
+                if let d = m.localizedDesc, !d.isEmpty {
+                    let descW = RaisingPanelWin.contentWidth - 16
+                    let h = Double(estimatedWrappedLines(d, width: descW)) * 15 + 2
+                    label(d, x: 16, y: y, w: descW, h: h, small: true)
+                    y += h + 4
+                }
             }
         }
         if !mon.moves.isEmpty, mon.moves.allSatisfy({ !mon.isMoveEnabled($0) }) {
