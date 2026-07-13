@@ -86,14 +86,19 @@ Windows 10+ · x64.
 2. SmartScreen 경고가 뜨면 **추가 정보 → 실행**을 누르세요 — 코드 서명이 없어 뜨는 경고입니다
 '@.Replace("{VERSION}", $version).Replace("{CHANGES}", $changes)
 
-# Create or update the GitHub Release and upload both assets.
+# Create or update the GitHub Release and upload both assets. The notes go
+# through a file: PowerShell 5.1 doesn't escape embedded double quotes when
+# building a native command line, so changelog text like "새 기술을 배울까요?"
+# would split --notes into multiple arguments.
+$notesFile = Join-Path $env:TEMP "pmf-release-notes.md"
+[System.IO.File]::WriteAllText($notesFile, $notes, (New-Object System.Text.UTF8Encoding($false)))
 cmd /c "gh release view $tag >nul 2>nul"
 if ($LASTEXITCODE -eq 0) {
     Write-Host "==> Release $tag exists; uploading assets..."
     gh release upload $tag $zip $setup --clobber
 } else {
     Write-Host "==> Creating release $tag..."
-    gh release create $tag $zip $setup --title "Pokémon Mouse Follower $version" --notes $notes
+    gh release create $tag $zip $setup --title "Pokémon Mouse Follower $version" --notes-file $notesFile
 }
 if ($LASTEXITCODE -ne 0) { Write-Error "gh release failed" }
 Write-Host "==> Published: https://github.com/LimFull/pokemon-mouse-follower/releases/tag/$tag"
