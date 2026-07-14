@@ -35,6 +35,53 @@ rm -f "/tmp/${APP_NAME}_arm64" "/tmp/${APP_NAME}_x86_64"
 
 cp Info.plist "$BUNDLE/Contents/Info.plist"
 
+# Move playback needs each species' ROM caster-pose sheets (Swing/Double/Hop/
+# Rotate/Strike & their CopyOf targets) on top of the walk/idle set — for both
+# the base folder and its alt-color variant. They're committed, but a partial
+# checkout can miss them, and it only shows up mid-move: a plain gap (base) or a
+# wrong-color sprite when alt-color is on (altcolor -> base fallback in
+# FollowerBrain.romSheet). Fetch on demand so a build is never silently short a
+# sprite.
+echo "==> Verifying sprite assets (fetch on demand)..."
+# Base poses: this fetcher self-scans and downloads only what's missing (a no-op
+# with no network when complete), so it's safe to run every build.
+./fetch-rom-pose-anims.sh
+# Alt-color poses: fetch-altcolors.sh re-pulls its whole whitelist over the
+# network, so only run it when a variant is actually missing a ROM caster-pose
+# sheet. We check exactly the move-pose set (indices 2/8/9/10/11/12, CopyOf-
+# resolved from each variant's own AnimData.xml) — NOT every base sheet, since a
+# few forms legitimately lack a Faint sheet upstream and would otherwise trip the
+# fetch on every build.
+if ! python3 - <<'PY'
+import re, os, sys, glob
+NEED = {2, 8, 9, 10, 11, 12}
+def pose_sheets(xml):
+    anims = {}
+    for m in re.finditer(r'<Anim>\s*<Name>(\w+)</Name>(?:\s*<Index>(-?\d+)</Index>)?'
+                         r'(?:\s*<CopyOf>(\w+)</CopyOf>)?', xml):
+        anims[m.group(1)] = (int(m.group(2)) if m.group(2) else None, m.group(3))
+    byidx = {idx: name for name, (idx, _) in anims.items() if idx is not None}
+    for idx in NEED:
+        name = byidx.get(idx)
+        if not name:
+            continue
+        seen, target = set(), name           # follow CopyOf to the shipped sheet
+        while anims.get(target, (None, None))[1] and target not in seen:
+            seen.add(target)
+            target = anims[target][1]
+        yield target
+for xmlp in glob.glob('animations/*/altcolor/AnimData.xml'):
+    d = os.path.dirname(xmlp)
+    for name in pose_sheets(open(xmlp).read()):
+        if not os.path.isfile(f'{d}/{name}-Anim.png'):
+            sys.exit(1)                       # a variant is missing a pose sheet
+sys.exit(0)
+PY
+then
+  echo "  alt-color variants missing pose sheets -> ./fetch-altcolors.sh"
+  ./fetch-altcolors.sh
+fi
+
 echo "==> Bundling sprite assets..."
 rm -rf "$BUNDLE/Contents/Resources/characters"
 mkdir -p "$BUNDLE/Contents/Resources/characters"
