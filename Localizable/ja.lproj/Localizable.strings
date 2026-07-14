@@ -14,6 +14,11 @@
 "update.downloading" = "アップデートをダウンロード中…";
 "update.installing" = "インストール中… アプリが再起動します。";
 "update.error" = "アップデート失敗";
+"update.error.network" = "アップデートサーバーに接続できません。接続を確認して再試行してください。";
+"update.error.server" = "サーバー応答エラー";
+"update.error.parse" = "リリース情報を解釈できません。";
+"update.error.ratelimit.wait" = "アップデート確認がGitHubにより一時的に制限されています。約%d分後に再試行してください。";
+"update.error.ratelimit" = "アップデート確認がGitHubにより一時的に制限されています。しばらくして再試行してください。";
 "settings.window.title" = "Pokémon Mouse Follower 設定";
 "label.character" = "キャラクター";
 "button.random" = "ランダム";

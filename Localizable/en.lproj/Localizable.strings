@@ -14,6 +14,11 @@
 "update.downloading" = "Downloading update…";
 "update.installing" = "Installing… the app will restart.";
 "update.error" = "Update failed";
+"update.error.network" = "Couldn't reach the update server. Check your connection and try again.";
+"update.error.server" = "Server response error";
+"update.error.parse" = "Couldn't read the release information.";
+"update.error.ratelimit.wait" = "Update checks are temporarily rate-limited by GitHub. Please try again in about %d min.";
+"update.error.ratelimit" = "Update checks are temporarily rate-limited by GitHub. Please try again later.";
 "settings.window.title" = "Pokémon Mouse Follower Settings";
 "label.character" = "Character";
 "button.random" = "Random";

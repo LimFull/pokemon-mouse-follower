@@ -25,6 +25,19 @@ enum Updater {
     }
     /// The app name inside the disk image (volume root), fixed by `release.sh`.
     private static let dmgAppName = "PokemonMouseFollower.app"
+    /// Versionless stable dmg every macOS release publishes (release.sh).
+    private static let stableDMGName = "PokemonMouseFollower.dmg"
+    /// Releases Atom feed — a normal github.com page, NOT the rate-limited API.
+    private static var atomURL: URL {
+        URL(string: "https://github.com/\(owner)/\(repo)/releases.atom")!
+    }
+    /// Conventional download URL for a tag's stable dmg. release.sh uploads it
+    /// on every macOS release, so we can offer an update without asking the API
+    /// to resolve the asset URL — and a HEAD on it tells us whether a given tag
+    /// actually ships a macOS build (vs. a Windows-only release).
+    private static func releaseDownloadURL(tag: String) -> URL {
+        URL(string: "https://github.com/\(owner)/\(repo)/releases/download/\(tag)/\(stableDMGName)")!
+    }
 
     static var currentVersion: String {
         (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "0.0.0"
@@ -62,27 +75,118 @@ enum Updater {
 
     // MARK: Fetch latest release (completion always on the main thread)
 
+    /// Version check goes through the releases **Atom feed** first, not the
+    /// GitHub API. The API's unauthenticated limit is only 60 requests/hour per
+    /// IP, so repeated "check for updates" clicks (or a shared/NAT'd IP) hit
+    /// HTTP 403 — which used to surface as a bare "서버 응답 오류". The feed is a
+    /// normal github.com page with far more generous limits, so routine checks
+    /// (the common "already up to date" case) cost zero API calls. The API is
+    /// kept as a fallback for when the feed is unreachable or its format changes.
     static func fetchLatest(completion: @escaping (Result<Release, Error>) -> Void) {
+        fetchViaAtom { result in
+            switch result {
+            case .success(let release): DispatchQueue.main.async { completion(.success(release)) }
+            case .failure: fetchViaAPI(completion: completion)   // feed down → API fallback
+            }
+        }
+    }
+
+    // MARK: Atom feed (primary — no API rate limit)
+
+    private static func fetchViaAtom(completion: @escaping (Result<Release, Error>) -> Void) {
+        var req = URLRequest(url: atomURL, timeoutInterval: 15)
+        req.setValue("PokemonMouseFollower", forHTTPHeaderField: "User-Agent")
+        URLSession.shared.dataTask(with: req) { data, resp, error in
+            guard error == nil,
+                  let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+                  let data, let xml = String(data: data, encoding: .utf8) else {
+                completion(.failure(err("atom feed unavailable"))); return   // → API fallback
+            }
+            // Newest release (by version) that actually ships a macOS .dmg. Each
+            // OS versions independently and a single tag may carry only the other
+            // platform's assets, so verify the dmg exists before offering it —
+            // a HEAD on the download host, still not the rate-limited API.
+            let newer = parseAtom(xml)
+                .filter { isNewer($0.version, than: currentVersion) }
+                .sorted { isNewer($0.version, than: $1.version) }
+            for entry in newer {
+                let dmg = releaseDownloadURL(tag: entry.tag)
+                if headOK(dmg) {
+                    completion(.success(Release(version: entry.version, dmgURL: dmg,
+                                                notes: notesFromAtom(entry.content))))
+                    return
+                }
+            }
+            // Nothing newer with a macOS build → report current (→ "up to date").
+            completion(.success(Release(version: currentVersion, dmgURL: fallbackDMG, notes: "")))
+        }.resume()
+    }
+
+    /// Parse the releases Atom feed into (version, tag, rawContentHTML) entries,
+    /// in feed order. String-scanned rather than XML-parsed so the identical
+    /// approach ports to the Windows updater without FoundationXML.
+    static func parseAtom(_ xml: String) -> [(version: String, tag: String, content: String)] {
+        var out: [(version: String, tag: String, content: String)] = []
+        for e in xml.components(separatedBy: "<entry>").dropFirst() {
+            guard let tag = between(e, "/releases/tag/", "\"") else { continue }
+            var content = between(e, "<content", "</content>") ?? ""
+            if let gt = content.firstIndex(of: ">") {   // drop the opening tag's attributes
+                content = String(content[content.index(after: gt)...])
+            }
+            let version = tag.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "v "))
+            out.append((version, tag, content))
+        }
+        return out
+    }
+
+    /// The substring strictly between `a` and the next `b` following it.
+    static func between(_ s: String, _ a: String, _ b: String) -> String? {
+        guard let r = s.range(of: a) else { return nil }
+        let rest = s[r.upperBound...]
+        guard let e = rest.range(of: b) else { return nil }
+        return String(rest[..<e.lowerBound])
+    }
+
+    /// Synchronous HEAD: does the release ship this asset (2xx/3xx)? Runs on the
+    /// atom fetch's background thread, so the brief block is harmless.
+    private static func headOK(_ url: URL) -> Bool {
+        var req = URLRequest(url: url, timeoutInterval: 10)
+        req.httpMethod = "HEAD"
+        req.setValue("PokemonMouseFollower", forHTTPHeaderField: "User-Agent")
+        let sem = DispatchSemaphore(value: 0)
+        var ok = false
+        URLSession.shared.dataTask(with: req) { _, resp, _ in
+            if let h = resp as? HTTPURLResponse { ok = (200..<400).contains(h.statusCode) }
+            sem.signal()
+        }.resume()
+        _ = sem.wait(timeout: .now() + 12)
+        return ok
+    }
+
+    // MARK: GitHub API (fallback — unauthenticated, 60 requests/hour per IP)
+
+    private static func fetchViaAPI(completion: @escaping (Result<Release, Error>) -> Void) {
         var req = URLRequest(url: apiURL, timeoutInterval: 15)
         req.setValue("PokemonMouseFollower", forHTTPHeaderField: "User-Agent")   // GitHub API rejects UA-less requests
         req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         URLSession.shared.dataTask(with: req) { data, resp, error in
             let finish: (Result<Release, Error>) -> Void = { r in DispatchQueue.main.async { completion(r) } }
             if let error { finish(.failure(error)); return }
-            guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode), let data else {
-                finish(.failure(err("서버 응답 오류"))); return
+            guard let http = resp as? HTTPURLResponse else { finish(.failure(err(L("update.error.network")))); return }
+            if let rateErr = rateLimitError(http) { finish(.failure(rateErr)); return }
+            guard (200..<300).contains(http.statusCode), let data else {
+                finish(.failure(err(L("update.error.server") + " (\(http.statusCode))"))); return
             }
             guard let list = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
-                finish(.failure(err("릴리스 정보를 해석할 수 없습니다"))); return
+                finish(.failure(err(L("update.error.parse")))); return
             }
             // Newest published release that ships a macOS .dmg — each OS
             // versions independently, so Windows-only releases are skipped.
-            let dmgName = dmgAppName.replacingOccurrences(of: ".app", with: ".dmg")
             for json in list {
                 if (json["draft"] as? Bool) == true || (json["prerelease"] as? Bool) == true { continue }
                 guard let tag = json["tag_name"] as? String,
                       let assets = json["assets"] as? [[String: Any]] else { continue }
-                let match = assets.first { ($0["name"] as? String) == dmgName }
+                let match = assets.first { ($0["name"] as? String) == stableDMGName }
                         ?? assets.first { ($0["name"] as? String)?.hasSuffix(".dmg") == true }
                 guard let u = match?["browser_download_url"] as? String, let dmg = URL(string: u) else { continue }
                 let version = tag.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "v "))
@@ -94,6 +198,19 @@ enum Updater {
             // alert says "up to date" instead of offering a 404 download.
             finish(.success(Release(version: currentVersion, dmgURL: fallbackDMG, notes: "")))
         }.resume()
+    }
+
+    /// GitHub returns 403 (or 429) with `x-ratelimit-remaining: 0` when the
+    /// unauthenticated 60/hr budget is spent. Turn that into a clear, actionable
+    /// message (with a reset countdown) instead of a bare "server error".
+    private static func rateLimitError(_ http: HTTPURLResponse) -> NSError? {
+        guard http.statusCode == 403 || http.statusCode == 429,
+              http.value(forHTTPHeaderField: "x-ratelimit-remaining") == "0" else { return nil }
+        if let resetStr = http.value(forHTTPHeaderField: "x-ratelimit-reset"), let reset = Double(resetStr) {
+            let mins = max(1, Int(ceil((reset - Date().timeIntervalSince1970) / 60)))
+            return err(L("update.error.ratelimit.wait").replacingOccurrences(of: "%d", with: "\(mins)"))
+        }
+        return err(L("update.error.ratelimit"))
     }
 
     /// The update dialog shows what changed, not the whole release page:
@@ -110,6 +227,41 @@ enum Updater {
         var notes = String(body[s.upperBound...])
         if let e = notes.range(of: "\n## ") { notes = String(notes[..<e.lowerBound]) }
         return notes.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// The Atom feed carries the release body as rendered HTML, not markdown, so
+    /// extract the "변경 사항" section and flatten it to plain text for the dialog.
+    static func notesFromAtom(_ rawContent: String) -> String {
+        let html = decodeEntities(rawContent)
+        var section = html
+        if let s = html.range(of: "변경 사항") {
+            section = String(html[s.upperBound...])
+            if let e = section.range(of: "<h2") { section = String(section[..<e.lowerBound]) }
+        } else if let e = html.range(of: "<h2") {
+            section = String(html[..<e.lowerBound])   // no heading → body up to the first section
+        }
+        return htmlToText(section)
+    }
+
+    private static func decodeEntities(_ s: String) -> String {
+        var t = s
+        for (e, c) in [("&lt;", "<"), ("&gt;", ">"), ("&quot;", "\""),
+                       ("&#39;", "'"), ("&#38;", "&"), ("&nbsp;", " "), ("&amp;", "&")] {
+            t = t.replacingOccurrences(of: e, with: c)
+        }
+        return t
+    }
+
+    private static func htmlToText(_ html: String) -> String {
+        var t = html
+        for (tag, repl) in [("<li>", "- "), ("</li>", "\n"), ("<br>", "\n"), ("<br/>", "\n"),
+                            ("<br />", "\n"), ("</p>", "\n"), ("</h2>", "\n"),
+                            ("</ul>", "\n"), ("</ol>", "\n")] {
+            t = t.replacingOccurrences(of: tag, with: repl, options: .caseInsensitive)
+        }
+        t = t.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
+        let lines = t.components(separatedBy: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
+        return lines.filter { !$0.isEmpty }.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     // MARK: Install + relaunch
