@@ -29,6 +29,9 @@
 "label.altcolor" = "色違い";
 "label.shadow" = "影";
 "label.hidefromcapture" = "画面キャプチャから隠す";
+"label.pausehotkey" = "一時停止のショートカット";
+"hotkey.none" = "なし";
+"hotkey.recording" = "ショートカットを入力…";
 "label.launch" = "ログイン時に起動";
 "label.raising" = "育成モード";
 "label.raisingicon" = "育成ショートカットアイコン";

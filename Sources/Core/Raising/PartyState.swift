@@ -17,6 +17,8 @@ extension Notification.Name {
     static let raisingIconChanged = Notification.Name("raisingIconChanged")
     /// The settings checkbox toggled screen-capture exclusion for the overlays.
     static let captureProtectionChanged = Notification.Name("captureProtectionChanged")
+    /// The pause global-hotkey binding changed in settings; re-register it.
+    static let pauseHotkeyChanged = Notification.Name("pauseHotkeyChanged")
 }
 
 enum Gender: String, Codable {

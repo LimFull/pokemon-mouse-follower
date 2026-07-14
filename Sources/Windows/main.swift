@@ -79,6 +79,13 @@ let captureProtectionObserver = NotificationCenter.default.addObserver(
     forName: .captureProtectionChanged, object: nil, queue: nil) { _ in
     applyCaptureProtection()
 }
+// Global pause hotkey (hide/show the follower & effects from anywhere — handy
+// before a screen recording). Re-registered live when changed in settings.
+tray.applyPauseHotkey()
+let pauseHotkeyObserver = NotificationCenter.default.addObserver(
+    forName: .pauseHotkeyChanged, object: nil, queue: nil) { _ in
+    tray.applyPauseHotkey()
+}
 SettingsDialog.onCharacterChanged = {
     controller.setCharacter(RaisingState.shared.followerFolder)   // raising mon keeps priority
 }

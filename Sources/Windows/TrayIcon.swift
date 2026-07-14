@@ -7,6 +7,10 @@ import WinSDK
 import Foundation
 
 private let kTrayCallback = UINT(0x8000 + 1)   // WM_APP + 1
+private let kWM_HOTKEY: UINT = 0x0312
+private let kMOD_NOREPEAT: DWORD = 0x4000
+/// App-registered hotkey id (must be in the 0x0000–0xBFFF app range).
+let kPauseHotkeyId: Int32 = 0xB001
 private let kCmdPause: UINT_PTR = 1
 private let kCmdQuit: UINT_PTR = 2
 private let kCmdSettings: UINT_PTR = 3
@@ -34,6 +38,10 @@ private func trayWndProc(_ hwnd: HWND?, _ msg: UINT, _ wParam: WPARAM, _ lParam:
     case UINT(WM_COMMAND):
         trayInstance?.handleCommand(UINT_PTR(wParam & 0xFFFF))
         return 0
+    case kWM_HOTKEY:
+        // Global pause hotkey: reuse the exact menu pause path (toggle + hide).
+        if wParam == WPARAM(kPauseHotkeyId) { trayInstance?.handleCommand(kCmdPause) }
+        return 0
     case UINT(WM_DISPLAYCHANGE):
         ScreenAdapter.refresh()
         trayInstance?.onDisplayChange?()
@@ -58,6 +66,17 @@ final class TrayIcon {
     var onDisplayChange: (() -> Void)?
     // Debug panel opener (dev runs only; wired by main when PMF.isDevRun).
     var onOpenDebugPanel: (() -> Void)?
+
+    /// (Re)register the global pause hotkey from settings on the tray's message
+    /// window (WM_HOTKEY lands in trayWndProc). keyCode < 0 leaves it unbound.
+    func applyPauseHotkey() {
+        guard let hwnd else { return }
+        UnregisterHotKey(hwnd, kPauseHotkeyId)
+        let code = AppSettings.shared.pauseHotkeyKeyCode
+        guard code >= 0 else { return }
+        let mods = DWORD(AppSettings.shared.pauseHotkeyModifiers) | kMOD_NOREPEAT
+        RegisterHotKey(hwnd, kPauseHotkeyId, mods, UINT(code))
+    }
 
     /// Thread-safe quit: posts the Quit command to the tray window, so worker
     /// threads (the updater) can end the app from the main loop.

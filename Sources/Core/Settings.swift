@@ -15,6 +15,23 @@ enum PMF {
         || ProcessInfo.processInfo.environment["PMF_FAST_BATTLE"] != nil
 }
 
+// MARK: - Pause-hotkey platform defaults
+/// Default global pause hotkey, in each platform's native key/modifier codes.
+/// macOS uses Carbon virtual key codes + Carbon modifier masks; Windows uses
+/// VK_* codes + MOD_* masks. A user's settings never move between OSes, so
+/// each platform persists its own native values.
+enum PauseHotkey {
+#if os(macOS)
+    static let defaultKeyCode = 35          // kVK_ANSI_P
+    static let defaultModifiers = 0x0A00    // optionKey | shiftKey
+    static let defaultLabel = "⌥⇧P"
+#else
+    static let defaultKeyCode = 0x50        // 'P'
+    static let defaultModifiers = 0x0005    // MOD_ALT | MOD_SHIFT
+    static let defaultLabel = "Alt+Shift+P"
+#endif
+}
+
 // MARK: - Settings persistence seam
 /// UserDefaults-shaped key/value store. `has` mirrors `object(forKey:) != nil`
 /// so the "unset -> default" semantics stay byte-identical on both platforms.
@@ -74,6 +91,23 @@ final class AppSettings {
     var hideFromCapture: Bool {
         get { d.bool("hideFromCapture") }   // defaults to false = capturable
         set { d.set(newValue, "hideFromCapture") }
+    }
+    // Global hotkey that toggles pause (hide/show the follower & effects) —
+    // handy for hiding everything during a screen recording, where capture
+    // exclusion can't help on macOS 15+. Stored as the platform-native virtual
+    // key code + modifier mask (Carbon on macOS, MOD_/VK_ on Windows); `label`
+    // is the display string. keyCode < 0 disables it.
+    var pauseHotkeyKeyCode: Int {
+        get { d.has("pauseHotkeyKeyCode") ? Int(d.double("pauseHotkeyKeyCode")) : PauseHotkey.defaultKeyCode }
+        set { d.set(Double(newValue), "pauseHotkeyKeyCode") }
+    }
+    var pauseHotkeyModifiers: Int {
+        get { d.has("pauseHotkeyModifiers") ? Int(d.double("pauseHotkeyModifiers")) : PauseHotkey.defaultModifiers }
+        set { d.set(Double(newValue), "pauseHotkeyModifiers") }
+    }
+    var pauseHotkeyLabel: String {
+        get { d.string("pauseHotkeyLabel") ?? PauseHotkey.defaultLabel }
+        set { d.set(newValue, "pauseHotkeyLabel") }
     }
     // Use the alternate-color sprite variant when a character has one.
     var altColor: Bool {

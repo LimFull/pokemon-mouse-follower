@@ -76,6 +76,14 @@ final class SettingsWindowController: NSObject {
         grid.addRow(with: [makeLabel(L("label.altcolor")), makeCheckbox(on: AppSettings.shared.altColor, action: #selector(altColorToggled(_:))), NSGridCell.emptyContentView])
         grid.addRow(with: [makeLabel(L("label.shadow")), makeCheckbox(on: AppSettings.shared.showShadow, action: #selector(shadowToggled(_:))), NSGridCell.emptyContentView])
         grid.addRow(with: [makeLabel(L("label.hidefromcapture")), makeCheckbox(on: AppSettings.shared.hideFromCapture, action: #selector(hideFromCaptureToggled(_:))), NSGridCell.emptyContentView])
+        let hotkeyRecorder = HotkeyRecorderButton()
+        hotkeyRecorder.onChange = { code, mods, label in
+            AppSettings.shared.pauseHotkeyKeyCode = code
+            AppSettings.shared.pauseHotkeyModifiers = mods
+            AppSettings.shared.pauseHotkeyLabel = label
+            NotificationCenter.default.post(name: .pauseHotkeyChanged, object: nil)
+        }
+        grid.addRow(with: [makeLabel(L("label.pausehotkey")), hotkeyRecorder, NSGridCell.emptyContentView])
         grid.addRow(with: [makeLabel(L("label.launch")), makeCheckbox(on: LoginItem.isEnabled, action: #selector(launchToggled(_:))), NSGridCell.emptyContentView])
         grid.addRow(with: [makeLabel(L("label.uiscale")), makeUIScalePopup(), NSGridCell.emptyContentView])
         let raisingCB = makeCheckbox(on: AppSettings.shared.raisingMode, action: #selector(raisingToggled(_:)))

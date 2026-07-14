@@ -18,6 +18,7 @@ private let idRaising: Int32 = 133
 private let idCharLabel: Int32 = 134
 private let idRaisingIcon: Int32 = 135
 private let idHideCapture: Int32 = 136
+private let idPauseHotkey: Int32 = 137
 private let idLanguage: Int32 = 140
 private let idPrev: Int32 = 150
 private let idNext: Int32 = 151
@@ -65,6 +66,46 @@ private let previewClassName = wide("PMFSettingsPreview")
 private var settingsClassRegistered = false
 
 private let kWM_CTLCOLORSTATIC: UINT = 0x0138
+
+// Hotkey recorder control (a custom-class child window, like the preview).
+private let hotkeyClassName = wide("PMFHotkeyRec")
+private let kWM_KEYDOWN: UINT = 0x0100
+private let kWM_SYSKEYDOWN: UINT = 0x0104
+private let kWM_SETFOCUS: UINT = 0x0007
+private let kWM_KILLFOCUS: UINT = 0x0008
+private let kWM_LBUTTONDOWN: UINT = 0x0201
+private let kWM_ERASEBKGND: UINT = 0x0014
+private let kMOD_ALT = 0x0001, kMOD_CONTROL = 0x0002, kMOD_SHIFT = 0x0004, kMOD_WIN = 0x0008
+private let kCOLOR_WINDOW: Int32 = 5, kCOLOR_WINDOWTEXT: Int32 = 8
+private let kCOLOR_HIGHLIGHT: Int32 = 13, kCOLOR_GRAYTEXT: Int32 = 17
+private let kDT_CENTERED: UINT = 0x0025   // DT_CENTER | DT_VCENTER | DT_SINGLELINE
+
+private func hotkeyRecWndProc(_ hwnd: HWND?, _ msg: UINT, _ wParam: WPARAM, _ lParam: LPARAM) -> LRESULT {
+    guard let dlg = SettingsDialog.shared else { return DefWindowProcW(hwnd, msg, wParam, lParam) }
+    switch msg {
+    case kWM_PAINT:
+        dlg.paintHotkey(hwnd)
+        return 0
+    case kWM_ERASEBKGND:
+        return 1   // fully repainted in WM_PAINT; skip to avoid flicker
+    case kWM_LBUTTONDOWN:
+        SetFocus(hwnd)
+        dlg.startHotkeyRecording()
+        return 0
+    case kWM_SETFOCUS:
+        InvalidateRect(hwnd, nil, true)
+        return 0
+    case kWM_KILLFOCUS:
+        dlg.cancelHotkeyRecording()
+        InvalidateRect(hwnd, nil, true)
+        return 0
+    case kWM_KEYDOWN, kWM_SYSKEYDOWN:
+        dlg.hotkeyKeyDown(Int(wParam))
+        return 0
+    default:
+        return DefWindowProcW(hwnd, msg, wParam, lParam)
+    }
+}
 
 private func settingsWndProc(_ hwnd: HWND?, _ msg: UINT, _ wParam: WPARAM, _ lParam: LPARAM) -> LRESULT {
     guard let dlg = SettingsDialog.shared else { return DefWindowProcW(hwnd, msg, wParam, lParam) }
@@ -138,6 +179,8 @@ final class SettingsDialog {
     private(set) var hwnd: HWND?
     private var controls: [Int32: HWND] = [:]
     private var previewHwnd: HWND?
+    private var hotkeyHwnd: HWND?
+    private var hotkeyRecording = false
     private var font: HFONT?
     private var smallFont: HFONT?
     private var monoFont: HFONT?
@@ -167,6 +210,12 @@ final class SettingsDialog {
             pc.hInstance = GetModuleHandleW(nil)
             previewClassName.withUnsafeBufferPointer { pc.lpszClassName = $0.baseAddress }
             RegisterClassW(&pc)
+            var hc = WNDCLASSW()
+            hc.lpfnWndProc = { hotkeyRecWndProc($0, $1, $2, $3) }
+            hc.hInstance = GetModuleHandleW(nil)
+            hc.hCursor = LoadCursorW(nil, UnsafePointer<WCHAR>(bitPattern: 32649))   // IDC_HAND
+            hotkeyClassName.withUnsafeBufferPointer { hc.lpszClassName = $0.baseAddress }
+            RegisterClassW(&hc)
             settingsClassRegistered = true
         }
 
@@ -347,6 +396,13 @@ final class SettingsDialog {
         }
         y += 6
 
+        // Pause global hotkey — a custom recorder control: click it, then press
+        // a Ctrl/Alt/Win + key chord (Esc cancels, Backspace/Delete clears).
+        label(L("label.pausehotkey"), y)
+        hotkeyHwnd = child(String(decoding: hotkeyClassName.dropLast(), as: UTF16.self), "",
+                           id: idPauseHotkey, x: ctrlX, y: y, w: 170, h: 24, style: DWORD(WS_TABSTOP))
+        y += rowH + 6
+
         // Language (Windows-only, W10): auto / en / ko / ja; needs a restart.
         label(L("label.language"), y)
         let lang = child("COMBOBOX", "", id: idLanguage, x: ctrlX, y: y, w: ctrlW, h: 200,
@@ -466,6 +522,103 @@ final class SettingsDialog {
         guard previewFrames.count > 1 else { return }
         previewIndex = (previewIndex + 1) % previewFrames.count
         if let previewHwnd { InvalidateRect(previewHwnd, nil, false) }
+    }
+
+    // MARK: pause-hotkey recorder
+
+    fileprivate func hotkeyDisplayText() -> String {
+        if hotkeyRecording { return L("hotkey.recording") }
+        return AppSettings.shared.pauseHotkeyKeyCode < 0 ? L("hotkey.none")
+                                                         : AppSettings.shared.pauseHotkeyLabel
+    }
+
+    fileprivate func startHotkeyRecording() {
+        hotkeyRecording = true
+        repaintHotkey()
+    }
+
+    fileprivate func cancelHotkeyRecording() {
+        if hotkeyRecording { hotkeyRecording = false; repaintHotkey() }
+    }
+
+    fileprivate func hotkeyKeyDown(_ vk: Int) {
+        guard hotkeyRecording else { return }
+        // Ignore modifier-only keys — wait for the real key of the chord.
+        let modOnly: Set<Int> = [0x10, 0x11, 0x12, 0x5B, 0x5C, 0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5]
+        if modOnly.contains(vk) { return }
+        if vk == 0x1B { hotkeyRecording = false; repaintHotkey(); return }   // Esc cancels
+        if vk == 0x08 || vk == 0x2E {                                        // Backspace/Delete clears
+            AppSettings.shared.pauseHotkeyKeyCode = -1
+            AppSettings.shared.pauseHotkeyLabel = L("hotkey.none")
+            finishHotkey(); return
+        }
+        let ctrl = pressed(0x11), alt = pressed(0x12), shift = pressed(0x10)
+        let win = pressed(0x5B) || pressed(0x5C)
+        guard ctrl || alt || win else { MessageBeep(0xFFFFFFFF); return }     // require a modifier
+        var mods = 0
+        if alt { mods |= kMOD_ALT }
+        if ctrl { mods |= kMOD_CONTROL }
+        if shift { mods |= kMOD_SHIFT }
+        if win { mods |= kMOD_WIN }
+        AppSettings.shared.pauseHotkeyKeyCode = vk
+        AppSettings.shared.pauseHotkeyModifiers = mods
+        AppSettings.shared.pauseHotkeyLabel = hotkeyLabel(ctrl: ctrl, alt: alt, shift: shift, win: win, vk: vk)
+        finishHotkey()
+    }
+
+    private func pressed(_ vk: Int) -> Bool { (Int(GetKeyState(Int32(vk))) & 0x8000) != 0 }
+
+    private func finishHotkey() {
+        hotkeyRecording = false
+        NotificationCenter.default.post(name: .pauseHotkeyChanged, object: nil)
+        repaintHotkey()
+    }
+
+    private func repaintHotkey() { InvalidateRect(hotkeyHwnd, nil, true) }
+
+    private func hotkeyLabel(ctrl: Bool, alt: Bool, shift: Bool, win: Bool, vk: Int) -> String {
+        var parts: [String] = []
+        if ctrl { parts.append("Ctrl") }
+        if alt { parts.append("Alt") }
+        if shift { parts.append("Shift") }
+        if win { parts.append("Win") }
+        parts.append(hotkeyKeyName(vk))
+        return parts.joined(separator: "+")
+    }
+
+    private func hotkeyKeyName(_ vk: Int) -> String {
+        switch vk {
+        case 0x41...0x5A: return String(UnicodeScalar(UInt8(vk)))   // A–Z
+        case 0x30...0x39: return String(vk - 0x30)                  // 0–9
+        case 0x70...0x7B: return "F\(vk - 0x6F)"                    // F1–F12
+        case 0x20: return "Space"
+        case 0x0D: return "Enter"
+        case 0x25: return "Left"
+        case 0x26: return "Up"
+        case 0x27: return "Right"
+        case 0x28: return "Down"
+        default: return "Key\(vk)"
+        }
+    }
+
+    fileprivate func paintHotkey(_ hwnd: HWND?) {
+        var ps = PAINTSTRUCT()
+        guard let hdc = BeginPaint(hwnd, &ps) else { return }
+        defer { EndPaint(hwnd, &ps) }
+        var rc = RECT()
+        GetClientRect(hwnd, &rc)
+        FillRect(hdc, &rc, GetSysColorBrush(kCOLOR_WINDOW))
+        let focused = GetFocus() == hwnd
+        if let border = GetSysColorBrush(focused ? kCOLOR_HIGHLIGHT : kCOLOR_GRAYTEXT) {
+            FrameRect(hdc, &rc, border)
+        }
+        SetBkMode(hdc, TRANSPARENT)
+        SetTextColor(hdc, GetSysColor(kCOLOR_WINDOWTEXT))
+        if let font { SelectObject(hdc, font) }
+        let text = wide(hotkeyDisplayText())
+        _ = text.withUnsafeBufferPointer {
+            DrawTextW(hdc, $0.baseAddress, -1, &rc, kDT_CENTERED)
+        }
     }
 
     fileprivate func paintPreview(_ hwnd: HWND?) {

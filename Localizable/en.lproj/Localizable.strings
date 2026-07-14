@@ -29,6 +29,9 @@
 "label.altcolor" = "Alt color";
 "label.shadow" = "Shadow";
 "label.hidefromcapture" = "Hide from screen capture";
+"label.pausehotkey" = "Pause hotkey";
+"hotkey.none" = "None";
+"hotkey.recording" = "Type shortcut…";
 "label.launch" = "Launch at login";
 "label.raising" = "Raising mode";
 "label.raisingicon" = "Raising shortcut icon";

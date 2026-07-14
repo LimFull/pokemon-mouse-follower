@@ -20,6 +20,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var settingsController: SettingsWindowController?
     private var raisingWindowController: RaisingWindowController?
     private let raisingIcon = RaisingShortcutIcon()
+    private let pauseHotkey = GlobalHotkey()
+    private var pauseMenuItem: NSMenuItem?
     // Self-update: retained for the lifetime of a download so the delegate lives.
     private var updateInProgress = false
     private var downloader: Downloader?
@@ -47,6 +49,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self, selector: #selector(raisingIconChanged), name: .raisingIconChanged, object: nil)
         NotificationCenter.default.addObserver(
             self, selector: #selector(captureProtectionChanged), name: .captureProtectionChanged, object: nil)
+        // Global pause hotkey: fires anywhere (e.g. to hide everything before a
+        // screen recording). Re-bound live when changed in settings.
+        pauseHotkey.install()
+        pauseHotkey.onFire = { [weak self] in self?.setRunning(!(self?.running ?? true)) }
+        pauseHotkey.applyFromSettings()
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(pauseHotkeyChanged), name: .pauseHotkeyChanged, object: nil)
         raisingIcon.setVisible(AppSettings.shared.raisingIconEnabled)
         if CommandLine.arguments.contains("--show-settings") { showSettings() }
         // Debug: preview the on-overlay prompts (C1) without earning them.
@@ -148,7 +157,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(.separator())
         menu.addItem(menuItem(L("menu.settings"), action: #selector(showSettings), key: ","))
         menu.addItem(menuItem(L("menu.raising"), action: #selector(showRaisingPanel), key: "r"))
-        menu.addItem(menuItem(L("menu.pause"), action: #selector(toggleRunning), key: "p"))
+        let pause = menuItem(L("menu.pause"), action: #selector(toggleRunning), key: "p")
+        pauseMenuItem = pause
+        menu.addItem(pause)
         // Debug submenu: instant battles against curated opponents (each
         // exercises a status/effect path), plus item/EXP/heal shortcuts.
         // Dev runs only — dev.sh sets PMF_DEV, and PMF_FAST_BATTLE test runs
@@ -310,10 +321,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         raisingIcon.setVisible(AppSettings.shared.raisingIconEnabled)
     }
 
-    @objc private func toggleRunning(_ sender: NSMenuItem) {
-        running.toggle()
-        sender.title = running ? L("menu.pause") : L("menu.resume")
+    @objc private func toggleRunning() {
+        setRunning(!running)
+    }
+
+    /// Shared pause/resume path for the menu item and the global hotkey: hides
+    /// or shows the overlays and keeps the menu title in step.
+    func setRunning(_ value: Bool) {
+        running = value
+        pauseMenuItem?.title = running ? L("menu.pause") : L("menu.resume")
         for (_, view) in overlays { view.isHidden = !running }
+    }
+
+    @objc private func pauseHotkeyChanged() {
+        pauseHotkey.applyFromSettings()
     }
 
     // MARK: - Self-update
