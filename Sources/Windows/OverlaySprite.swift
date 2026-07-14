@@ -18,6 +18,9 @@ private let kWS_POPUP: DWORD = 0x8000_0000
 private let kULW_ALPHA: DWORD = 2
 private let kSW_SHOWNA: Int32 = 8
 
+private let kWDA_NONE: DWORD = 0x0000_0000
+private let kWDA_EXCLUDEFROMCAPTURE: DWORD = 0x0000_0011   // Win10 2004+; older builds no-op
+
 private var overlayClassRegistered = false
 private let overlayClassName = Array("PMFOverlay".utf16) + [0]
 
@@ -42,8 +45,22 @@ func createOverlayWindow() -> HWND? {
         CreateWindowExW(kWS_EX_OVERLAY, cls.baseAddress, nil, kWS_POPUP,
                         0, 0, 1, 1, nil, nil, GetModuleHandleW(nil), nil)
     }
-    if let hwnd { allOverlayWindows.append(hwnd) }
+    if let hwnd {
+        allOverlayWindows.append(hwnd)
+        // Late-created overlays honor the current capture-exclusion setting.
+        SetWindowDisplayAffinity(hwnd,
+            AppSettings.shared.hideFromCapture ? kWDA_EXCLUDEFROMCAPTURE : kWDA_NONE)
+    }
     return hwnd
+}
+
+/// Apply (or lift) screen-capture exclusion on every live overlay window.
+/// Excludes the follower/wild/effect/item/chrome surfaces from screenshots and
+/// screen recording; WDA_EXCLUDEFROMCAPTURE needs Windows 10 2004+ (older builds
+/// leave the content captured — acceptable graceful degradation).
+func applyCaptureProtection() {
+    let affinity = AppSettings.shared.hideFromCapture ? kWDA_EXCLUDEFROMCAPTURE : kWDA_NONE
+    for hwnd in allOverlayWindows { SetWindowDisplayAffinity(hwnd, affinity) }
 }
 
 final class OverlaySprite {

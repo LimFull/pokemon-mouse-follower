@@ -73,6 +73,12 @@ let raisingIconObserver = NotificationCenter.default.addObserver(
     RaisingShortcutIconWin.setVisible(AppSettings.shared.raisingIconEnabled)
 }
 RaisingShortcutIconWin.setVisible(AppSettings.shared.raisingIconEnabled)
+// Toggle screen-capture exclusion on the overlays without a restart. (New
+// overlays already pick up the setting at creation in createOverlayWindow.)
+let captureProtectionObserver = NotificationCenter.default.addObserver(
+    forName: .captureProtectionChanged, object: nil, queue: nil) { _ in
+    applyCaptureProtection()
+}
 SettingsDialog.onCharacterChanged = {
     controller.setCharacter(RaisingState.shared.followerFolder)   // raising mon keeps priority
 }

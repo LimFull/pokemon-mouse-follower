@@ -23,6 +23,7 @@
 "label.sleep" = "잠들기까지 시간";
 "label.altcolor" = "다른 색상";
 "label.shadow" = "그림자";
+"label.hidefromcapture" = "화면 캡처에서 숨기기";
 "label.launch" = "로그인 시 자동 실행";
 "label.raising" = "키우기 모드";
 "label.raisingicon" = "키우기 바로가기 아이콘";

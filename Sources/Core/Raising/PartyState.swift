@@ -15,6 +15,8 @@ extension Notification.Name {
     static let raisingEvolved = Notification.Name("raisingEvolved")
     /// The settings checkbox toggled the raising shortcut icon on/off.
     static let raisingIconChanged = Notification.Name("raisingIconChanged")
+    /// The settings checkbox toggled screen-capture exclusion for the overlays.
+    static let captureProtectionChanged = Notification.Name("captureProtectionChanged")
 }
 
 enum Gender: String, Codable {

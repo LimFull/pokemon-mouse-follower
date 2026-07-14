@@ -17,6 +17,7 @@ private let idLaunch: Int32 = 132
 private let idRaising: Int32 = 133
 private let idCharLabel: Int32 = 134
 private let idRaisingIcon: Int32 = 135
+private let idHideCapture: Int32 = 136
 private let idLanguage: Int32 = 140
 private let idPrev: Int32 = 150
 private let idNext: Int32 = 151
@@ -335,6 +336,7 @@ final class SettingsDialog {
         // Toggles.
         for (id, text, on) in [(idAltColor, L("label.altcolor"), s.altColor),
                                (idShadow, L("label.shadow"), s.showShadow),
+                               (idHideCapture, L("label.hidefromcapture"), s.hideFromCapture),
                                (idLaunch, L("label.launch"), LoginItem.isEnabled),
                                (idRaising, L("label.raising"), s.raisingMode),
                                (idRaisingIcon, L("label.raisingicon"), s.raisingIconEnabled)] {
@@ -390,6 +392,9 @@ final class SettingsDialog {
             reloadPreview()
         case idShadow:
             s.showShadow = send(controls[idShadow], kBM_GETCHECK) == 1
+        case idHideCapture:
+            s.hideFromCapture = send(controls[idHideCapture], kBM_GETCHECK) == 1
+            NotificationCenter.default.post(name: .captureProtectionChanged, object: nil)
         case idLaunch:
             let wantOn = send(controls[idLaunch], kBM_GETCHECK) == 1
             if !LoginItem.setEnabled(wantOn) {

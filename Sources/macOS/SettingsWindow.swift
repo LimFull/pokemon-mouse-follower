@@ -75,6 +75,7 @@ final class SettingsWindowController: NSObject {
                            makeValueLabel(3, text: fmt(3, s.sleepDelay))])
         grid.addRow(with: [makeLabel(L("label.altcolor")), makeCheckbox(on: AppSettings.shared.altColor, action: #selector(altColorToggled(_:))), NSGridCell.emptyContentView])
         grid.addRow(with: [makeLabel(L("label.shadow")), makeCheckbox(on: AppSettings.shared.showShadow, action: #selector(shadowToggled(_:))), NSGridCell.emptyContentView])
+        grid.addRow(with: [makeLabel(L("label.hidefromcapture")), makeCheckbox(on: AppSettings.shared.hideFromCapture, action: #selector(hideFromCaptureToggled(_:))), NSGridCell.emptyContentView])
         grid.addRow(with: [makeLabel(L("label.launch")), makeCheckbox(on: LoginItem.isEnabled, action: #selector(launchToggled(_:))), NSGridCell.emptyContentView])
         grid.addRow(with: [makeLabel(L("label.uiscale")), makeUIScalePopup(), NSGridCell.emptyContentView])
         let raisingCB = makeCheckbox(on: AppSettings.shared.raisingMode, action: #selector(raisingToggled(_:)))
@@ -268,6 +269,11 @@ final class SettingsWindowController: NSObject {
 
     @objc private func shadowToggled(_ sender: NSButton) {
         AppSettings.shared.showShadow = (sender.state == .on)
+    }
+
+    @objc private func hideFromCaptureToggled(_ sender: NSButton) {
+        AppSettings.shared.hideFromCapture = (sender.state == .on)
+        NotificationCenter.default.post(name: .captureProtectionChanged, object: nil)
     }
 
     @objc private func altColorToggled(_ sender: NSButton) {

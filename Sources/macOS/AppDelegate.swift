@@ -45,6 +45,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         NotificationCenter.default.addObserver(
             self, selector: #selector(raisingIconChanged), name: .raisingIconChanged, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(captureProtectionChanged), name: .captureProtectionChanged, object: nil)
         raisingIcon.setVisible(AppSettings.shared.raisingIconEnabled)
         if CommandLine.arguments.contains("--show-settings") { showSettings() }
         // Debug: preview the on-overlay prompts (C1) without earning them.
@@ -100,6 +102,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
             overlays.append((window, view))
         }
+        applyCaptureProtection()   // freshly built windows honor the current setting
+    }
+
+    // Exclude the overlays from screen capture (screenshots/recording/sharing)
+    // when the user opts in. `.none` = NSWindowSharingNone; `.readOnly` is the
+    // default that lets capture through. The user still sees the overlay.
+    private func applyCaptureProtection() {
+        let sharing: NSWindow.SharingType = AppSettings.shared.hideFromCapture ? .none : .readOnly
+        for (window, _) in overlays { window.sharingType = sharing }
+    }
+
+    @objc private func captureProtectionChanged() {
+        applyCaptureProtection()
     }
 
     @objc private func screensChanged() {

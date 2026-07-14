@@ -23,6 +23,7 @@
 "label.sleep" = "眠るまでの時間";
 "label.altcolor" = "色違い";
 "label.shadow" = "影";
+"label.hidefromcapture" = "画面キャプチャから隠す";
 "label.launch" = "ログイン時に起動";
 "label.raising" = "育成モード";
 "label.raisingicon" = "育成ショートカットアイコン";

@@ -23,6 +23,7 @@
 "label.sleep" = "Time until sleep";
 "label.altcolor" = "Alt color";
 "label.shadow" = "Shadow";
+"label.hidefromcapture" = "Hide from screen capture";
 "label.launch" = "Launch at login";
 "label.raising" = "Raising mode";
 "label.raisingicon" = "Raising shortcut icon";

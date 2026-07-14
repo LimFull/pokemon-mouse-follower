@@ -68,6 +68,13 @@ final class AppSettings {
         get { d.bool("showShadow") }   // defaults to false when unset
         set { d.set(newValue, "showShadow") }
     }
+    // Exclude the follower/effects overlay windows from screen capture
+    // (screenshots, screen recording, screen sharing). Default off; the user
+    // still sees the overlay normally, it just doesn't appear in captures.
+    var hideFromCapture: Bool {
+        get { d.bool("hideFromCapture") }   // defaults to false = capturable
+        set { d.set(newValue, "hideFromCapture") }
+    }
     // Use the alternate-color sprite variant when a character has one.
     var altColor: Bool {
         get { d.bool("altColor") }
