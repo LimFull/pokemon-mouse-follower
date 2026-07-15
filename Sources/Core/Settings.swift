@@ -99,10 +99,10 @@ final class AppSettings {
         set { d.set(newValue, "showShadow") }
     }
     // Exclude the follower/effects overlay windows from screen capture
-    // (screenshots, screen recording, screen sharing). Default off; the user
+    // (screenshots, screen recording, screen sharing). Default on; the user
     // still sees the overlay normally, it just doesn't appear in captures.
     var hideFromCapture: Bool {
-        get { d.bool("hideFromCapture") }   // defaults to false = capturable
+        get { d.has("hideFromCapture") ? d.bool("hideFromCapture") : true }
         set { d.set(newValue, "hideFromCapture") }
     }
     // Global hotkey that toggles pause (hide/show the follower & effects) —
