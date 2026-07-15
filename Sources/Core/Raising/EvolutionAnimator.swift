@@ -15,6 +15,11 @@ final class EvolutionAnimator {
     private(set) var active = false
     private(set) var position = CGPoint.zero
 
+    // Evolutions announced while a scene is playing wait their turn: a shared
+    // battle's EXP can evolve several participants, and each is "brought out"
+    // for its own full sequence, in announce order (active mon first).
+    private var queue: [(from: Int, to: Int)] = []
+
     private var tick = 0
     private var oldSil: RGBABuffer?
     private var newSil: RGBABuffer?
@@ -29,9 +34,18 @@ final class EvolutionAnimator {
     private let revealEnd = 350          // sparkly reveal of the new form
 
     func start(fromDex: Int, toDex: Int, at pos: CGPoint) {
+        if active {
+            queue.append((fromDex, toDex))
+            return
+        }
+        _ = begin(fromDex: fromDex, toDex: toDex, at: pos)
+    }
+
+    @discardableResult
+    private func begin(fromDex: Int, toDex: Int, at pos: CGPoint) -> Bool {
         let oldFrame = Self.idleDownBuffers(Characters.folder(dex: fromDex)).first
         let newFrame = Self.idleDownBuffers(Characters.folder(dex: toDex)).first
-        guard let oldFrame, let newFrame else { return }
+        guard let oldFrame, let newFrame else { return false }
         oldColored = oldFrame
         newColored = newFrame
         oldSil = Self.silhouette(oldFrame)
@@ -40,14 +54,23 @@ final class EvolutionAnimator {
         position = pos
         tick = 0
         active = true
+        return true
     }
 
     /// One 60fps step: the composed frame + the white-out glow (0...1).
     /// Returns nil when finished (the caller resumes normal rendering).
+    /// A finished scene rolls straight into the next queued evolution.
     func update() -> (frame: PMFImage, glow: CGFloat)? {
         guard active else { return nil }
         defer { tick += 1 }
-        if tick >= revealEnd { active = false; return nil }
+        if tick >= revealEnd {
+            var started = false
+            while !queue.isEmpty, !started {
+                let next = queue.removeFirst()
+                started = begin(fromDex: next.from, toDex: next.to, at: position)
+            }
+            if !started { active = false; return nil }
+        }
 
         var glow: CGFloat = 0
         var image: RGBABuffer?

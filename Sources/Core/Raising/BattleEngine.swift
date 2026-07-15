@@ -284,6 +284,14 @@ final class BattleSession {
         playerDraggedOut = false
     }
 
+    /// A trainer-ordered switch at the turn boundary: same mechanics as a
+    /// drag-out — the newcomer's battle-local state is fresh, the wild keeps
+    /// its stages/volatiles, and battle-locals aimed at the outgoing mon
+    /// (Leech Seed, traps, ...) leave with its Battler.
+    func switchPlayer(replacement: Battler) {
+        player = replacement
+    }
+
     /// No replacement available — the blow-out ends the encounter after all.
     func markPlayerFled() {
         playerFled = true

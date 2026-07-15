@@ -237,10 +237,17 @@ private func selftestRaisingIfRequested() {
             var logs = [BattleLog.battleStart(wildName: w.name)]
             logs += r.events.flatMap { BattleLog.lines(for: $0, playerName: p.name, wildName: w.name) }
                             .map { $0.text }
-            logs += BattleLog.outcome(won: r.playerWon, expGained: r.expGained, levelUpTo: 21,
-                                      captured: false, wildFled: r.wildFled,
-                                      playerName: p.name, wildName: w.name)
+            logs += BattleLog.outcome(wildFled: r.wildFled, wildName: w.name)
+            if r.playerWon {
+                logs.append(BattleLog.expLine(name: p.name, amount: r.expGained))
+                logs.append(BattleLog.levelUpLine(name: p.name, level: 21))
+            }
             logs.append(BattleLog.recallLine(playerName: p.name))
+            // Mainline switch pair: every HP tier of both halves must resolve.
+            for f in [1.0, 0.6, 0.4, 0.1] {
+                logs.append(BattleLog.switchOutLine(playerName: p.name, foeHPFraction: f))
+                logs.append(BattleLog.sendOutLine(playerName: p.name, foeHPFraction: f))
+            }
             let unresolved = logs.filter { $0.contains("log.") }
             print("battle log: \(logs.count) lines from \(r.events.count) events, unresolved keys=\(unresolved.count) (expect 0)")
             for bad in unresolved.prefix(3) { print("  UNRESOLVED: \(bad)") }
@@ -604,6 +611,60 @@ private func selftestRaisingIfRequested() {
             }
             print("deferred recall: pending=\(pendingSeen) playedOn=\(playedOn) activeAfter=\(RaisingState.shared.save.activeIndex) (expect true, >0, -1)")
             AppSettings.shared.raisingMode = hadRaising
+        }
+        // Deferred switch (mainline switch timing): sending out another member
+        // mid-battle must NOT swap immediately — the turn in progress plays
+        // out, then the controller swaps the session's battler and the battle
+        // continues with the newcomer's moves/log identity. On a win every
+        // conscious participant shares the EXP (fainted ones get nothing).
+        do {
+            let hadRaising = AppSettings.shared.raisingMode
+            AppSettings.shared.raisingMode = true
+            if st.party.count < 2, let s4 = GameData.species[4] {
+                _ = st.addToParty(st.makeMon(species: s4, level: st.party[0].level))
+            }
+            let bench = 1
+            var queued = false, immediate = false, swappedMidBattle = false
+            var gained = [0, 0], tries = 0
+            // Losses grant nothing — retry until a post-switch win shows the
+            // EXP share feeding both participants (or give up after 8).
+            for _ in 0..<8 where gained[1] == 0 {
+                tries += 1
+                for i in st.party.indices { st.healMon(at: i) }
+                st.setActive(0)
+                let expBefore = [st.party[0].exp, st.party[bench].exp]
+                let bc = BattleController()
+                bc.forceSpawn(at: CGPoint(x: 520, y: 500))
+                var requested = false, sawBattle = false
+                for _ in 0..<40_000 {
+                    _ = bc.update(playerGlobalPos: CGPoint(x: 500, y: 500))
+                    if bc.isBattling { sawBattle = true }
+                    if bc.isBattling, !requested {
+                        requested = true
+                        st.setActive(bench)                          // mid-battle: must queue
+                        queued = queued || bc.switchPendingIndex == bench
+                        immediate = immediate || st.save.activeIndex == bench   // must stay false
+                        continue
+                    }
+                    if requested, bc.isBattling, st.save.activeIndex == bench { swappedMidBattle = true }
+                    if sawBattle, !bc.isBattling { break }
+                }
+                gained = [st.party[0].exp - expBefore[0], st.party[bench].exp - expBefore[1]]
+            }
+            print("deferred switch: queued=\(queued) immediate=\(immediate) swappedMidBattle=\(swappedMidBattle) activeAfter=\(st.save.activeIndex) (expect true, false, true, \(bench))")
+            print("exp share: starterGained=\(gained[0]) benchGained=\(gained[1]) over \(tries) battle(s) (a win must feed BOTH participants, equally split)")
+            AppSettings.shared.raisingMode = hadRaising
+        }
+        // Evolution queue: several participants can evolve off one shared
+        // battle's EXP — scenes announced while one plays must run back to
+        // back (each ~350 ticks), not vanish or overwrite each other.
+        do {
+            let evo = EvolutionAnimator()
+            evo.start(fromDex: 1, toDex: 2, at: .zero)
+            evo.start(fromDex: 4, toDex: 5, at: .zero)   // queued behind the first
+            var frames = 0
+            while evo.update() != nil, frames < 2000 { frames += 1 }
+            print("evolution queue: \(frames) ticks for two queued scenes (expect ~700, single scene = 350)")
         }
         // Flee keeps the damage: recall AFTER the gauge visibly dropped — the mon
         // must come back with the gauge HP, not its pre-battle full HP (the old

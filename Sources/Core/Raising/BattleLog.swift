@@ -89,18 +89,42 @@ enum BattleLog {
 
     /// Post-battle lines. Faint lines are NOT produced here — the fainting
     /// event already carried one; capture success rides the ball event.
-    static func outcome(won: Bool, expGained: Int, levelUpTo: Int?,
-                        captured: Bool, wildFled: Bool, playerFled: Bool = false,
-                        playerName: String, wildName: String) -> [String] {
+    /// EXP/level-up lines are per-participant now (expLine/levelUpLine) —
+    /// mainline EXP share announces every member in turn.
+    static func outcome(wildFled: Bool, playerFled: Bool = false,
+                        wildName: String) -> [String] {
         var out: [String] = []
         if wildFled { out.append(LF("log.wildfled", wildName)) }
         else if playerFled { out.append(LF("log.wildleft", wildName)) }   // it blew US out and left
-        if won, expGained > 0 { out.append(LF("log.exp", playerName, String(expGained))) }
-        if let lv = levelUpTo { out.append(LF("log.levelup", playerName, String(lv))) }
         return out
     }
 
+    /// One participant's share of the spoils (mainline EXP-share order:
+    /// the mon that was out first, then the bench).
+    static func expLine(name: String, amount: Int) -> String {
+        LF("log.exp", name, String(amount))
+    }
+
+    static func levelUpLine(name: String, level: Int) -> String {
+        LF("log.levelup", name, String(level))
+    }
+
     static func recallLine(playerName: String) -> String { LF("log.recalled", playerName) }
+
+    /// Mainline switch pair ("돌아와, X!" → "가랏! X!"): both halves pick their
+    /// wording from the FOE's remaining HP, like the Gen 4/5 games — a fresh
+    /// foe gets the neutral call, a worn-down one the finish-it-off call.
+    private static func hpTier(_ f: Double) -> Int {
+        f > 0.75 ? 0 : f > 0.5 ? 1 : f > 0.25 ? 2 : 3
+    }
+
+    static func switchOutLine(playerName: String, foeHPFraction: Double) -> String {
+        LF("log.switchout.\(hpTier(foeHPFraction))", playerName)
+    }
+
+    static func sendOutLine(playerName: String, foeHPFraction: Double) -> String {
+        LF("log.sendout.\(hpTier(foeHPFraction))", playerName)
+    }
 
     /// Wild Roar/Whirlwind dragged this member into the fight.
     static func draggedOutLine(playerName: String) -> String { LF("log.draggedout", playerName) }

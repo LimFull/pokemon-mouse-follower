@@ -1269,6 +1269,16 @@
 "log.wildleft" = "やせいの %@は たちさった!";
 "log.draggedout" = "%@が ひきずりだされた!";
 "log.recalled" = "%@を ひきあげた!";
+/* Mainline switch pair — wording picked by the foe's remaining HP
+   (>75% / >50% / >25% / <=25%), Gen 4/5 style. */
+"log.switchout.0" = "もういい! もどれ! %@!";
+"log.switchout.1" = "もどれ! %@!";
+"log.switchout.2" = "よし! もどれ! %@!";
+"log.switchout.3" = "よくやった! もどれ! %@!";
+"log.sendout.0" = "ゆけっ! %@!";
+"log.sendout.1" = "まかせた! %@!";
+"log.sendout.2" = "がんばれ! %@!";
+"log.sendout.3" = "あいては よわっている! とどめだ! %@!";
 
 /* Language picker (Windows settings; design/windows-port.md W10) */
 "label.language" = "言語";

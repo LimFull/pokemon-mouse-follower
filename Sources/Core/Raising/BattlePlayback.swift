@@ -129,6 +129,13 @@ final class BattleController: LiveBattleBridge {
     private var endTicks = 0
     private var endTotal = 1             // endTicks' starting value (tag timing)
     private var recallTurn: Int?         // flee after this simulated turn ends
+    private var switchTurn: Int?         // swap the active mon after this turn ends
+    private var switchIndex: Int?        // ...for this party member
+    // Everyone who battled THIS wild (party indices): seeded at battle start,
+    // extended by switches and drag-outs, and kept across a recall +
+    // re-engage while the same wild lingers — the mainline EXP-share pool.
+    // Reset when the wild itself goes (spawn/forceEncounter/despawn).
+    private var participants: Set<Int> = []
     private var levelUpTo: Int?          // show a level-up tag while ending
     private var curPStatus: String?      // ailment the playback has shown on the follower
     // PMD-style battle log: visible lines (oldest first) and lines scheduled
@@ -165,6 +172,7 @@ final class BattleController: LiveBattleBridge {
         guard phase == .battling else { return false }
         // Mid-Rollout the mon can't be pulled back (mainline lock-in).
         guard session?.playerLockedIn != true else { return false }
+        switchTurn = nil; switchIndex = nil   // a recall supersedes a queued switch
         if recallTurn == nil {
             recallTurn = evIdx < events.count ? events[evIdx].turn
                                               : (events.last?.turn ?? 0)
@@ -174,6 +182,32 @@ final class BattleController: LiveBattleBridge {
 
     /// Drop a pending flee (e.g. the player sent out someone else instead).
     func cancelRecallRequest() { recallTurn = nil }
+
+    /// Mainline switch timing: sending out another member during battle
+    /// playback only takes effect once the turn in progress fully plays out —
+    /// the controller writes the outgoing mon's state back, swaps the
+    /// session's battler and logs the recall/send-out pair at the boundary.
+    /// Returns true when the switch was queued; false means no turn machinery
+    /// applies (the caller activates the member immediately). Unlike a
+    /// recall, a queued switch survives a Rollout lock-in — it just waits for
+    /// the first free boundary, like a queued potion. Clicking a different
+    /// member re-targets the pending switch.
+    func requestSwitch(to index: Int) -> Bool {
+        guard phase == .battling else { return false }
+        let st = RaisingState.shared
+        guard st.save.party.indices.contains(index), !st.party[index].isFainted,
+              index != st.save.activeIndex else { return false }
+        recallTurn = nil            // the switch supersedes a queued flee
+        switchIndex = index
+        if switchTurn == nil {
+            switchTurn = evIdx < events.count ? events[evIdx].turn
+                                              : (events.last?.turn ?? 0)
+        }
+        return true
+    }
+
+    /// The member a mid-battle switch is queued for (panels show the state).
+    var switchPendingIndex: Int? { switchTurn != nil ? switchIndex : nil }
 
     /// Queue a healing/curing item as the follower's NEXT action — mainline
     /// rules: using an item costs the turn, so it replaces the move when the
@@ -250,6 +284,7 @@ final class BattleController: LiveBattleBridge {
         }
         wild = w
         wildMon = wm
+        participants = []   // a fresh wild starts a fresh EXP-share pool
         let scale = AppSettings.shared.scale
         wm.place(at: CGPoint(x: playerPos.x + 50 * scale, y: playerPos.y))
         despawnTicks = 5 * 60 * 60
@@ -323,6 +358,7 @@ final class BattleController: LiveBattleBridge {
         wm.place(at: best)
         wild = w
         wildMon = wm
+        participants = []   // a fresh wild starts a fresh EXP-share pool
         despawnTicks = (fast ? 30 : 5 * 60) * 60
         phase = .present
     }
@@ -373,15 +409,43 @@ final class BattleController: LiveBattleBridge {
         }
         let choices = st.party.indices.filter { $0 != st.save.activeIndex && !st.party[$0].isFainted }
         guard let pick = choices.randomElement() else { return false }
-        st.setActive(pick)
+        st.applyActive(pick)   // direct: setActive would re-enter the switch queue
         guard let mon = st.active, let b = Battler(mon: mon) else { return false }
         s.dragOutPlayer(replacement: b)
+        participants.insert(pick)
         curPHP = frac(b.currentHP, b.maxHP)
         curPStatus = mon.status
         playerTransformedDex = nil
         pBodyScale = 1; pBodyTarget = 1   // the newcomer is full size
         pushLog(BattleLog.draggedOutLine(playerName: b.name))
         return true
+    }
+
+    /// Turn-boundary switch (mainline timing): write the outgoing mon's live
+    /// battle state back (like a flee — the damage sticks, no free heal),
+    /// activate the chosen member, hand its fresh Battler to the session so
+    /// moves/log/EXP identity all follow the newcomer, and log the mainline
+    /// switch pair ("돌아와!" → "가랏!", wording by the foe's remaining HP).
+    private func performSwitch(to index: Int, in s: BattleSession) {
+        let st = RaisingState.shared
+        guard st.save.party.indices.contains(index), !st.party[index].isFainted,
+              index != st.save.activeIndex,
+              let b = Battler(mon: st.party[index]) else { return }
+        if let mon = st.active {
+            st.applyFleeState(hp: Int((curPHP * Double(mon.maxHP)).rounded()),
+                              status: curPStatus)
+            pushLog(BattleLog.switchOutLine(playerName: s.player.name, foeHPFraction: curWHP))
+        }
+        st.applyActive(index)   // direct: setActive would re-enter the switch queue
+        s.switchPlayer(replacement: b)
+        participants.insert(index)
+        curPHP = frac(b.currentHP, b.maxHP)
+        curPStatus = st.party[index].status
+        playerTransformedDex = nil
+        pBodyScale = 1; pBodyTarget = 1   // the newcomer is full size
+        pVanish = false                   // ...not mid-Dig
+        pSub = false                      // ...and not behind the old doll
+        pushLog(BattleLog.sendOutLine(playerName: b.name, foeHPFraction: curWHP))
     }
 
     private func startBattle() {
@@ -412,6 +476,7 @@ final class BattleController: LiveBattleBridge {
         result = nil
         pendingItem = nil
         pendingBall = nil
+        participants.insert(RaisingState.shared.save.activeIndex)
         events = s.nextRound()
         curPStatus = mon.status
         evIdx = 0; evTick = 0; curPHP = startPHP; curWHP = startWHP
@@ -446,6 +511,13 @@ final class BattleController: LiveBattleBridge {
                     wildMon?.faceStanding(toward: playerPos)
                     finishBattle()
                     return
+                }
+                // A queued switch lands at the turn boundary (mainline switch
+                // timing). Locked mid-Rollout it stays queued — like a queued
+                // potion — and lands at the first free boundary instead.
+                if let idx = switchIndex, switchTurn != nil, !s.playerLockedIn {
+                    switchTurn = nil; switchIndex = nil
+                    performSwitch(to: idx, in: s)
                 }
                 var item: GameItem? = nil
                 // Items wait while the mon is locked mid-Rollout — the queued
@@ -1172,22 +1244,19 @@ final class BattleController: LiveBattleBridge {
     private func finishBattle() {
         let won = result?.playerWon ?? false
         var captured = false
+        levelUpTo = nil
         if let r = result {
             let st = RaisingState.shared
             for b in r.ballsUsed { st.consumeItem(b) }
-            let expIdx = st.save.activeIndex        // who fought (before faint swap)
-            let growth = st.applyBattleOutcome(playerHP: r.playerEndHP, status: r.playerEndStatus,
-                                               won: r.playerWon, expGained: r.expGained)
-            // A 5th move needs a replace decision — on-overlay prompt (C1/#5).
-            for moveId in growth.pendingMoves {
-                PromptRelay.enqueue(.learnMove(monIndex: expIdx, moveId: moveId))
+            let activeIdx = st.save.activeIndex     // who fought last (before faint swap)
+            // End state first (HP/status write-back), then the spoils.
+            st.applyBattleState(hp: r.playerEndHP, status: r.playerEndStatus, at: activeIdx)
+            BattleLog.outcome(wildFled: r.wildFled, playerFled: r.playerFled,
+                              wildName: wild?.name ?? "").forEach { pushLog($0) }
+            if r.playerWon, r.expGained > 0 {
+                participants.insert(activeIdx)
+                awardExp(total: r.expGained, activeIdx: activeIdx)
             }
-            levelUpTo = growth.leveledTo
-            let outcomeLines = BattleLog.outcome(
-                won: r.playerWon, expGained: r.expGained, levelUpTo: growth.leveledTo,
-                captured: r.captured, wildFled: r.wildFled, playerFled: r.playerFled,
-                playerName: session?.player.name ?? "", wildName: wild?.name ?? "")
-            outcomeLines.forEach { pushLog($0) }
             if r.captured, let w = wild {
                 captured = true
                 // Battle-local state (Transform, Mimic, stages) ends with the
@@ -1255,6 +1324,46 @@ final class BattleController: LiveBattleBridge {
             recallTurn = nil
             RaisingState.shared.recall()
         }
+        // Same for a queued switch: the outcome (EXP share included) lands
+        // first, then the chosen member simply comes out post-battle.
+        if let idx = switchIndex {
+            switchTurn = nil; switchIndex = nil
+            if RaisingState.shared.save.party.indices.contains(idx),
+               !RaisingState.shared.party[idx].isFainted {
+                RaisingState.shared.applyActive(idx)
+            }
+        }
+    }
+
+    /// Mainline EXP share: every participant still standing gets an equal
+    /// split (fainted ones sit the payout out — strict mainline rules),
+    /// announced one by one — the mon that finished the fight first, then the
+    /// bench in party order — with level-ups, move-learn prompts and
+    /// evolutions riding each share (evolutions queue on the overlay in this
+    /// same order, so the active mon's scene plays first).
+    private func awardExp(total: Int, activeIdx: Int) {
+        let st = RaisingState.shared
+        let eligible = participants.filter {
+            st.save.party.indices.contains($0) && !st.party[$0].isFainted
+        }
+        guard !eligible.isEmpty else { return }
+        let share = max(1, total / eligible.count)
+        let ordered = (eligible.contains(activeIdx) ? [activeIdx] : [])
+            + eligible.sorted().filter { $0 != activeIdx }
+        for idx in ordered {
+            let name = Characters.displayName(dex: st.party[idx].dex)   // pre-evolution name
+            pushLog(BattleLog.expLine(name: name, amount: share))
+            let growth = st.gainExp(share, at: idx)
+            if let lv = growth.leveledTo {
+                pushLog(BattleLog.levelUpLine(name: name, level: lv))
+                if idx == activeIdx { levelUpTo = lv }   // overhead tag = active only
+            }
+            // A 5th move needs a replace decision — on-overlay prompt (C1/#5),
+            // benched participants included, in the same announce order.
+            for moveId in growth.pendingMoves {
+                PromptRelay.enqueue(.learnMove(monIndex: idx, moveId: moveId))
+            }
+        }
     }
 
     private func tickEnding() {
@@ -1293,9 +1402,11 @@ final class BattleController: LiveBattleBridge {
                 hp: Int((curPHP * Double(mon.maxHP)).rounded()), status: curPStatus)
         }
         recallTurn = nil
+        switchTurn = nil; switchIndex = nil
+        // participants stay: the wild lingers, and whoever re-engages it
+        // joins the same EXP-share pool (mainline share across the fight).
         session = nil
         pendingItem = nil
-        pendingBall = nil
         pendingBall = nil
         events = []; result = nil; effects = []; ballFrame = nil
         playerPose = (.stand, 0)
@@ -1320,6 +1431,8 @@ final class BattleController: LiveBattleBridge {
         pVanish = false; wVanish = false
         pSub = false; wSub = false
         recallTurn = nil
+        switchTurn = nil; switchIndex = nil
+        participants = []
         session = nil
         pendingItem = nil
         pendingBall = nil

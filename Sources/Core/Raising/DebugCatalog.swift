@@ -100,6 +100,22 @@ enum DebugCatalog {
                 DebugAction(title: "필드 아이템: 랜덤") { spawnItem(nil) },
                 DebugAction(title: "필드 아이템: 몬스터볼") { spawnItem(.pokeBall) },
             ]),
+            // Switch / EXP-share / evolution-queue test bench: switch mid-
+            // battle (defers to the turn boundary), then win — every
+            // participant shares the EXP; the level-to-evolution actions
+            // exercise the sequential evolution scenes (active mon first).
+            DebugSection(title: "교체·경험치·진화 테스트", actions: [
+                DebugAction(title: "다음 포켓몬으로 교체 (배틀 중: 턴 종료 후)") { switchToNext() },
+                DebugAction(title: "파티 전원 +1 레벨") {
+                    for i in RaisingState.shared.party.indices { levelUp(at: i) }
+                },
+                DebugAction(title: "파티 전원 진화 레벨까지") {
+                    for i in RaisingState.shared.party.indices { levelToEvolution(at: i) }
+                },
+                DebugAction(title: "파티 전원 레벨업 1 남기기") {
+                    for i in RaisingState.shared.party.indices { primeNearLevelUp(at: i) }
+                },
+            ]),
             // Forced status carries into the next battle, so the
             // skip/residual visuals are testable without RNG.
             DebugSection(title: "내 포켓몬 상태이상", actions: statuses.map { (title, key) in
@@ -127,25 +143,39 @@ enum DebugCatalog {
     }
 
     /// Grant EXP through the real growth path (level-ups, move prompts,
-    /// evolution + burst) — exactly what a battle win would do.
-    private static func gainExp(_ amount: Int) {
+    /// evolution scene) — exactly what a battle win's share would do.
+    private static func gainExp(_ amount: Int, at idx: Int) {
         let st = RaisingState.shared
-        guard st.hasActiveGame, amount > 0 else { return }
-        let idx = st.save.activeIndex
-        let result = st.gainExp(amount)
+        guard st.save.party.indices.contains(idx), amount > 0 else { return }
+        let result = st.gainExp(amount, at: idx)
         for moveId in result.pendingMoves {
             PromptRelay.enqueue(.learnMove(monIndex: idx, moveId: moveId))
         }
     }
 
-    private static func levelUpActive() {
-        guard let mon = RaisingState.shared.active else { return }
-        gainExp(mon.expToNext.remaining)
+    private static func levelUp(at idx: Int) {
+        let st = RaisingState.shared
+        guard st.save.party.indices.contains(idx) else { return }
+        gainExp(st.party[idx].expToNext.remaining, at: idx)
     }
 
-    private static func levelToEvolution() {
+    private static func levelUpActive() {
+        levelUp(at: RaisingState.shared.save.activeIndex)
+    }
+
+    /// Leave the member 1 EXP short of its next level — the smallest battle
+    /// share then levels it up (benched level-up / prompt-order testing).
+    private static func primeNearLevelUp(at idx: Int) {
         let st = RaisingState.shared
-        guard let mon = st.active, let s = mon.species, mon.level < 100 else { return }
+        guard st.save.party.indices.contains(idx) else { return }
+        gainExp(st.party[idx].expToNext.remaining - 1, at: idx)
+    }
+
+    private static func levelToEvolution(at idx: Int) {
+        let st = RaisingState.shared
+        guard st.save.party.indices.contains(idx) else { return }
+        let mon = st.party[idx]
+        guard let s = mon.species, mon.level < 100 else { return }
         // Jump to the nearest LEVEL-evolution threshold above the current
         // level; species without one just gain a single level.
         let target = s.evolutions
@@ -153,9 +183,26 @@ enum DebugCatalog {
             .map(\.param1)
             .min()
         guard let target, s.expCurve.indices.contains(target - 1) else {
-            levelUpActive()
+            levelUp(at: idx)
             return
         }
-        gainExp(s.expCurve[target - 1] - mon.exp)
+        gainExp(s.expCurve[target - 1] - mon.exp, at: idx)
+    }
+
+    private static func levelToEvolution() {
+        levelToEvolution(at: RaisingState.shared.save.activeIndex)
+    }
+
+    /// Cycle the active follower to the next conscious member — mid-battle
+    /// this queues the mainline turn-boundary switch (the real code path).
+    private static func switchToNext() {
+        let st = RaisingState.shared
+        let n = st.party.count
+        guard n > 1 else { return }
+        let cur = max(0, st.save.activeIndex)
+        for step in 1..<n {
+            let i = (cur + step) % n
+            if !st.party[i].isFainted { st.setActive(i); return }
+        }
     }
 }

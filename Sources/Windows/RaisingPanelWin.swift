@@ -461,6 +461,7 @@ final class RaisingPanelWin {
 
         let activeIdx = state.save.activeIndex
         let recallPending = BattleController.current?.recallPending ?? false
+        let switchPending = BattleController.current?.switchPendingIndex
         for (i, raw) in party.enumerated() {
             let mon = displayMon(raw, at: i)
             let folder = Characters.folder(dex: mon.dex)
@@ -478,9 +479,12 @@ final class RaisingPanelWin {
                 : "\(mon.currentHP)/\(mon.maxHP)"
             label(hpText, x: 200, y: y + 24, w: 66, h: 14, mono: true, right: true)
             if !mon.isFainted, i != activeIdx {
-                button("▶", x: 272, y: y + 10, w: 28, h: 26, small: true) {
-                    RaisingState.shared.setActive(i)
-                }
+                let id = nextId; nextId += 1
+                actions[id] = { RaisingState.shared.setActive(i) }
+                let b = child("BUTTON", "▶", id: id, x: 272, y: y + 10, w: 28, h: 26,
+                              style: 0, panelFont: .small)
+                // Dim the member a mid-battle switch is already queued for.
+                if switchPending == i { EnableWindow(b, false) }
             } else if i == activeIdx {
                 let id = nextId; nextId += 1
                 actions[id] = { RaisingState.shared.recall() }
@@ -772,10 +776,15 @@ final class RaisingPanelWin {
             if BattleController.current?.recallPending == true { EnableWindow(b, false) }
             x += 106
         } else if !mon.isFainted {
-            button(L("detail.sendout"), x: x, y: y, w: 100, h: 26, small: true) { [weak self] in
+            let id = nextId; nextId += 1
+            actions[id] = { [weak self] in
                 RaisingState.shared.setActive(idx)
                 self?.rebuild()
             }
+            let b = child("BUTTON", L("detail.sendout"), id: id, x: x, y: y, w: 100, h: 26,
+                          style: 0, panelFont: .small)
+            // A mid-battle switch to THIS member is already queued.
+            if BattleController.current?.switchPendingIndex == idx { EnableWindow(b, false) }
             x += 106
         }
         button(L("detail.release"), x: x, y: y, w: 100, h: 26, small: true) { [weak self] in

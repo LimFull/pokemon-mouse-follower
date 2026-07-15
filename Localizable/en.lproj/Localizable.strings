@@ -205,6 +205,16 @@
 "log.wildleft" = "The wild %@ wandered off!";
 "log.draggedout" = "%@ was dragged out!";
 "log.recalled" = "%@ was recalled!";
+/* Mainline switch pair — wording picked by the foe's remaining HP
+   (>75% / >50% / >25% / <=25%), Gen 4/5 style. */
+"log.switchout.0" = "%@, that's enough! Come back!";
+"log.switchout.1" = "%@, come back!";
+"log.switchout.2" = "%@, OK! Come back!";
+"log.switchout.3" = "%@, good! Come back!";
+"log.sendout.0" = "Go! %@!";
+"log.sendout.1" = "Do it! %@!";
+"log.sendout.2" = "Go for it, %@!";
+"log.sendout.3" = "Your foe's weak! Get 'em, %@!";
 
 /* Language picker (Windows settings; design/windows-port.md W10) */
 "label.language" = "Language";

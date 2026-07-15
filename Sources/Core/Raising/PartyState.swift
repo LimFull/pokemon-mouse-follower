@@ -261,11 +261,27 @@ final class RaisingState {
         notifyChanged()
     }
 
-    /// Make the party member at `index` the active follower.
+    /// Make the party member at `index` the active follower. Mid-battle this
+    /// works like recall(): the switch waits until the turn in progress fully
+    /// plays out (mainline switch timing) — the controller writes the outgoing
+    /// mon's battle state back, swaps the session's battler, and calls
+    /// applyActive(_:) at the turn boundary.
     func setActive(_ index: Int) {
         guard save.party.indices.contains(index) else { return }
+        if LiveBattle.current?.requestSwitch(to: index) == true {
+            notifyChanged()   // panels show the pending state
+            return
+        }
         // Sending someone out supersedes a flee that was waiting on the turn.
         LiveBattle.current?.cancelRecallRequest()
+        applyActive(index)
+    }
+
+    /// Activate `index` immediately, with no battle deferral — the battle
+    /// controller's turn-boundary switch (and drag-out) lands here; so does
+    /// the ordinary out-of-battle path of setActive.
+    func applyActive(_ index: Int) {
+        guard save.party.indices.contains(index) else { return }
         save.activeIndex = index
         persist()
         notifyChanged()
@@ -297,12 +313,14 @@ final class RaisingState {
         var changed: Bool { leveledTo != nil || evolvedTo != nil || !learnedMoves.isEmpty }
     }
 
-    /// Give the active mon `amount` EXP and apply every level-up it earns:
-    /// stat/HP growth, level-up moves (auto-learn if a slot is free, otherwise
-    /// queued in `pendingMoves`), and LEVEL-method evolution (design D6/D8/#9).
-    func gainExp(_ amount: Int) -> GrowthResult {
+    /// Give the member at `index` (default: the active mon) `amount` EXP and
+    /// apply every level-up it earns: stat/HP growth, level-up moves
+    /// (auto-learn if a slot is free, otherwise queued in `pendingMoves`), and
+    /// LEVEL-method evolution (design D6/D8/#9). Battle EXP is shared across
+    /// every participant, so benched members grow through here too.
+    func gainExp(_ amount: Int, at index: Int? = nil) -> GrowthResult {
         var r = GrowthResult()
-        let i = save.activeIndex
+        let i = index ?? save.activeIndex
         guard save.party.indices.contains(i), amount > 0 else { return r }
         guard var s = save.party[i].species else { return r }
 
@@ -336,31 +354,26 @@ final class RaisingState {
             }
         }
         persist()
+        notifyChanged()   // sprite (evolution) and panel gauges/EXP bars
         if let from = r.evolvedFrom, let to = r.evolvedTo {
-            notifyChanged()   // follower sprite changed
+            // The platform overlay queues these — several participants can
+            // evolve off one shared battle's EXP, and each gets its scene.
             NotificationCenter.default.post(name: .raisingEvolved, object: nil,
                                             userInfo: ["from": from, "to": to])
         }
         return r
     }
 
-    /// Apply a finished battle to the active mon: set its end HP and carried
-    /// major status (D19 — cleared by fainting), grant EXP on a win (level-ups/
-    /// evolution via gainExp), and switch to the next non-fainted party member
-    /// if it fainted (D10).
-    @discardableResult
-    func applyBattleOutcome(playerHP: Int, status: String?, won: Bool, expGained: Int) -> GrowthResult {
-        var result = GrowthResult()
-        let i = save.activeIndex
-        guard save.party.indices.contains(i) else { return result }
-        save.party[i].currentHP = max(0, min(save.party[i].maxHP, playerHP))
-        save.party[i].status = save.party[i].isFainted ? nil : status
-        if won && expGained > 0 { result = gainExp(expGained) }   // persists + may evolve/notify
-        // A fainted mon stays out where it fell — no auto-switch. The player
-        // sends out a replacement from the party panel when they want to.
+    /// Write a finished battle's end state to the member at `index`: its end
+    /// HP and carried major status (D19 — cleared by fainting). EXP is granted
+    /// separately (gainExp per participant — mainline EXP share). A fainted
+    /// mon stays out where it fell — no auto-switch (D10).
+    func applyBattleState(hp: Int, status: String?, at index: Int) {
+        guard save.party.indices.contains(index) else { return }
+        save.party[index].currentHP = max(0, min(save.party[index].maxHP, hp))
+        save.party[index].status = save.party[index].isFainted ? nil : status
         persist()
         notifyChanged()
-        return result
     }
 
     /// A battle broken off mid-way (mid-battle recall/flee): the follower
@@ -555,7 +568,9 @@ final class RaisingState {
         }
         persist()
         notifyChanged()
-        if let to = evolvedTo, index == save.activeIndex {
+        if let to = evolvedTo {
+            // Benched members included: the overlay's evolution queue brings
+            // the mon out for its scene, same as a battle-EXP evolution.
             NotificationCenter.default.post(name: .raisingEvolved, object: nil,
                                             userInfo: ["from": fromDex, "to": to])
         }

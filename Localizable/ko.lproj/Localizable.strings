@@ -1335,6 +1335,16 @@
 "log.wildleft" = "%@는(은) 유유히 떠나갔다!";
 "log.draggedout" = "%@가(이) 끌려나왔다!";
 "log.recalled" = "%@를(을) 되돌렸다!";
+/* Mainline switch pair — wording picked by the foe's remaining HP
+   (>75% / >50% / >25% / <=25%), Gen 4/5 style. */
+"log.switchout.0" = "그만하면 됐다! 돌아와, %@!";
+"log.switchout.1" = "돌아와, %@!";
+"log.switchout.2" = "좋아! 돌아와, %@!";
+"log.switchout.3" = "잘했다! 돌아와, %@!";
+"log.sendout.0" = "가랏! %@!";
+"log.sendout.1" = "맡겼다! %@!";
+"log.sendout.2" = "힘내라! %@!";
+"log.sendout.3" = "상대는 지쳐있다! 해치워라, %@!";
 
 /* Language picker (Windows settings; design/windows-port.md W10) */
 "label.language" = "언어";

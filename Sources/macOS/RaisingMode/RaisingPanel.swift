@@ -155,6 +155,7 @@ final class RaisingPanelView: NSView {
 
         let activeIdx = RaisingState.shared.save.activeIndex
         let recallPending = BattleController.current?.recallPending ?? false
+        let switchPending = BattleController.current?.switchPendingIndex
         for (i, mon) in party.enumerated() {
             let row = PartyRowView(mon: displayMon(mon, at: i), isActive: i == activeIdx,
                                    onClick: { [weak self] in
@@ -167,7 +168,8 @@ final class RaisingPanelView: NSView {
                                    onRecall: i == activeIdx ? {
                                        RaisingState.shared.recall()
                                    } : nil,
-                                   recallPending: recallPending)
+                                   recallPending: recallPending,
+                                   switchQueued: switchPending == i)
             root.addArrangedSubview(row)
         }
 
@@ -741,6 +743,11 @@ final class RaisingPanelView: NSView {
             let out = NSButton(title: L("detail.sendout"), target: self, action: #selector(sendOutTapped))
             out.bezelStyle = .rounded
             out.contentTintColor = .systemBlue
+            // A mid-battle switch to THIS member is already queued for the
+            // turn boundary — nothing more to click.
+            if BattleController.current?.switchPendingIndex == idx {
+                out.isEnabled = false
+            }
             actions.addArrangedSubview(out)
         }
         let release = NSButton(title: L("detail.release"), target: self, action: #selector(releaseTapped))
@@ -1058,10 +1065,12 @@ final class PartyRowView: NSView {
     /// (when non-nil) shows the swap button that makes this one the follower,
     /// `onRecall` the withdraw button that puts the active one away.
     /// `recallPending` disables the withdraw button while a mid-battle recall
-    /// waits for the turn to finish.
+    /// waits for the turn to finish; `switchQueued` dims the send-out button
+    /// of the member a mid-battle switch is already queued for.
     init(mon: OwnedPokemon, isActive: Bool,
          onClick: @escaping () -> Void, onSendOut: (() -> Void)?,
-         onRecall: (() -> Void)? = nil, recallPending: Bool = false) {
+         onRecall: (() -> Void)? = nil, recallPending: Bool = false,
+         switchQueued: Bool = false) {
         self.onClick = onClick
         self.onSendOut = onSendOut
         self.onRecall = onRecall
@@ -1124,6 +1133,7 @@ final class PartyRowView: NSView {
             }
             b.frame = NSRect(x: 268, y: 13, width: 26, height: 24)
             b.toolTip = L("detail.sendout")
+            if switchQueued { b.isEnabled = false; b.alphaValue = 0.4 }
             addSubview(b)
         }
         if onRecall != nil {
