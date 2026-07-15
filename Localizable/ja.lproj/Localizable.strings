@@ -30,6 +30,7 @@
 "label.shadow" = "影";
 "label.hidefromcapture" = "画面キャプチャから隠す";
 "label.pausehotkey" = "一時停止のショートカット";
+"label.raisinghotkey" = "育成ウィンドウのショートカット";
 "hotkey.none" = "なし";
 "hotkey.recording" = "ショートカットを入力…";
 "label.launch" = "ログイン時に起動";

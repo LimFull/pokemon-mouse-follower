@@ -30,6 +30,7 @@
 "label.shadow" = "그림자";
 "label.hidefromcapture" = "화면 캡처에서 숨기기";
 "label.pausehotkey" = "일시정지 단축키";
+"label.raisinghotkey" = "키우기 창 단축키";
 "hotkey.none" = "없음";
 "hotkey.recording" = "단축키 입력…";
 "label.launch" = "로그인 시 자동 실행";

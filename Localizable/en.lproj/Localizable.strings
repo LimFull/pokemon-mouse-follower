@@ -30,6 +30,7 @@
 "label.shadow" = "Shadow";
 "label.hidefromcapture" = "Hide from screen capture";
 "label.pausehotkey" = "Pause hotkey";
+"label.raisinghotkey" = "Raising window hotkey";
 "hotkey.none" = "None";
 "hotkey.recording" = "Type shortcut…";
 "label.launch" = "Launch at login";

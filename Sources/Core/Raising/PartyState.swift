@@ -19,6 +19,8 @@ extension Notification.Name {
     static let captureProtectionChanged = Notification.Name("captureProtectionChanged")
     /// The pause global-hotkey binding changed in settings; re-register it.
     static let pauseHotkeyChanged = Notification.Name("pauseHotkeyChanged")
+    /// The raising-window global-hotkey binding changed; re-register it.
+    static let raisingHotkeyChanged = Notification.Name("raisingHotkeyChanged")
 }
 
 enum Gender: String, Codable {

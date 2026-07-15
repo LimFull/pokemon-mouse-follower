@@ -15,17 +15,28 @@ final class GlobalHotkey {
     var onFire: (() -> Void)?
     private var hotKeyRef: EventHotKeyRef?
     private var eventHandler: EventHandlerRef?
+    /// Distinguishes this binding when several hotkeys are registered (pause,
+    /// raising window, ...) — every installed handler sees every hotkey press,
+    /// so each fires only on its own id and passes the rest along.
+    private let id: UInt32
 
-    /// Install the process-wide hot-key event handler once (call at launch).
+    init(id: UInt32 = 1) { self.id = id }
+
+    /// Install this instance's hot-key event handler once (call at launch).
     func install() {
         guard eventHandler == nil else { return }
         var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard),
                                  eventKind: UInt32(kEventHotKeyPressed))
         let this = Unmanaged.passUnretained(self).toOpaque()
-        InstallEventHandler(GetApplicationEventTarget(), { _, _, userData in
-            if let userData {
-                Unmanaged<GlobalHotkey>.fromOpaque(userData).takeUnretainedValue().onFire?()
-            }
+        InstallEventHandler(GetApplicationEventTarget(), { _, event, userData in
+            guard let userData else { return noErr }
+            var hkID = EventHotKeyID()
+            GetEventParameter(event, EventParamName(kEventParamDirectObject),
+                              EventParamType(typeEventHotKeyID), nil,
+                              MemoryLayout<EventHotKeyID>.size, nil, &hkID)
+            let hotkey = Unmanaged<GlobalHotkey>.fromOpaque(userData).takeUnretainedValue()
+            guard hkID.id == hotkey.id else { return OSStatus(eventNotHandledErr) }
+            hotkey.onFire?()
             return noErr
         }, 1, &spec, this, &eventHandler)
     }
@@ -34,19 +45,13 @@ final class GlobalHotkey {
     func bind(keyCode: Int, modifiers: Int) {
         unbind()
         guard keyCode >= 0 else { return }
-        let id = EventHotKeyID(signature: OSType(0x504D4648) /* 'PMFH' */, id: 1)
-        RegisterEventHotKey(UInt32(keyCode), UInt32(modifiers), id,
+        let hkID = EventHotKeyID(signature: OSType(0x504D4648) /* 'PMFH' */, id: id)
+        RegisterEventHotKey(UInt32(keyCode), UInt32(modifiers), hkID,
                             GetApplicationEventTarget(), 0, &hotKeyRef)
     }
 
     func unbind() {
         if let r = hotKeyRef { UnregisterEventHotKey(r); hotKeyRef = nil }
-    }
-
-    /// Apply the currently-saved binding from settings.
-    func applyFromSettings() {
-        bind(keyCode: AppSettings.shared.pauseHotkeyKeyCode,
-             modifiers: AppSettings.shared.pauseHotkeyModifiers)
     }
 
     deinit {
@@ -62,10 +67,14 @@ final class GlobalHotkey {
 /// keyCode == -1 means "cleared / no hotkey".
 final class HotkeyRecorderButton: NSButton {
     var onChange: ((_ keyCode: Int, _ carbonModifiers: Int, _ label: String) -> Void)?
+    /// Reads the current saved binding for the idle title — one recorder per
+    /// hotkey (pause, raising window, ...), each backed by its own settings.
+    private let currentBinding: () -> (keyCode: Int, label: String)
     private var recording = false
     private var monitor: Any?
 
-    init() {
+    init(current: @escaping () -> (keyCode: Int, label: String)) {
+        currentBinding = current
         super.init(frame: .zero)
         bezelStyle = .rounded
         setButtonType(.momentaryPushIn)
@@ -78,8 +87,8 @@ final class HotkeyRecorderButton: NSButton {
 
     func refreshTitle() {
         if recording { title = L("hotkey.recording"); return }
-        title = AppSettings.shared.pauseHotkeyKeyCode < 0 ? L("hotkey.none")
-                                                          : AppSettings.shared.pauseHotkeyLabel
+        let (code, label) = currentBinding()
+        title = code < 0 ? L("hotkey.none") : label
     }
 
     @objc private func startRecording() {

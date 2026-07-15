@@ -15,8 +15,8 @@ enum PMF {
         || ProcessInfo.processInfo.environment["PMF_FAST_BATTLE"] != nil
 }
 
-// MARK: - Pause-hotkey platform defaults
-/// Default global pause hotkey, in each platform's native key/modifier codes.
+// MARK: - Global-hotkey platform defaults
+/// Default global hotkeys, in each platform's native key/modifier codes.
 /// macOS uses Carbon virtual key codes + Carbon modifier masks; Windows uses
 /// VK_* codes + MOD_* masks. A user's settings never move between OSes, so
 /// each platform persists its own native values.
@@ -29,6 +29,19 @@ enum PauseHotkey {
     static let defaultKeyCode = 0x50        // 'P'
     static let defaultModifiers = 0x0005    // MOD_ALT | MOD_SHIFT
     static let defaultLabel = "Alt+Shift+P"
+#endif
+}
+
+/// Default hotkey that toggles the standalone raising window (user request).
+enum RaisingHotkey {
+#if os(macOS)
+    static let defaultKeyCode = 31          // kVK_ANSI_O
+    static let defaultModifiers = 0x0A00    // optionKey | shiftKey
+    static let defaultLabel = "⌥⇧O"
+#else
+    static let defaultKeyCode = 0x4F        // 'O'
+    static let defaultModifiers = 0x0005    // MOD_ALT | MOD_SHIFT
+    static let defaultLabel = "Alt+Shift+O"
 #endif
 }
 
@@ -108,6 +121,20 @@ final class AppSettings {
     var pauseHotkeyLabel: String {
         get { d.string("pauseHotkeyLabel") ?? PauseHotkey.defaultLabel }
         set { d.set(newValue, "pauseHotkeyLabel") }
+    }
+    // Global hotkey that toggles the standalone raising window — same storage
+    // scheme as the pause hotkey. keyCode < 0 disables it.
+    var raisingHotkeyKeyCode: Int {
+        get { d.has("raisingHotkeyKeyCode") ? Int(d.double("raisingHotkeyKeyCode")) : RaisingHotkey.defaultKeyCode }
+        set { d.set(Double(newValue), "raisingHotkeyKeyCode") }
+    }
+    var raisingHotkeyModifiers: Int {
+        get { d.has("raisingHotkeyModifiers") ? Int(d.double("raisingHotkeyModifiers")) : RaisingHotkey.defaultModifiers }
+        set { d.set(Double(newValue), "raisingHotkeyModifiers") }
+    }
+    var raisingHotkeyLabel: String {
+        get { d.string("raisingHotkeyLabel") ?? RaisingHotkey.defaultLabel }
+        set { d.set(newValue, "raisingHotkeyLabel") }
     }
     // Use the alternate-color sprite variant when a character has one.
     var altColor: Bool {

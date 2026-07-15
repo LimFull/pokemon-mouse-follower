@@ -20,7 +20,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var settingsController: SettingsWindowController?
     private var raisingWindowController: RaisingWindowController?
     private let raisingIcon = RaisingShortcutIcon()
-    private let pauseHotkey = GlobalHotkey()
+    private let pauseHotkey = GlobalHotkey(id: 1)
+    private let raisingHotkey = GlobalHotkey(id: 2)
     private var pauseMenuItem: NSMenuItem?
     // Self-update: retained for the lifetime of a download so the delegate lives.
     private var updateInProgress = false
@@ -49,13 +50,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self, selector: #selector(raisingIconChanged), name: .raisingIconChanged, object: nil)
         NotificationCenter.default.addObserver(
             self, selector: #selector(captureProtectionChanged), name: .captureProtectionChanged, object: nil)
-        // Global pause hotkey: fires anywhere (e.g. to hide everything before a
-        // screen recording). Re-bound live when changed in settings.
+        // Global hotkeys: fire anywhere. Pause hides everything (e.g. before a
+        // screen recording); the raising hotkey toggles the raising window.
+        // Both re-bound live when changed in settings.
         pauseHotkey.install()
         pauseHotkey.onFire = { [weak self] in self?.setRunning(!(self?.running ?? true)) }
-        pauseHotkey.applyFromSettings()
+        raisingHotkey.install()
+        raisingHotkey.onFire = { [weak self] in
+            guard let self else { return }
+            self.raisingWC().toggle(near: self.raisingIcon.window?.frame)
+        }
+        applyHotkeyBindings()
         NotificationCenter.default.addObserver(
-            self, selector: #selector(pauseHotkeyChanged), name: .pauseHotkeyChanged, object: nil)
+            self, selector: #selector(hotkeysChanged), name: .pauseHotkeyChanged, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(hotkeysChanged), name: .raisingHotkeyChanged, object: nil)
         raisingIcon.setVisible(AppSettings.shared.raisingIconEnabled)
         if CommandLine.arguments.contains("--show-settings") { showSettings() }
         // Debug: preview the on-overlay prompts (C1) without earning them.
@@ -333,8 +342,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for (_, view) in overlays { view.isHidden = !running }
     }
 
-    @objc private func pauseHotkeyChanged() {
-        pauseHotkey.applyFromSettings()
+    private func applyHotkeyBindings() {
+        let s = AppSettings.shared
+        pauseHotkey.bind(keyCode: s.pauseHotkeyKeyCode, modifiers: s.pauseHotkeyModifiers)
+        raisingHotkey.bind(keyCode: s.raisingHotkeyKeyCode, modifiers: s.raisingHotkeyModifiers)
+    }
+
+    @objc private func hotkeysChanged() {
+        applyHotkeyBindings()
     }
 
     // MARK: - Self-update

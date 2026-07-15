@@ -19,6 +19,7 @@ private let idCharLabel: Int32 = 134
 private let idRaisingIcon: Int32 = 135
 private let idHideCapture: Int32 = 136
 private let idPauseHotkey: Int32 = 137
+private let idRaisingHotkey: Int32 = 138
 private let idLanguage: Int32 = 140
 private let idPrev: Int32 = 150
 private let idNext: Int32 = 151
@@ -90,13 +91,13 @@ private func hotkeyRecWndProc(_ hwnd: HWND?, _ msg: UINT, _ wParam: WPARAM, _ lP
         return 1   // fully repainted in WM_PAINT; skip to avoid flicker
     case kWM_LBUTTONDOWN:
         SetFocus(hwnd)
-        dlg.startHotkeyRecording()
+        dlg.startHotkeyRecording(GetDlgCtrlID(hwnd))
         return 0
     case kWM_SETFOCUS:
         InvalidateRect(hwnd, nil, true)
         return 0
     case kWM_KILLFOCUS:
-        dlg.cancelHotkeyRecording()
+        dlg.cancelHotkeyRecording(GetDlgCtrlID(hwnd))
         InvalidateRect(hwnd, nil, true)
         return 0
     case kWM_KEYDOWN, kWM_SYSKEYDOWN:
@@ -180,7 +181,8 @@ final class SettingsDialog {
     private var controls: [Int32: HWND] = [:]
     private var previewHwnd: HWND?
     private var hotkeyHwnd: HWND?
-    private var hotkeyRecording = false
+    private var raisingHotkeyHwnd: HWND?
+    private var hotkeyRecordingId: Int32 = 0   // control id being recorded (0 = none)
     private var font: HFONT?
     private var smallFont: HFONT?
     private var monoFont: HFONT?
@@ -396,11 +398,15 @@ final class SettingsDialog {
         }
         y += 6
 
-        // Pause global hotkey — a custom recorder control: click it, then press
+        // Global hotkeys — custom recorder controls: click one, then press
         // a Ctrl/Alt/Win + key chord (Esc cancels, Backspace/Delete clears).
         label(L("label.pausehotkey"), y)
         hotkeyHwnd = child(String(decoding: hotkeyClassName.dropLast(), as: UTF16.self), "",
                            id: idPauseHotkey, x: ctrlX, y: y, w: 170, h: 24, style: DWORD(WS_TABSTOP))
+        y += rowH + 6
+        label(L("label.raisinghotkey"), y)
+        raisingHotkeyHwnd = child(String(decoding: hotkeyClassName.dropLast(), as: UTF16.self), "",
+                                  id: idRaisingHotkey, x: ctrlX, y: y, w: 170, h: 24, style: DWORD(WS_TABSTOP))
         y += rowH + 6
 
         // Language (Windows-only, W10): auto / en / ko / ja; needs a restart.
@@ -524,33 +530,36 @@ final class SettingsDialog {
         if let previewHwnd { InvalidateRect(previewHwnd, nil, false) }
     }
 
-    // MARK: pause-hotkey recorder
+    // MARK: global-hotkey recorders (pause + raising window)
 
-    fileprivate func hotkeyDisplayText() -> String {
-        if hotkeyRecording { return L("hotkey.recording") }
-        return AppSettings.shared.pauseHotkeyKeyCode < 0 ? L("hotkey.none")
-                                                         : AppSettings.shared.pauseHotkeyLabel
+    fileprivate func hotkeyDisplayText(for id: Int32) -> String {
+        if hotkeyRecordingId == id { return L("hotkey.recording") }
+        let s = AppSettings.shared
+        if id == idRaisingHotkey {
+            return s.raisingHotkeyKeyCode < 0 ? L("hotkey.none") : s.raisingHotkeyLabel
+        }
+        return s.pauseHotkeyKeyCode < 0 ? L("hotkey.none") : s.pauseHotkeyLabel
     }
 
-    fileprivate func startHotkeyRecording() {
-        hotkeyRecording = true
-        repaintHotkey()
+    fileprivate func startHotkeyRecording(_ id: Int32) {
+        hotkeyRecordingId = id
+        repaintHotkeys()
     }
 
-    fileprivate func cancelHotkeyRecording() {
-        if hotkeyRecording { hotkeyRecording = false; repaintHotkey() }
+    fileprivate func cancelHotkeyRecording(_ id: Int32) {
+        if hotkeyRecordingId == id { hotkeyRecordingId = 0; repaintHotkeys() }
     }
 
     fileprivate func hotkeyKeyDown(_ vk: Int) {
-        guard hotkeyRecording else { return }
+        let id = hotkeyRecordingId
+        guard id != 0 else { return }
         // Ignore modifier-only keys — wait for the real key of the chord.
         let modOnly: Set<Int> = [0x10, 0x11, 0x12, 0x5B, 0x5C, 0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5]
         if modOnly.contains(vk) { return }
-        if vk == 0x1B { hotkeyRecording = false; repaintHotkey(); return }   // Esc cancels
+        if vk == 0x1B { hotkeyRecordingId = 0; repaintHotkeys(); return }    // Esc cancels
         if vk == 0x08 || vk == 0x2E {                                        // Backspace/Delete clears
-            AppSettings.shared.pauseHotkeyKeyCode = -1
-            AppSettings.shared.pauseHotkeyLabel = L("hotkey.none")
-            finishHotkey(); return
+            setHotkeyBinding(code: -1, mods: 0, label: L("hotkey.none"), for: id)
+            finishHotkey(id); return
         }
         let ctrl = pressed(0x11), alt = pressed(0x12), shift = pressed(0x10)
         let win = pressed(0x5B) || pressed(0x5C)
@@ -560,21 +569,38 @@ final class SettingsDialog {
         if ctrl { mods |= kMOD_CONTROL }
         if shift { mods |= kMOD_SHIFT }
         if win { mods |= kMOD_WIN }
-        AppSettings.shared.pauseHotkeyKeyCode = vk
-        AppSettings.shared.pauseHotkeyModifiers = mods
-        AppSettings.shared.pauseHotkeyLabel = hotkeyLabel(ctrl: ctrl, alt: alt, shift: shift, win: win, vk: vk)
-        finishHotkey()
+        setHotkeyBinding(code: vk, mods: mods,
+                         label: hotkeyLabel(ctrl: ctrl, alt: alt, shift: shift, win: win, vk: vk),
+                         for: id)
+        finishHotkey(id)
+    }
+
+    private func setHotkeyBinding(code: Int, mods: Int, label: String, for id: Int32) {
+        let s = AppSettings.shared
+        if id == idRaisingHotkey {
+            s.raisingHotkeyKeyCode = code
+            s.raisingHotkeyModifiers = mods
+            s.raisingHotkeyLabel = label
+        } else {
+            s.pauseHotkeyKeyCode = code
+            s.pauseHotkeyModifiers = mods
+            s.pauseHotkeyLabel = label
+        }
     }
 
     private func pressed(_ vk: Int) -> Bool { (Int(GetKeyState(Int32(vk))) & 0x8000) != 0 }
 
-    private func finishHotkey() {
-        hotkeyRecording = false
-        NotificationCenter.default.post(name: .pauseHotkeyChanged, object: nil)
-        repaintHotkey()
+    private func finishHotkey(_ id: Int32) {
+        hotkeyRecordingId = 0
+        NotificationCenter.default.post(
+            name: id == idRaisingHotkey ? .raisingHotkeyChanged : .pauseHotkeyChanged, object: nil)
+        repaintHotkeys()
     }
 
-    private func repaintHotkey() { InvalidateRect(hotkeyHwnd, nil, true) }
+    private func repaintHotkeys() {
+        InvalidateRect(hotkeyHwnd, nil, true)
+        InvalidateRect(raisingHotkeyHwnd, nil, true)
+    }
 
     private func hotkeyLabel(ctrl: Bool, alt: Bool, shift: Bool, win: Bool, vk: Int) -> String {
         var parts: [String] = []
@@ -615,7 +641,7 @@ final class SettingsDialog {
         SetBkMode(hdc, TRANSPARENT)
         SetTextColor(hdc, GetSysColor(kCOLOR_WINDOWTEXT))
         if let font { SelectObject(hdc, font) }
-        let text = wide(hotkeyDisplayText())
+        let text = wide(hotkeyDisplayText(for: GetDlgCtrlID(hwnd)))
         _ = text.withUnsafeBufferPointer {
             DrawTextW(hdc, $0.baseAddress, -1, &rc, kDT_CENTERED)
         }

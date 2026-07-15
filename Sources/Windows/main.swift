@@ -60,6 +60,10 @@ tray.onQuit = { quitRequested = true }
 tray.onPauseToggle = { if tray.paused { hideAllOverlays() } }
 tray.onSettings = { SettingsDialog.show() }
 tray.onRaising = { RaisingWindowWin.show() }
+// Raising-window global hotkey: same toggle the shortcut icon performs.
+tray.onRaisingToggle = {
+    RaisingWindowWin.toggle(near: RaisingShortcutIconWin.shared?.frameRect)
+}
 tray.onDisplayChange = { RaisingShortcutIconWin.shared?.clampToScreen() }
 tray.onCheckUpdate = { [weak tray] in
     UpdaterWin.checkForUpdate { tray?.requestQuit() }
@@ -79,12 +83,16 @@ let captureProtectionObserver = NotificationCenter.default.addObserver(
     forName: .captureProtectionChanged, object: nil, queue: nil) { _ in
     applyCaptureProtection()
 }
-// Global pause hotkey (hide/show the follower & effects from anywhere — handy
-// before a screen recording). Re-registered live when changed in settings.
-tray.applyPauseHotkey()
+// Global hotkeys (pause = hide/show everything, raising = toggle the raising
+// window). Re-registered live when changed in settings.
+tray.applyHotkeys()
 let pauseHotkeyObserver = NotificationCenter.default.addObserver(
     forName: .pauseHotkeyChanged, object: nil, queue: nil) { _ in
-    tray.applyPauseHotkey()
+    tray.applyHotkeys()
+}
+let raisingHotkeyObserver = NotificationCenter.default.addObserver(
+    forName: .raisingHotkeyChanged, object: nil, queue: nil) { _ in
+    tray.applyHotkeys()
 }
 SettingsDialog.onCharacterChanged = {
     controller.setCharacter(RaisingState.shared.followerFolder)   // raising mon keeps priority

@@ -9,13 +9,15 @@ import Foundation
 private let kTrayCallback = UINT(0x8000 + 1)   // WM_APP + 1
 private let kWM_HOTKEY: UINT = 0x0312
 private let kMOD_NOREPEAT: DWORD = 0x4000
-/// App-registered hotkey id (must be in the 0x0000–0xBFFF app range).
+/// App-registered hotkey ids (must be in the 0x0000–0xBFFF app range).
 let kPauseHotkeyId: Int32 = 0xB001
+let kRaisingHotkeyId: Int32 = 0xB002
 private let kCmdPause: UINT_PTR = 1
 private let kCmdQuit: UINT_PTR = 2
 private let kCmdSettings: UINT_PTR = 3
 private let kCmdUpdate: UINT_PTR = 4
 private let kCmdRaising: UINT_PTR = 5
+private let kCmdRaisingToggle: UINT_PTR = 6   // hotkey path: toggle, not just show
 
 // Debug panel opener (dev runs only — the actions themselves live in
 // DebugCatalog and render as one-click buttons in DebugPanelWin).
@@ -39,8 +41,10 @@ private func trayWndProc(_ hwnd: HWND?, _ msg: UINT, _ wParam: WPARAM, _ lParam:
         trayInstance?.handleCommand(UINT_PTR(wParam & 0xFFFF))
         return 0
     case kWM_HOTKEY:
-        // Global pause hotkey: reuse the exact menu pause path (toggle + hide).
+        // Global hotkeys: pause reuses the exact menu path (toggle + hide);
+        // the raising hotkey toggles the standalone raising window.
         if wParam == WPARAM(kPauseHotkeyId) { trayInstance?.handleCommand(kCmdPause) }
+        else if wParam == WPARAM(kRaisingHotkeyId) { trayInstance?.handleCommand(kCmdRaisingToggle) }
         return 0
     case UINT(WM_DISPLAYCHANGE):
         ScreenAdapter.refresh()
@@ -61,21 +65,31 @@ final class TrayIcon {
     var onQuit: (() -> Void)?
     var onSettings: (() -> Void)?
     var onRaising: (() -> Void)?
+    var onRaisingToggle: (() -> Void)?   // raising-window hotkey (toggle)
     var onCheckUpdate: (() -> Void)?
     // Display topology changed (wired by main: re-clamp the shortcut icon).
     var onDisplayChange: (() -> Void)?
     // Debug panel opener (dev runs only; wired by main when PMF.isDevRun).
     var onOpenDebugPanel: (() -> Void)?
 
-    /// (Re)register the global pause hotkey from settings on the tray's message
-    /// window (WM_HOTKEY lands in trayWndProc). keyCode < 0 leaves it unbound.
-    func applyPauseHotkey() {
+    /// (Re)register the global hotkeys (pause + raising window) from settings
+    /// on the tray's message window (WM_HOTKEY lands in trayWndProc).
+    /// keyCode < 0 leaves that hotkey unbound.
+    func applyHotkeys() {
         guard let hwnd else { return }
+        let s = AppSettings.shared
         UnregisterHotKey(hwnd, kPauseHotkeyId)
-        let code = AppSettings.shared.pauseHotkeyKeyCode
-        guard code >= 0 else { return }
-        let mods = DWORD(AppSettings.shared.pauseHotkeyModifiers) | kMOD_NOREPEAT
-        RegisterHotKey(hwnd, kPauseHotkeyId, mods, UINT(code))
+        UnregisterHotKey(hwnd, kRaisingHotkeyId)
+        if s.pauseHotkeyKeyCode >= 0 {
+            RegisterHotKey(hwnd, kPauseHotkeyId,
+                           DWORD(s.pauseHotkeyModifiers) | kMOD_NOREPEAT,
+                           UINT(s.pauseHotkeyKeyCode))
+        }
+        if s.raisingHotkeyKeyCode >= 0 {
+            RegisterHotKey(hwnd, kRaisingHotkeyId,
+                           DWORD(s.raisingHotkeyModifiers) | kMOD_NOREPEAT,
+                           UINT(s.raisingHotkeyKeyCode))
+        }
     }
 
     /// Thread-safe quit: posts the Quit command to the tray window, so worker
@@ -177,6 +191,8 @@ final class TrayIcon {
             onSettings?()
         case kCmdRaising:
             onRaising?()
+        case kCmdRaisingToggle:
+            onRaisingToggle?()
         case kCmdUpdate:
             onCheckUpdate?()
         case kCmdDebugPanel:
