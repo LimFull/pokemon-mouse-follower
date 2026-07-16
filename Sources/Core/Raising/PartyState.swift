@@ -78,10 +78,10 @@ struct OwnedPokemon: Codable {
     }
 
     /// A fainted mon gets back up on its own this long after fainting
-    /// (was: a flat 3h): level × 2 minutes, capped at an hour — a Lv5
-    /// starter is back in 10 minutes, anything Lv30+ waits the full 60.
+    /// (was: level × 2 minutes capped at an hour): a flat 5 minutes,
+    /// regardless of level.
     var reviveDelay: TimeInterval {
-        min(60, Double(level) * 2) * 60
+        5 * 60
     }
 
     /// "2h 12m" until this fainted mon revives — shown for fainted members
