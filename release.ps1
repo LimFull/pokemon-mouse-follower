@@ -92,13 +92,25 @@ Windows 10+ · x64.
 # would split --notes into multiple arguments.
 $notesFile = Join-Path $env:TEMP "pmf-release-notes.md"
 [System.IO.File]::WriteAllText($notesFile, $notes, (New-Object System.Text.UTF8Encoding($false)))
+# Create the release as a DRAFT with its assets first, then flip it to
+# published. A draft is invisible to the releases Atom feed and to
+# /releases/latest, so the in-app updater never sees a version whose Windows
+# installer hasn't finished uploading (it HEAD-checks the asset and would
+# otherwise skip the new version, telling users "already up to date").
 cmd /c "gh release view $tag >nul 2>nul"
 if ($LASTEXITCODE -eq 0) {
+    # Release already exists (e.g. the macOS flow published this same tag).
     Write-Host "==> Release $tag exists; uploading assets..."
     gh release upload $tag $zip $setup --clobber
 } else {
-    Write-Host "==> Creating release $tag..."
-    gh release create $tag $zip $setup --title "Pokémon Mouse Follower $version" --notes-file $notesFile
+    Write-Host "==> Creating draft release $tag..."
+    gh release create $tag $zip $setup --draft --title "Pokémon Mouse Follower $version" --notes-file $notesFile
 }
 if ($LASTEXITCODE -ne 0) { Write-Error "gh release failed" }
+
+# Assets are attached now — publish. Idempotent on an already-published release
+# (the other platform's), and recovers a draft left by a failed earlier run.
+Write-Host "==> Publishing $tag..."
+gh release edit $tag --draft=false
+if ($LASTEXITCODE -ne 0) { Write-Error "gh release publish failed" }
 Write-Host "==> Published: https://github.com/LimFull/pokemon-mouse-follower/releases/tag/$tag"

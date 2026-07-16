@@ -158,15 +158,30 @@ Apple 공증(notarization)을 받지 않은 ad-hoc 서명 앱이라, 처음 열 
   \`\`\`"
 fi
 
-# 8. Create or update the GitHub Release and upload the .dmg.
+# 8. Create or update the GitHub Release, then flip it to published.
+#
+# The release is created as a DRAFT with its assets first, and only marked
+# published once the (slow) .dmg upload has completed. A draft is invisible to
+# the releases Atom feed and to /releases/latest, so the in-app updater never
+# sees a version whose macOS .dmg hasn't finished uploading. Without this, the
+# tag became visible the moment `gh release create` returned but the .dmg
+# landed minutes later — during that gap the updater's HEAD on the missing dmg
+# 404'd, so it skipped the new version and told users "already up to date".
 if gh release view "$TAG" >/dev/null 2>&1; then
+  # Release already exists (e.g. the Windows flow published this same tag).
   echo "==> Release $TAG exists; uploading assets..."
   gh release upload "$TAG" "$DMG" "$STABLE_DMG" --clobber
 else
-  echo "==> Creating release $TAG..."
+  echo "==> Creating draft release $TAG..."
   gh release create "$TAG" "$DMG" "$STABLE_DMG" \
+    --draft \
     --title "Pokémon Mouse Follower ${VERSION}" \
     --notes "$NOTES"
 fi
+
+# Assets are attached now — publish. Idempotent on an already-published release
+# (the other platform's), and recovers a draft left by a failed earlier run.
+echo "==> Publishing $TAG..."
+gh release edit "$TAG" --draft=false
 
 echo "==> Published: $(gh release view "$TAG" --json url --jq .url)"
