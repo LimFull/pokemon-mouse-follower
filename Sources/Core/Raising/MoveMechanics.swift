@@ -272,15 +272,6 @@ enum MoveMechanics {
         return out
     }()
 
-    /// Move priority by English name (mainline brackets; 0 when absent).
-    private static let priorityByName: [String: Int] = [
-        "Quick Attack": 1, "Mach Punch": 1, "ExtremeSpeed": 1, "Extreme Speed": 1,
-        "Aqua Jet": 1, "Bullet Punch": 1, "Ice Shard": 1, "Shadow Sneak": 1,
-        "Sucker Punch": 1, "Protect": 4, "Detect": 4, "Magic Coat": 4,
-        "Vital Throw": -1, "Focus Punch": -3, "Revenge": -4, "Avalanche": -4,
-        "Counter": -5, "Mirror Coat": -5, "Roar": -6, "Whirlwind": -6,
-    ]
-
     static let byMoveId: [Int: MoveMechanic] = {
         var out: [Int: MoveMechanic] = [:]
         for (id, m) in GameData.moves {
@@ -289,10 +280,12 @@ enum MoveMechanics {
         return out
     }()
 
+    /// Mainline priority brackets, from the data (moves.json `priority`,
+    /// merged by rom-extract/fetch_descriptions.py; 0 when absent).
     static let priorityByMoveId: [Int: Int] = {
         var out: [Int: Int] = [:]
         for (id, m) in GameData.moves {
-            if let p = priorityByName[m.englishName] { out[id] = p }
+            if let p = m.priority, p != 0 { out[id] = p }
         }
         return out
     }()
