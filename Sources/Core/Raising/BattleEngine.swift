@@ -1408,7 +1408,8 @@ final class BattleSession {
     /// Simulate ONE round and return its events. `playerItem` replaces the
     /// follower's action with a healing item (mainline: an item costs the
     /// turn) and resolves before moves.
-    func nextRound(playerItem: GameItem? = nil, playerBall: GameItem? = nil) -> [BattleEvent] {
+    func nextRound(playerItem: GameItem? = nil, playerBall: GameItem? = nil,
+                   playerSwitched: Bool = false) -> [BattleEvent] {
         roundEvents = []
         guard !isOver else { return [] }
         turn += 1
@@ -1419,7 +1420,7 @@ final class BattleSession {
             b.flinched = false   // a flinch only ever eats the CURRENT round's action
         }
         let pPlan: (moveId: Int?, priority: Int) =
-            playerItem != nil ? (nil, 6) : BattleEngine.plan(player, vs: wild)
+            (playerItem != nil || playerSwitched) ? (nil, 6) : BattleEngine.plan(player, vs: wild)
         let wPlan = BattleEngine.plan(wild, vs: player)
         let pFirst = pPlan.priority != wPlan.priority
             ? pPlan.priority > wPlan.priority
@@ -1430,6 +1431,9 @@ final class BattleSession {
 
         for (atk, def, isPlayer, planned) in order {
             guard !isOver, !playerDraggedOut, !atk.isFainted, !def.isFainted else { continue }
+            // Mainline switch cost: bringing this mon in spent the turn — it
+            // takes no action, the wild's move goes through against it.
+            if isPlayer, playerSwitched { continue }
             if isPlayer, let item = playerItem {
                 useHealingItem(item)
                 continue

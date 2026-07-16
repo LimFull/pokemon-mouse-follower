@@ -131,6 +131,12 @@ final class BattleController: LiveBattleBridge {
     private var recallTurn: Int?         // flee after this simulated turn ends
     private var switchTurn: Int?         // swap the active mon after this turn ends
     private var switchIndex: Int?        // ...for this party member
+    // The switch beat in progress (mainline send-out): the outgoing mon backs
+    // away from the wild and fades, the newcomer pops out of a smoke burst
+    // and scales in; the swap itself lands between the two halves.
+    private var switchAnim: (index: Int, tick: Int)?
+    private var switchOutTicks: Int { fast ? 18 : 36 }
+    private var switchInTicks: Int { fast ? 16 : 32 }
     // Everyone who battled THIS wild (party indices): seeded at battle start,
     // extended by switches and drag-outs, and kept across a recall +
     // re-engage while the same wild lingers — the mainline EXP-share pool.
@@ -421,20 +427,37 @@ final class BattleController: LiveBattleBridge {
         return true
     }
 
-    /// Turn-boundary switch (mainline timing): write the outgoing mon's live
-    /// battle state back (like a flee — the damage sticks, no free heal),
-    /// activate the chosen member, hand its fresh Battler to the session so
-    /// moves/log/EXP identity all follow the newcomer, and log the mainline
-    /// switch pair ("돌아와!" → "가랏!", wording by the foe's remaining HP).
-    private func performSwitch(to index: Int, in s: BattleSession) {
+    /// Turn-boundary switch (mainline timing), first half: validate the
+    /// target and start the switch beat — tickSwitchAnim drives recall fade →
+    /// swap → send-out pop, and the turn cost lands when the beat ends.
+    /// False when the target can't come in (the boundary just moves on).
+    private func beginSwitchAnim(to index: Int, in s: BattleSession) -> Bool {
         let st = RaisingState.shared
         guard st.save.party.indices.contains(index), !st.party[index].isFainted,
               index != st.save.activeIndex,
-              let b = Battler(mon: st.party[index]) else { return }
+              Battler(mon: st.party[index]) != nil else { return false }
+        switchAnim = (index, 0)
+        playerPose = (.stand, 0)
+        // Leftover combat text would freeze mid-air for the beat's ~1s.
+        floatText = nil; floatAlpha = 0
+        dmgText = nil; dmgAlpha = 0
+        pushLog(BattleLog.switchOutLine(playerName: s.player.name, foeHPFraction: curWHP))
+        return true
+    }
+
+    /// The swap itself (between the beat's halves): write the outgoing mon's
+    /// live battle state back (like a flee — the damage sticks, no free
+    /// heal), activate the chosen member, hand its fresh Battler to the
+    /// session so moves/log/EXP identity all follow the newcomer, and pop
+    /// the send-out smoke the newcomer scales in from.
+    private func completeSwitch(to index: Int, in s: BattleSession) -> Bool {
+        let st = RaisingState.shared
+        guard st.save.party.indices.contains(index), !st.party[index].isFainted,
+              index != st.save.activeIndex,
+              let b = Battler(mon: st.party[index]) else { return false }
         if let mon = st.active {
             st.applyFleeState(hp: Int((curPHP * Double(mon.maxHP)).rounded()),
                               status: curPStatus)
-            pushLog(BattleLog.switchOutLine(playerName: s.player.name, foeHPFraction: curWHP))
         }
         st.applyActive(index)   // direct: setActive would re-enter the switch queue
         s.switchPlayer(replacement: b)
@@ -442,10 +465,69 @@ final class BattleController: LiveBattleBridge {
         curPHP = frac(b.currentHP, b.maxHP)
         curPStatus = st.party[index].status
         playerTransformedDex = nil
-        pBodyScale = 1; pBodyTarget = 1   // the newcomer is full size
-        pVanish = false                   // ...not mid-Dig
+        pVanish = false                   // the newcomer is not mid-Dig
         pSub = false                      // ...and not behind the old doll
         pushLog(BattleLog.sendOutLine(playerName: b.name, foeHPFraction: curWHP))
+        if let clip = EffectPlayer.clip(forMove: 37) {   // SmokeScreen's puff
+            effects.append(RunningEffect(clip: clip, anchor: playerPos,
+                                         maxTicks: min(clip.loop ? 30 : clip.totalTicks, 40)))
+        }
+        return true
+    }
+
+    /// The switch beat, at the turn boundary the queued switch landed on.
+    /// First half: the outgoing mon backs straight away from the wild,
+    /// fading out on the way. Swap. Second half: a smoke burst pops and the
+    /// newcomer scales in with an overshoot. Then the turn cost lands —
+    /// the round is pulled with playerSwitched set (mainline: switching
+    /// spends the turn, so the incoming mon just takes the wild's move).
+    private func tickSwitchAnim() {
+        guard let s = session, let anim = switchAnim else { switchAnim = nil; return }
+        let t = anim.tick
+        wildMon?.faceStanding(toward: playerPos)
+        playerPose = (.stand, 0)
+        // Event beats normally advance effects — keep the poof playing here.
+        if !effects.isEmpty {
+            effects[0].advance()
+            if effects[0].isDone { effects.removeFirst() }
+        }
+        if t < switchOutTicks {
+            // Recall: back away from the wild, fading out on the way.
+            let p = Double(t + 1) / Double(switchOutTicks)
+            let wpos = wildMon?.pos ?? playerPos
+            var dx = playerPos.x - wpos.x, dy = playerPos.y - wpos.y
+            let d = max(0.001, hypot(dx, dy)); dx /= d; dy /= d
+            let slide = CGFloat(p * p) * 46 * AppSettings.shared.scale
+            playerDodge = CGPoint(x: dx * slide, y: dy * slide)
+            playerAlpha = 1 - p
+            if t == switchOutTicks - 1 {
+                playerDodge = .zero
+                guard completeSwitch(to: anim.index, in: s) else {
+                    // The target vanished mid-beat (released or fainted from
+                    // a panel): abort — no swap, no turn spent.
+                    switchAnim = nil
+                    playerAlpha = 1
+                    return
+                }
+                pBodyScale = 0.2; pBodyTarget = 1
+            }
+        } else {
+            // Send-out: pop out of the smoke, overshoot, settle to full size.
+            let p = Double(t - switchOutTicks + 1) / Double(switchInTicks)
+            playerAlpha = min(1, p * 4)
+            pBodyScale = 0.2 + 0.8 * easeOutBack(p)
+        }
+        switchAnim = (anim.index, t + 1)
+        if t + 1 >= switchOutTicks + switchInTicks {
+            switchAnim = nil
+            playerAlpha = 1; pBodyScale = 1; pBodyTarget = 1
+            // The switch spent the turn: the wild's free round starts now —
+            // queued potions/balls wait for the next boundary (each action
+            // costs its own turn, mainline rules).
+            s.setBallStock(ballStock(used: s.used))
+            events = s.nextRound(playerSwitched: true)
+            evIdx = 0; evTick = 0
+        }
     }
 
     private func startBattle() {
@@ -492,6 +574,7 @@ final class BattleController: LiveBattleBridge {
     }
 
     private func tickBattling() {
+        if switchAnim != nil { tickSwitchAnim(); return }
         guard evIdx < events.count else {
             // The played round is over. Weave in queued decisions, then pull
             // the next round from the session — or wrap up when it's done.
@@ -517,7 +600,10 @@ final class BattleController: LiveBattleBridge {
                 // potion — and lands at the first free boundary instead.
                 if let idx = switchIndex, switchTurn != nil, !s.playerLockedIn {
                     switchTurn = nil; switchIndex = nil
-                    performSwitch(to: idx, in: s)
+                    // The beat plays out first; its last tick performs the
+                    // swap and pulls the wild's free round (turn cost) —
+                    // queued items wait for the next boundary.
+                    if beginSwitchAnim(to: idx, in: s) { return }
                 }
                 var item: GameItem? = nil
                 // Items wait while the mon is locked mid-Rollout — the queued
@@ -1403,6 +1489,10 @@ final class BattleController: LiveBattleBridge {
         }
         recallTurn = nil
         switchTurn = nil; switchIndex = nil
+        if switchAnim != nil {   // broken off mid-beat: undo its visuals
+            switchAnim = nil
+            pBodyScale = 1; pBodyTarget = 1
+        }
         // participants stay: the wild lingers, and whoever re-engages it
         // joins the same EXP-share pool (mainline share across the fight).
         session = nil
@@ -1432,6 +1522,7 @@ final class BattleController: LiveBattleBridge {
         pSub = false; wSub = false
         recallTurn = nil
         switchTurn = nil; switchIndex = nil
+        switchAnim = nil
         participants = []
         session = nil
         pendingItem = nil
@@ -1501,6 +1592,14 @@ final class BattleController: LiveBattleBridge {
 
     private func frac(_ hp: Int, _ maxHP: Int) -> Double { Double(hp) / Double(max(1, maxHP)) }
     private func lerp(_ a: Double, _ b: Double, _ t: Double) -> Double { a + (b - a) * t }
+
+    /// 0...1 ease that overshoots past 1 near the end and settles back —
+    /// the send-out pop of the switch beat.
+    private func easeOutBack(_ p: Double) -> Double {
+        let c1 = 1.70158, c3 = c1 + 1
+        let q = p - 1
+        return 1 + c3 * q * q * q + c1 * q * q
+    }
 
     private func screenBounds() -> CGRect {
         var r = CGRect.null
