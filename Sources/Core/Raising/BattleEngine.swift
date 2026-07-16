@@ -149,7 +149,7 @@ final class Battler {
         self.gender = gender; self.baseExp = baseExp
         self.currentHP = currentHP; self.moves = moves.isEmpty ? [154] : moves
         self.status = status
-        if status == .sleep { sleepTurns = Int.random(in: 1...3, using: &BattleRNG.g) }
+        if status == .sleep { sleepTurns = Int.random(in: 2...4, using: &BattleRNG.g) }
     }
 
     convenience init?(mon: OwnedPokemon) {
@@ -1123,7 +1123,7 @@ final class BattleSession {
                     emit(.miss, actorIsPlayer: isPlayer, move: m); return
                 }
                 def.status = s
-                if s == .sleep { def.sleepTurns = Int.random(in: 1...3, using: &BattleRNG.g) }
+                if s == .sleep { def.sleepTurns = Int.random(in: 2...4, using: &BattleRNG.g) }
                 atk.status = nil
                 atk.nightmared = false
                 emit(.attack, actorIsPlayer: isPlayer, move: m, status: s.rawValue)
@@ -1352,7 +1352,7 @@ final class BattleSession {
                     b.yawnCounter -= 1
                     if b.yawnCounter == 0, b.status == nil {
                         b.status = .sleep
-                        b.sleepTurns = Int.random(in: 1...3, using: &BattleRNG.g)
+                        b.sleepTurns = Int.random(in: 2...4, using: &BattleRNG.g)
                         emit(.residual, actorIsPlayer: isPlayer, reason: "asleep",
                              targetIsPlayer: isPlayer, status: "sleep")
                     }
@@ -1749,7 +1749,7 @@ enum BattleEngine {
                                ["Poison", "Steel"].contains(def.type2 ?? "") { return nil }
             if ail == .freeze, def.type1 == "Ice" || def.type2 == "Ice" { return nil }
             def.status = ail
-            if ail == .sleep { def.sleepTurns = Int.random(in: 1...3, using: &BattleRNG.g) }
+            if ail == .sleep { def.sleepTurns = Int.random(in: 2...4, using: &BattleRNG.g) }
             return name
         }
     }
