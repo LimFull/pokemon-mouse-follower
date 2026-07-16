@@ -851,7 +851,7 @@ final class BattleSession {
                 }
                 atk.currentHP = atk.maxHP
                 atk.status = .sleep
-                atk.sleepTurns = 2
+                atk.sleepTurns = 3   // decremented before the act check → sleeps 2 full turns
                 emit(.recover, actorIsPlayer: isPlayer, move: m, targetIsPlayer: isPlayer, status: "sleep")
 
             case .wish:
