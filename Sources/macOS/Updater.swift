@@ -147,15 +147,32 @@ enum Updater {
         return String(rest[..<e.lowerBound])
     }
 
+    /// A dedicated session for the synchronous HEAD probe — deliberately NOT
+    /// `URLSession.shared`. `headOK` is called from *inside* the atom/API fetch's
+    /// `URLSession.shared` completion (see `fetchViaAtom`) and blocks that thread
+    /// on a semaphore until the HEAD returns. Shared-session completions are
+    /// delivered on a width-limited internal queue, so a HEAD issued on `.shared`
+    /// from within another `.shared` completion deadlocks: the HEAD's completion
+    /// can never be delivered, the semaphore times out after 12s, `headOK`
+    /// returns false — and *every* newer release is wrongly skipped, so the app
+    /// always reports "already up to date". A separate session delivers on its
+    /// own queue, so the wait actually completes.
+    private static let probeSession: URLSession = {
+        let cfg = URLSessionConfiguration.ephemeral
+        cfg.requestCachePolicy = .reloadIgnoringLocalCacheData
+        return URLSession(configuration: cfg)
+    }()
+
     /// Synchronous HEAD: does the release ship this asset (2xx/3xx)? Runs on the
-    /// atom fetch's background thread, so the brief block is harmless.
+    /// atom fetch's background thread; blocks it briefly on `probeSession` (which
+    /// must be separate from `URLSession.shared` — see `probeSession`).
     private static func headOK(_ url: URL) -> Bool {
         var req = URLRequest(url: url, timeoutInterval: 10)
         req.httpMethod = "HEAD"
         req.setValue("PokemonMouseFollower", forHTTPHeaderField: "User-Agent")
         let sem = DispatchSemaphore(value: 0)
         var ok = false
-        URLSession.shared.dataTask(with: req) { _, resp, _ in
+        probeSession.dataTask(with: req) { _, resp, _ in
             if let h = resp as? HTTPURLResponse { ok = (200..<400).contains(h.statusCode) }
             sem.signal()
         }.resume()
