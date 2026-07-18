@@ -660,6 +660,42 @@ private func selftestRaisingIfRequested() {
             }
             print("deferred switch: queued=\(queued) immediate=\(immediate) swappedMidBattle=\(swappedMidBattle) activeAfter=\(st.save.activeIndex) (expect true, false, true, \(bench))")
             print("exp share: starterGained=\(gained[0]) benchGained=\(gained[1]) over \(tries) battle(s) (a win must feed BOTH participants, equally split)")
+            // Switch queued at the faint (user report): the settlement plays
+            // with the FIGHTER on screen — no swap while the battle/ending
+            // runs, the bench gets no share, the swap lands only at despawn.
+            var lateQueued = false, swappedDuringEnding = false, lateChecked = false
+            var lateGained = [0, 0], lateTries = 0
+            for _ in 0..<8 where !lateChecked {
+                for i in st.party.indices { st.healMon(at: i) }
+                st.setActive(0)
+                lateTries += 1
+                let expBefore = [st.party[0].exp, st.party[bench].exp]
+                let bc = BattleController()
+                bc.forceSpawn(at: CGPoint(x: 520, y: 500))
+                var requested = false, sawBattle = false, sawFaint = false
+                for _ in 0..<40_000 {
+                    let scene = bc.update(playerGlobalPos: CGPoint(x: 500, y: 500))
+                    if bc.isBattling { sawBattle = true }
+                    // The wild's gauge just emptied: the faint is on screen,
+                    // the settlement is about to play — click the switch NOW.
+                    if bc.isBattling, !requested, let s = scene, s.wildHP <= 0.001 {
+                        sawFaint = true
+                        requested = true
+                        st.setActive(bench)
+                    }
+                    if requested, bc.isBattling, st.save.activeIndex == bench {
+                        swappedDuringEnding = true          // must stay false
+                    }
+                    if sawBattle, !bc.isBattling { break }
+                }
+                guard sawFaint else { continue }            // lost — retry
+                lateQueued = requested
+                lateGained = [st.party[0].exp - expBefore[0], st.party[bench].exp - expBefore[1]]
+                lateChecked = true
+            }
+            print("switch at faint: queued=\(lateQueued) swappedDuringEnding=\(swappedDuringEnding) "
+                  + "activeAfter=\(st.save.activeIndex) starterGained=\(lateGained[0]) benchGained=\(lateGained[1]) "
+                  + "in \(lateTries) battle(s) (expect true, false, \(bench), >0, 0)")
             AppSettings.shared.raisingMode = hadRaising
         }
         // Evolution queue: several participants can evolve off one shared

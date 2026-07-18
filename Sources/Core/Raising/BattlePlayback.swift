@@ -213,7 +213,10 @@ final class BattleController: LiveBattleBridge {
     /// the first free boundary, like a queued potion. Clicking a different
     /// member re-targets the pending switch.
     func requestSwitch(to index: Int) -> Bool {
-        guard phase == .battling else { return false }
+        // .ending too: the win sequence (EXP gauge, level-ups) must finish
+        // with the mon that fought on screen, so a click there queues the
+        // swap for despawn instead of applying it mid-settlement.
+        guard phase == .battling || phase == .ending else { return false }
         let st = RaisingState.shared
         guard st.save.party.indices.contains(index), !st.party[index].isFainted,
               index != st.save.activeIndex else { return false }
@@ -1436,8 +1439,13 @@ final class BattleController: LiveBattleBridge {
             RaisingState.shared.recall()
         }
         // Same for a queued switch: the outcome (EXP share included) lands
-        // first, then the chosen member simply comes out post-battle.
-        if let idx = switchIndex {
+        // first. A win/capture then plays its whole ending — EXP gauge and
+        // level-ups belong to the mon that FOUGHT, and an immediate swap made
+        // the newcomer pop in at the faint and appear to soak the payout
+        // (user report) — so there the swap waits for despawn. A loss keeps
+        // the wild around, and the chosen member comes out right away to
+        // keep challenging it.
+        if let idx = switchIndex, phase != .ending {
             switchTurn = nil; switchIndex = nil
             if RaisingState.shared.save.party.indices.contains(idx),
                !RaisingState.shared.party[idx].isFainted {
@@ -1606,6 +1614,14 @@ final class BattleController: LiveBattleBridge {
         pVanish = false; wVanish = false
         pSub = false; wSub = false
         recallTurn = nil
+        // A switch still queued when the ending played out (finishBattle
+        // defers it so the settlement visuals keep the fighter on screen):
+        // the chosen member comes out now.
+        if let idx = switchIndex,
+           RaisingState.shared.save.party.indices.contains(idx),
+           !RaisingState.shared.party[idx].isFainted {
+            RaisingState.shared.applyActive(idx)
+        }
         switchTurn = nil; switchIndex = nil
         switchAnim = nil
         participants = []
