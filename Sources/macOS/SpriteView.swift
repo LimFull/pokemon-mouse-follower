@@ -138,7 +138,8 @@ final class SpriteView: NSView {
             floatLabel.isHidden = true
             damageLabel.isHidden = true
             screenFlashLayer.isHidden = true
-            [pHPTrack, pHPFill, wHPTrack, wHPFill].forEach { $0.isHidden = true }
+            [pHPTrack, pHPFill, wHPTrack, wHPFill,
+             pExpTrack, pExpFill].forEach { $0.isHidden = true }
             logBox.isHidden = true
             logWidthCache.removeAll()
             spriteLayer.opacity = 1
