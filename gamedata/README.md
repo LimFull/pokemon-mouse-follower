@@ -13,7 +13,9 @@ rom-extract/.venv/bin/python rom-extract/build_gamedata.py
 
 - **`species.json`** — 1·2세대 251종. 종별: 이름(다국어), 타입1/2, 종족값(hp/atk/def/sp_atk/sp_def),
   base form 여부, 이전 진화, 진화 목록(대상·방법·조건), 레벨업 기술(레벨+move_id),
-  레벨별 필요 경험치(`exp_curve`), 레벨별 스탯 성장치(`growth`). 스프라이트 id = 3자리 도감번호(`animations/<id>/`와 일치).
+  레벨별 필요 경험치(`exp_curve` — 본가 성장 곡선, PokeAPI growth-rate에서 수집(`fetch_growth.py`);
+  2026-07-18 이전에는 EoS 롬의 `exp_required` 곡선이었음), 성장 곡선 이름(`growth_rate`),
+  레벨별 스탯 성장치(`growth`). 스프라이트 id = 3자리 도감번호(`animations/<id>/`와 일치).
 - **`moves.json`** — 기술별 move_id → 이름(다국어)·타입·분류·위력·PP·명중률.
 
 ## 정책

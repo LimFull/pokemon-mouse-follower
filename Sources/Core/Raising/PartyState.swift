@@ -135,6 +135,24 @@ final class RaisingState {
             }
             persist()
         }
+        // EXP totals written against a different exp_curve (the pre-2.16.5
+        // PMD ROM curve was ~2.4x the mainline one that replaced it) can sit
+        // far outside the mon's current level span — left alone, the next
+        // gain would cascade a burst of instant level-ups (or stall a level
+        // it already reached). Re-anchor the total inside the CURRENT level:
+        // the level is kept, only within-level progress resets.
+        var reanchored = false
+        for i in save.party.indices {
+            guard let s = save.party[i].species else { continue }
+            let mon = save.party[i]
+            let base = s.expAt(level: mon.level)
+            let next = mon.level < 100 ? s.expAt(level: mon.level + 1) : Int.max
+            if mon.exp < base || mon.exp >= next {
+                save.party[i].exp = base
+                reanchored = true
+            }
+        }
+        if reanchored { persist() }
     }
 
     var party: [OwnedPokemon] { save.party }
