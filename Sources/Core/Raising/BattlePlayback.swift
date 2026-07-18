@@ -1113,8 +1113,16 @@ final class BattleController: LiveBattleBridge {
             // windup, so the string raps out hit-hit-hit.
             let travel = 18, windup = e.followUp ? 6 : 20
             var total = 0
+            let moveData = GameData.moves[e.moveId]
+            // Self-targeted cries (Howl): the user still howls AT its foe,
+            // so aim the rings at the opponent exactly like Growl's — with
+            // target == attacker the front point and the octant would both
+            // collapse onto the sprite in the sheet's default facing.
+            let foe = e.actorIsPlayer ? wildPos : playerPos
+            let aim = (target == attacker && moveData?.sound == true
+                       && moveData?.category == "Status") ? foe : target
             // Travel direction picks the projectile's facing (8-dir ROM sets).
-            let ddx = target.x - attacker.x, ddy = target.y - attacker.y
+            let ddx = aim.x - attacker.x, ddy = aim.y - attacker.y
             let octant = (abs(ddx) > 0.01 || abs(ddy) > 0.01)
                 ? Sprite.octant(dx: ddx, dy: ddy) : 6
             let proj = e.moveId > 0 ? EffectPlayer.projectile(forMove: e.moveId, octant: octant) : nil
@@ -1134,10 +1142,9 @@ final class BattleController: LiveBattleBridge {
             // rings on the target read as the target doing the growling
             // (user report). Damaging sound moves keep their on-target
             // impact, and projectile cries (Sing & co) already fly.
-            let moveData = GameData.moves[e.moveId]
             let cry = proj == nil && moveData?.sound == true && moveData?.category == "Status"
-            let front = CGPoint(x: attacker.x + (target.x - attacker.x) * 0.3,
-                                y: attacker.y + (target.y - attacker.y) * 0.3)
+            let front = CGPoint(x: attacker.x + (aim.x - attacker.x) * 0.3,
+                                y: attacker.y + (aim.y - attacker.y) * 0.3)
             // One multi-hit STRIKE per event (engine emits them separately):
             // the strike visual raps 3 quick times per hit — the ROM clip is
             // a single 5-tick poke, and EoS multiplies it engine-side.
