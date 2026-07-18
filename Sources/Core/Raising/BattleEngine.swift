@@ -1405,6 +1405,42 @@ final class BattleSession {
 
     // ------------------------- the rounds -----------------------------
 
+    /// Pursuit intercept (mainline): the follower is about to LEAVE the
+    /// battle — recall or switch — and the wild knows Pursuit, so it strikes
+    /// the outgoing mon before it goes, at doubled power. This spends the
+    /// wild's turn: the caller must skip the usual post-switch free round.
+    /// Returns [] when there is no intercept (no Pursuit, or the wild can't
+    /// act: asleep/frozen/mid-charge, or it fails its paralysis roll) — the
+    /// leave then proceeds untouched. Simplifications vs mainline: Pursuit
+    /// is 100-accurate here so no explicit can't-miss bypass is needed, and
+    /// the intercept round runs no end-of-round residuals (they belong to
+    /// whoever is on the field when the next full round ends).
+    func pursuitIntercept() -> [BattleEvent] {
+        roundEvents = []
+        guard !isOver else { return [] }
+        guard let id = wild.moves.first(where: {
+            GameData.moves[$0]?.englishName == "Pursuit"
+        }), let m = GameData.moves[id] else { return [] }
+        guard wild.status != .sleep, wild.status != .freeze,
+              wild.chargingMove == nil, wild.hiddenState == nil,
+              wild.rolloutMove == nil, wild.bideTurns == 0 else { return [] }
+        if wild.status == .paralysis,
+           Int.random(in: 0..<100, using: &BattleRNG.g) < 25 { return [] }
+        turn += 1
+        for b in [player, wild] {
+            b.physicalTakenThisRound = 0
+            b.specialTakenThisRound = 0
+            b.actedThisRound = false
+            b.flinched = false
+        }
+        wild.actedThisRound = true
+        wild.lastMoveUsed = id
+        _ = executePlain(m, wild, player, isPlayer: false,
+                         eff: effectiveness(m, player),
+                         powerOverride: 2 * max(1, m.effectivePower))
+        return roundEvents
+    }
+
     /// Simulate ONE round and return its events. `playerItem` replaces the
     /// follower's action with a healing item (mainline: an item costs the
     /// turn) and resolves before moves.

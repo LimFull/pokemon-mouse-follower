@@ -138,6 +138,11 @@ final class BattleController: LiveBattleBridge {
     // away from the wild and fades, the newcomer pops out of a smoke burst
     // and scales in; the swap itself lands between the two halves.
     private var switchAnim: (index: Int, tick: Int)?
+    // Pursuit intercept bookkeeping: the wild's chase-down round for the
+    // queued recall/switch already played (don't intercept twice), and the
+    // spent turn means the completed switch pulls no free round.
+    private var pursuitPlayed = false
+    private var pursuitSpentTurn = false
     private var switchOutTicks: Int { fast ? 18 : 36 }
     private var switchInTicks: Int { fast ? 16 : 32 }
     // Everyone who battled THIS wild (party indices): seeded at battle start,
@@ -524,6 +529,7 @@ final class BattleController: LiveBattleBridge {
                     // a panel): abort — no swap, no turn spent.
                     switchAnim = nil
                     playerAlpha = 1
+                    pursuitSpentTurn = false
                     return
                 }
                 pBodyScale = 0.2; pBodyTarget = 1
@@ -540,10 +546,16 @@ final class BattleController: LiveBattleBridge {
             playerAlpha = 1; pBodyScale = 1; pBodyTarget = 1
             // The switch spent the turn: the wild's free round starts now —
             // queued potions/balls wait for the next boundary (each action
-            // costs its own turn, mainline rules).
-            s.setBallStock(ballStock(used: s.used))
-            events = s.nextRound(playerSwitched: true)
-            evIdx = 0; evTick = 0
+            // costs its own turn, mainline rules). If a Pursuit intercept
+            // already chased the leaver, the wild's turn went into THAT —
+            // the newcomer comes in clean.
+            if pursuitSpentTurn {
+                pursuitSpentTurn = false
+            } else {
+                s.setBallStock(ballStock(used: s.used))
+                events = s.nextRound(playerSwitched: true)
+                evIdx = 0; evTick = 0
+            }
         }
     }
 
@@ -597,6 +609,19 @@ final class BattleController: LiveBattleBridge {
             // the next round from the session — or wrap up when it's done.
             if let s = session, !s.isOver {
                 if recallTurn != nil {   // mainline flee: leaves at the boundary
+                    // Pursuit intercept: the wild chases the leaver down
+                    // FIRST (once) — the recall completes at the next
+                    // boundary with the chase damage stuck (or not at all,
+                    // if the chase fainted the leaver — isOver above).
+                    if !pursuitPlayed {
+                        let iv = s.pursuitIntercept()
+                        if !iv.isEmpty {
+                            pursuitPlayed = true
+                            events = iv; evIdx = 0; evTick = 0
+                            return
+                        }
+                    }
+                    pursuitPlayed = false
                     recallTurn = nil
                     cancelBattle()
                     RaisingState.shared.recall()
@@ -616,11 +641,26 @@ final class BattleController: LiveBattleBridge {
                 // timing). Locked mid-Rollout it stays queued — like a queued
                 // potion — and lands at the first free boundary instead.
                 if let idx = switchIndex, switchTurn != nil, !s.playerLockedIn {
+                    // Pursuit intercept: the wild strikes the OUTGOING mon
+                    // before it leaves (mainline, doubled power) — that
+                    // spends the wild's turn, so the completed switch pulls
+                    // no free round against the newcomer.
+                    if !pursuitPlayed {
+                        let iv = s.pursuitIntercept()
+                        if !iv.isEmpty {
+                            pursuitPlayed = true
+                            pursuitSpentTurn = true
+                            events = iv; evIdx = 0; evTick = 0
+                            return
+                        }
+                    }
+                    pursuitPlayed = false
                     switchTurn = nil; switchIndex = nil
                     // The beat plays out first; its last tick performs the
                     // swap and pulls the wild's free round (turn cost) —
                     // queued items wait for the next boundary.
                     if beginSwitchAnim(to: idx, in: s) { return }
+                    pursuitSpentTurn = false   // no switch after all
                 }
                 var item: GameItem? = nil
                 // Items wait while the mon is locked mid-Rollout — the queued
@@ -1432,11 +1472,16 @@ final class BattleController: LiveBattleBridge {
         // runs past curTicks) and nothing ticks it outside .battling — clear
         // it, or a faint leaves the last "-NN" frozen while the wild lingers.
         dmgText = nil; dmgAlpha = 0
+        pursuitPlayed = false; pursuitSpentTurn = false
         // The battle ended during the turn the flee was waiting on — the
         // outcome stands (applied above), THEN the recall goes through.
+        // Unless the leaver went down in that turn (a Pursuit intercept can
+        // do exactly that): a fainted mon stays out where it fell (D10).
         if recallTurn != nil {
             recallTurn = nil
-            RaisingState.shared.recall()
+            if RaisingState.shared.active?.isFainted != true {
+                RaisingState.shared.recall()
+            }
         }
         // Same for a queued switch: the outcome (EXP share included) lands
         // first. A win/capture then plays its whole ending — EXP gauge and
@@ -1582,6 +1627,7 @@ final class BattleController: LiveBattleBridge {
         }
         recallTurn = nil
         switchTurn = nil; switchIndex = nil
+        pursuitPlayed = false; pursuitSpentTurn = false
         if switchAnim != nil {   // broken off mid-beat: undo its visuals
             switchAnim = nil
             pBodyScale = 1; pBodyTarget = 1
@@ -1624,6 +1670,7 @@ final class BattleController: LiveBattleBridge {
         }
         switchTurn = nil; switchIndex = nil
         switchAnim = nil
+        pursuitPlayed = false; pursuitSpentTurn = false
         participants = []
         session = nil
         pendingItem = nil

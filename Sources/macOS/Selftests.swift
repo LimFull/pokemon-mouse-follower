@@ -698,6 +698,66 @@ private func selftestRaisingIfRequested() {
                   + "in \(lateTries) battle(s) (expect true, false, \(bench), >0, 0)")
             AppSettings.shared.raisingMode = hadRaising
         }
+        // Pursuit intercept (user report): a leaving mon gets chased down by
+        // a Pursuit wild BEFORE the recall/switch completes, at doubled
+        // power; a wild without Pursuit never intercepts.
+        do {
+            let pursuitId = 38
+            if let m = GameData.moves[pursuitId] {
+                var total = 0, hits = 0, samples = 0
+                for _ in 0..<200 {
+                    guard let p = Battler(wildDex: 19, level: 20),
+                          let w = Battler(wildDex: 19, level: 20) else { continue }
+                    w.moves = [pursuitId]
+                    let s = BattleSession(player: p, wild: w)
+                    let evs = s.pursuitIntercept()
+                    samples += 1
+                    if let hit = evs.first(where: { $0.kind == .attack && !$0.actorIsPlayer
+                                                    && $0.moveId == pursuitId }) {
+                        hits += 1; total += hit.damage
+                    }
+                }
+                // Baseline: the same matchup's PLAIN Pursuit damage — the
+                // intercept must land at ~2x (crits nudge the ratio up a bit).
+                var plain = 0
+                if let p = Battler(wildDex: 19, level: 20), let w = Battler(wildDex: 19, level: 20) {
+                    plain = (0..<200).map { _ in
+                        BattleEngine.computeDamage(attacker: w, defender: p, move: m, eff: 1)
+                    }.reduce(0, +)
+                }
+                let ratio = plain > 0 ? Double(total) / Double(plain) : 0
+                print("pursuit intercept: hits=\(hits)/\(samples) x\(String(format: "%.2f", ratio)) "
+                      + "vs plain (expect 200/200, ~1.8-2.1 — the target's HP caps the biggest hits)")
+            }
+            if let p = Battler(wildDex: 19, level: 20), let w = Battler(wildDex: 16, level: 20) {
+                w.moves = w.moves.filter { $0 != pursuitId }
+                let s = BattleSession(player: p, wild: w)
+                print("pursuit absent: intercepts=\(s.pursuitIntercept().count) (expect 0)")
+            }
+            // Wiring smoke: a switch under a Pursuit-only wild must chain
+            // intercept round -> switch beat -> (no free round) -> further
+            // rounds without hanging, and the swap must still land.
+            let hadRaising = AppSettings.shared.raisingMode
+            AppSettings.shared.raisingMode = true
+            for i in st.party.indices { st.healMon(at: i) }
+            st.setActive(0)
+            let hpBefore = st.party[0].currentHP
+            let bc = BattleController()
+            _ = bc.update(playerGlobalPos: CGPoint(x: 500, y: 500))   // seat playerPos
+            bc.forceEncounter(moves: [pursuitId])                     // wild lands beside it
+            var requested = false, sawBattle = false, finished = false
+            for _ in 0..<40_000 {
+                _ = bc.update(playerGlobalPos: CGPoint(x: 500, y: 500))
+                if bc.isBattling {
+                    sawBattle = true
+                    if !requested { requested = true; st.setActive(1) }
+                }
+                if sawBattle, !bc.isBattling { finished = true; break }
+            }
+            print("pursuit switch smoke: battled=\(sawBattle) finished=\(finished) "
+                  + "chased=\(st.party[0].currentHP < hpBefore) (expect true true true)")
+            AppSettings.shared.raisingMode = hadRaising
+        }
         // Evolution queue: several participants can evolve off one shared
         // battle's EXP — scenes announced while one plays must run back to
         // back (each ~350 ticks), not vanish or overwrite each other.
