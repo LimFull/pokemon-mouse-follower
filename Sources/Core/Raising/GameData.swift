@@ -24,19 +24,6 @@ struct LevelUpMove: Codable {
     enum CodingKeys: String, CodingKey { case level, moveId = "move_id" }
 }
 
-struct BaseStats: Codable {
-    let hp, atk, def, spAtk, spDef: Int
-    enum CodingKeys: String, CodingKey {
-        case hp, atk, def, spAtk = "sp_atk", spDef = "sp_def"
-    }
-}
-
-struct Growth: Codable {
-    let hp, atk, spAtk, def, spDef: [Int]   // per-level deltas, index 0 == level 1
-    enum CodingKeys: String, CodingKey {
-        case hp, atk, spAtk = "sp_atk", def, spDef = "sp_def"
-    }
-}
 
 /// Mainline base stats (Gen1-2, from PokeAPI). Drives stat computation (D4 revised).
 struct MainlineBase: Codable {
@@ -49,8 +36,7 @@ struct SpeciesData: Codable {
     let names: [String: String]         // lang -> name (EoS NA ROM: "e" only)
     let type1: String
     let type2: String?
-    let baseStats: BaseStats            // EoS md base stats (legacy / fallback)
-    let base: MainlineBase?             // mainline base stats (preferred)
+    let base: MainlineBase              // mainline base stats (D4 revised)
     let baseExp: Int?                   // mainline base experience yield (D6-1)
     let captureRate: Int?               // mainline catch rate (D11, Phase 3)
     let genderRate: Int?                // female eighths; -1 = genderless (G)
@@ -59,10 +45,8 @@ struct SpeciesData: Codable {
     let evolutions: [Evolution]
     let levelUpMoves: [LevelUpMove]
     let expCurve: [Int]                 // total exp required to reach L1..L100
-    let growth: Growth
     enum CodingKeys: String, CodingKey {
         case dex, id, names, type1, type2, base
-        case baseStats = "base_stats"
         case baseExp = "base_exp"
         case captureRate = "capture_rate"
         case genderRate = "gender_rate"
@@ -71,7 +55,6 @@ struct SpeciesData: Codable {
         case evolutions
         case levelUpMoves = "level_up_moves"
         case expCurve = "exp_curve"
-        case growth
     }
 
     /// English (default) display name; UI may override via app localization.
@@ -217,8 +200,6 @@ enum GameData {
         species.keys.filter { (minWildLevel[$0] ?? 1) <= level }
     }
 
-    /// Stats of `s` at `level`, from mainline base stats (IV/EV/nature omitted,
-    /// design D4). Falls back to the EoS growth model if base stats are missing.
     /// Roll a fresh mainline IV spread (0...31 per stat).
     static func rollIVs<R: RandomNumberGenerator>(using rng: inout R) -> Stats {
         func r() -> Int { Int.random(in: 0...31, using: &rng) }
@@ -230,25 +211,18 @@ enum GameData {
         return rollIVs(using: &rng)
     }
 
+    /// Stats of `s` at `level`: the mainline formula with the mon's IVs
+    /// (nil = 0 spread, the pre-IV behavior; EVs/natures stay out of scope —
+    /// design D4).
     static func stats(_ s: SpeciesData, level: Int, ivs: Stats? = nil) -> Stats {
         let lv = max(1, level)
-        if let b = s.base {
-            // Mainline formula with the mon's IVs (nil = 0 spread, the
-            // pre-IV behavior; EVs stay out of scope).
-            func st(_ base: Int, _ iv: Int) -> Int { ((2 * base + iv) * lv) / 100 + 5 }
-            return Stats(
-                hp: ((2 * b.hp + (ivs?.hp ?? 0)) * lv) / 100 + lv + 10,
-                atk: st(b.atk, ivs?.atk ?? 0), def: st(b.def, ivs?.def ?? 0),
-                spAtk: st(b.spa, ivs?.spAtk ?? 0), spDef: st(b.spd, ivs?.spDef ?? 0),
-                spe: st(b.spe, ivs?.spe ?? 0))
-        }
-        func cum(_ deltas: [Int], _ base: Int) -> Int {
-            base + deltas.prefix(max(0, min(lv, deltas.count))).reduce(0, +)
-        }
+        let b = s.base
+        func st(_ base: Int, _ iv: Int) -> Int { ((2 * base + iv) * lv) / 100 + 5 }
         return Stats(
-            hp: cum(s.growth.hp, s.baseStats.hp), atk: cum(s.growth.atk, s.baseStats.atk),
-            def: cum(s.growth.def, s.baseStats.def), spAtk: cum(s.growth.spAtk, s.baseStats.spAtk),
-            spDef: cum(s.growth.spDef, s.baseStats.spDef), spe: 0)
+            hp: ((2 * b.hp + (ivs?.hp ?? 0)) * lv) / 100 + lv + 10,
+            atk: st(b.atk, ivs?.atk ?? 0), def: st(b.def, ivs?.def ?? 0),
+            spAtk: st(b.spa, ivs?.spAtk ?? 0), spDef: st(b.spd, ivs?.spDef ?? 0),
+            spe: st(b.spe, ivs?.spe ?? 0))
     }
 
     // MARK: private

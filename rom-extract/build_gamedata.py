@@ -91,28 +91,23 @@ def main():
         m = by_dex[dex]
         lsm = ls_moves_by_entity.get(m["md_index"], {})
         lst = ls_by_index.get(dex, {}).get("levels", [])
-        growth = {k: [] for k in ("hp", "atk", "sp_atk", "def", "sp_def")}
-        curve = []
-        for row in lst:
-            curve.append(row["exp_required"])
-            growth["hp"].append(row["hp_growth"])
-            growth["atk"].append(row["atk_growth"])
-            growth["sp_atk"].append(row["sp_atk_growth"])
-            growth["def"].append(row["def_growth"])
-            growth["sp_def"].append(row["sp_def_growth"])
+        # EoS base stats / per-level stat growth are NOT emitted: stats went
+        # fully mainline (base stats via fetch_basestats.py, formula in
+        # GameData.stats), so the app never reads the PMD tables.
+        curve = [row["exp_required"] for row in lst]
         species[str(dex)] = {
             "dex": dex,
             "id": f"{dex:03d}",
             "names": m["names"],
             "type1": m["type_primary"],
             "type2": m["type_secondary"] if m["type_secondary"] not in (None, "None") else None,
-            "base_stats": m["base_stats"],
             "is_base_form": dex not in pre_evo_dex,
             "pre_evo_dex": pre_evo_dex.get(dex),
             "evolutions": evo_by_dex.get(dex, []),
             "level_up_moves": lsm.get("level_up_moves", []),
-            "exp_curve": curve,       # exp required to reach L1..L100
-            "growth": growth,         # per-level stat deltas (cumulative + base = stat at L)
+            # PMD placeholder — fetch_growth.py replaces it with the mainline
+            # growth-rate curve (run the fetch_* scripts after regenerating).
+            "exp_curve": curve,
         }
 
     starters = sorted(d for d, s in ((d, species[d]) for d in species) if s["is_base_form"])
