@@ -19,6 +19,9 @@ rom-extract/.venv/bin/python rom-extract/build_gamedata.py
   (EoS 종족값 `base_stats`·성장치 `growth`는 2026-07-18 제거 — 스탯이 전면 본가식이라 미사용.)
   스프라이트 id = 3자리 도감번호(`animations/<id>/`와 일치).
 - **`moves.json`** — 기술별 move_id → 이름(다국어)·타입·분류·위력·PP·명중률.
+  본가 위력/명중률(`power_main`/`accuracy_main`)은 **5세대 값 고정**(`fetch_gen5_values.py` —
+  EoS 학습셋 시대와 맞추고 거품20/물대포40 같은 구분 유지; `accuracy_main` 0 = 반드시 명중,
+  잠재파워는 60 고정 예외).
 
 ## 정책
 
