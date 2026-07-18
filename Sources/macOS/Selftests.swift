@@ -557,6 +557,7 @@ private func selftestRaisingIfRequested() {
             AppSettings.shared.raisingMode = true
             st.setActive(0)
             var tagTicks = 0, wins = 0, tries = 0
+            var expTicks = 0, expFullBeforeTag = false, expMax = 0.0
             for _ in 0..<8 where tagTicks == 0 {
                 tries += 1
                 st.healMon(at: 0)
@@ -572,7 +573,12 @@ private func selftestRaisingIfRequested() {
                 for _ in 0..<20_000 {
                     let scene = bc.update(playerGlobalPos: p)
                     if bc.isBattling { sawBattle = true }
-                    if scene?.floatText?.hasPrefix("Level Up") == true { tagTicks += 1 }
+                    if scene?.floatText?.hasPrefix("Level Up") == true {
+                        tagTicks += 1
+                        // The gauge must have swept to FULL before the tag.
+                        if expMax >= 0.999 { expFullBeforeTag = true }
+                    }
+                    if let xp = scene?.playerExpFrac { expTicks += 1; expMax = max(expMax, xp) }
                     if sawBattle, !bc.isBattling {
                         if st.active!.isFainted { break }          // lost — retry
                         if scene == nil { break }                  // won + despawned
@@ -581,6 +587,7 @@ private func selftestRaisingIfRequested() {
                 if st.active!.level > before { wins += 1 }
             }
             print("levelup tag: shown \(tagTicks) ticks over \(wins) level-up win(s) in \(tries) battles (expect ticks>0)")
+            print("exp gauge: shown \(expTicks) ticks, max=\(String(format: "%.2f", expMax)), fullBeforeTag=\(expFullBeforeTag) (expect ticks>0, max=1.00, true)")
             AppSettings.shared.raisingMode = hadRaising
         }
         // Deferred recall (mainline flee timing): recalling mid-battle must NOT

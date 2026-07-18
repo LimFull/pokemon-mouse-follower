@@ -58,6 +58,9 @@ struct BattleScene {
     // Substitute up: the platform draws the doll instead of the follower
     // (the wild's frame is swapped inside scene() directly).
     var playerSubstitute: Bool = false
+    // Post-win EXP gauge under the follower's HP bar (0...1, nil = hidden):
+    // fills level by level with a level-up beat between fills (tickEnding).
+    var playerExpFrac: Double? = nil
 }
 
 final class BattleController: LiveBattleBridge {
@@ -142,7 +145,18 @@ final class BattleController: LiveBattleBridge {
     // re-engage while the same wild lingers — the mainline EXP-share pool.
     // Reset when the wild itself goes (spawn/forceEncounter/despawn).
     private var participants: Set<Int> = []
-    private var levelUpTo: Int?          // show a level-up tag while ending
+    // EXP gauge beats for the win ending (user request): the active mon's
+    // share fills a bar under its HP bar mainline-style — fill the level's
+    // span, hold on a "Level Up!" tag, refill from empty for the next level,
+    // repeat. Built in awardExp (pre-gain state), played by tickEnding.
+    private enum ExpBeat {
+        case fill(from: Double, to: Double, ticks: Int)
+        case hold(level: Int, ticks: Int)          // bar full + level-up tag
+    }
+    private var expBeats: [ExpBeat] = []
+    private var expBeatsTotal = 0        // sum of beat ticks (schedule length)
+    private var expRestFrac: Double?     // bar value once the schedule is done
+    private var expFrac: Double?         // currently shown fill (nil = no bar)
     private var curPStatus: String?      // ailment the playback has shown on the follower
     // PMD-style battle log: visible lines (oldest first) and lines scheduled
     // for later ticks of the current event's beat, so text tracks the action.
@@ -1337,7 +1351,7 @@ final class BattleController: LiveBattleBridge {
     private func finishBattle() {
         let won = result?.playerWon ?? false
         var captured = false
-        levelUpTo = nil
+        expBeats = []; expBeatsTotal = 0; expRestFrac = nil; expFrac = nil
         if let r = result {
             let st = RaisingState.shared
             for b in r.ballsUsed { st.consumeItem(b) }
@@ -1370,10 +1384,14 @@ final class BattleController: LiveBattleBridge {
             phase = .ending
         } else if won {
             ballFrame = nil
-            // A level-up tag needs a beat longer to read (mainline jingle);
-            // so do the EXP/level-up log lines.
-            endTicks = levelUpTo != nil ? (fast ? 60 : 130) : (fast ? 40 : 90)
+            // The ending must outlast the EXP gauge beats (fills + level-up
+            // holds) plus a settle tail; the EXP/level-up log lines also
+            // need a beat longer to read.
+            endTicks = fast ? 40 : 90
             if AppSettings.shared.battleLogEnabled { endTicks += 40 }
+            if expBeatsTotal > 0 {
+                endTicks = max(endTicks, expBeatsTotal + (fast ? 16 : 30))
+            }
             endTotal = endTicks
             phase = .ending                 // the beaten wild fades away
         } else if result?.wildFled == true || result?.playerFled == true {
@@ -1446,10 +1464,11 @@ final class BattleController: LiveBattleBridge {
         for idx in ordered {
             let name = Characters.displayName(dex: st.party[idx].dex)   // pre-evolution name
             pushLog(BattleLog.expLine(name: name, amount: share))
+            // The on-screen mon's gauge beats come from its PRE-gain state.
+            if idx == activeIdx { buildExpBeats(mon: st.party[idx], gaining: share) }
             let growth = st.gainExp(share, at: idx)
             if let lv = growth.leveledTo {
                 pushLog(BattleLog.levelUpLine(name: name, level: lv))
-                if idx == activeIdx { levelUpTo = lv }   // overhead tag = active only
             }
             // A 5th move needs a replace decision — on-overlay prompt (C1/#5),
             // benched participants included, in the same announce order.
@@ -1459,24 +1478,83 @@ final class BattleController: LiveBattleBridge {
         }
     }
 
+    /// Turn one EXP share into gauge beats: walk the mon's curve level by
+    /// level — each level's span fills over ticks proportional to how much of
+    /// it the share covers, each completed level holds full on a "Level Up!"
+    /// tag, and the next fill restarts from empty (mainline post-battle read).
+    private func buildExpBeats(mon: OwnedPokemon, gaining amount: Int) {
+        expBeats = []; expBeatsTotal = 0; expRestFrac = nil
+        guard let s = mon.species, amount > 0 else { return }
+        let fullFill = fast ? 24 : 48        // ticks for an empty->full sweep
+        let holdTicks = fast ? 24 : 45       // level-up tag dwell
+        var level = mon.level, exp = mon.exp, remaining = amount
+        var rest: Double = mon.expToNext.fraction
+        while remaining > 0, level < 100 {
+            let base = s.expAt(level: level)
+            let next = s.expAt(level: level + 1)
+            let span = max(1, next - base)
+            let from = min(1, max(0, Double(exp - base) / Double(span)))
+            let to = min(1, Double(exp + remaining - base) / Double(span))
+            let ticks = max(10, Int((to - from) * Double(fullFill)))
+            expBeats.append(.fill(from: from, to: to, ticks: ticks))
+            rest = to
+            if exp + remaining >= next {
+                expBeats.append(.hold(level: level + 1, ticks: holdTicks))
+                remaining -= next - exp
+                exp = next
+                level += 1
+                rest = 0                      // the new level's bar starts empty
+            } else {
+                remaining = 0
+            }
+        }
+        expBeatsTotal = expBeats.reduce(0) { sum, b in
+            switch b {
+            case .fill(_, _, let t), .hold(_, let t): return sum + t
+            }
+        }
+        expRestFrac = rest
+    }
+
     private func tickEnding() {
         wildMon?.faceStanding(toward: playerPos)
         endTicks -= 1
         if ballFrame == nil {
             wildAlpha = max(0, Double(endTicks) / 40.0)   // defeated wild fades out
         }                                                  // caught: stays in the ball
-        // Level-up tag over the winner's head (mainline post-battle beat):
-        // same floating-tag pipeline as "Miss"/"Super Effective!", gold, and
-        // drifting upward across the whole ending.
+        // EXP gauge beats (user request): the bar under the winner's HP bar
+        // fills the level's span, holds full while the gold "Level Up!" tag
+        // (same floating-tag pipeline as "Miss") drifts up, then refills from
+        // empty for the next level — once per level gained, in order.
         floatText = nil; floatAlpha = 0
-        if let lv = levelUpTo {
-            let t = min(1.0, max(0.0, Double(endTotal - endTicks) / Double(endTotal)))
-            let scale = AppSettings.shared.scale
-            floatText = "Level Up! Lv.\(lv)"
-            floatPos = CGPoint(x: playerPos.x,
-                               y: playerPos.y + (28 + CGFloat(t) * 16) * scale)
-            floatAlpha = 1.0 - t * 0.8
-            floatColor = RGBA(r: 1.0, g: 0.84, b: 0.25)
+        if !expBeats.isEmpty {
+            expFrac = expRestFrac                 // resting value past the schedule
+            let elapsed = endTotal - endTicks
+            var at = 0
+            beats: for beat in expBeats {
+                switch beat {
+                case .fill(let from, let to, let ticks):
+                    if elapsed < at + ticks {
+                        let p = Double(elapsed - at) / Double(max(1, ticks))
+                        expFrac = from + (to - from) * p
+                        break beats
+                    }
+                    at += ticks
+                case .hold(let level, let ticks):
+                    if elapsed < at + ticks {
+                        expFrac = 1
+                        let t = Double(elapsed - at) / Double(max(1, ticks))
+                        let scale = AppSettings.shared.scale
+                        floatText = "Level Up! Lv.\(level)"
+                        floatPos = CGPoint(x: playerPos.x,
+                                           y: playerPos.y + (28 + CGFloat(t) * 16) * scale)
+                        floatAlpha = 1.0 - t * 0.6
+                        floatColor = RGBA(r: 1.0, g: 0.84, b: 0.25)
+                        break beats
+                    }
+                    at += ticks
+                }
+            }
         }
         if endTicks <= 0 { despawn() }
     }
@@ -1534,7 +1612,7 @@ final class BattleController: LiveBattleBridge {
         session = nil
         pendingItem = nil
         pendingBall = nil
-        levelUpTo = nil
+        expBeats = []; expBeatsTotal = 0; expRestFrac = nil; expFrac = nil
         floatText = nil; floatAlpha = 0
         wild = nil; wildMon = nil; events = []; result = nil; effects = []; ballFrame = nil
         playerAlpha = 1.0; wildAlpha = 1.0
@@ -1572,7 +1650,8 @@ final class BattleController: LiveBattleBridge {
             wildSpriteScale: wBodyScale,
             playerVanished: pVanish,
             wildVanished: wVanish,
-            playerSubstitute: pSub)
+            playerSubstitute: pSub,
+            playerExpFrac: expFrac)
     }
 
     private func logAlpha(_ age: Int) -> Double {

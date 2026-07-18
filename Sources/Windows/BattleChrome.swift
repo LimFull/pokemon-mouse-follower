@@ -199,12 +199,20 @@ final class BattleChrome {
                      let boxW: Double; let boxH: Double; let center: CGPoint
                      let bg: RGBA?; let color: RGBA; let alpha: Double }
         var tags: [Tag] = []
-        var bars: [(center: CGPoint, frac: Double)] = []
+        var bars: [(center: CGPoint, frac: Double, exp: Bool)] = []
 
         if scene.showBars {
             let top = 20 * s
-            bars.append((CGPoint(x: scene.playerPos.x, y: scene.playerPos.y + top), scene.playerHP))
-            bars.append((CGPoint(x: scene.wildPos.x, y: scene.wildPos.y + top), scene.wildHP))
+            bars.append((CGPoint(x: scene.playerPos.x, y: scene.playerPos.y + top),
+                         scene.playerHP, false))
+            bars.append((CGPoint(x: scene.wildPos.x, y: scene.wildPos.y + top),
+                         scene.wildHP, false))
+            if let xp = scene.playerExpFrac {
+                // Post-win EXP gauge: thinner blue bar under the follower's
+                // HP bar (SpriteView.layoutExp).
+                bars.append((CGPoint(x: scene.playerPos.x, y: scene.playerPos.y + top - 6),
+                             xp, true))
+            }
         }
         if let lv = scene.wildLevel {
             let fs = Double(min(16, max(9, 6 * s)))
@@ -279,20 +287,21 @@ final class BattleChrome {
         let canvas = ChromeCanvas(bits: dibBits.assumingMemoryBound(to: UInt8.self), w: w, h: h)
         memset(dibBits, 0, w * h * 4)
 
-        // ---- HP bars (track + left-anchored fill, SpriteView.layoutHP) -----
+        // ---- HP/EXP bars (track + left-anchored fill, SpriteView.layoutHP) --
         for bar in bars {
             let (cx, cy) = cvs(bar.center)
-            let bw = 46.0, bh = 5.0
+            let bw = 46.0, bh = bar.exp ? 3.0 : 5.0, r = bar.exp ? 1.5 : 2.5
             canvas.fillRoundRect(x: cx - bw / 2, y: cy - bh / 2, w: bw, h: bh,
-                                 radius: 2.5, color: RGBA(white: 0.1, alpha: 0.55))
+                                 radius: r, color: RGBA(white: 0.1, alpha: 0.55))
             let frac = max(0, min(1, bar.frac))
             if frac > 0 {
                 let fw = max(1, bw * frac)
-                let color = frac > 0.5 ? RGBA(r: 0.16, g: 0.80, b: 0.25)
+                let color = bar.exp ? RGBA(r: 0.04, g: 0.52, b: 1.0)   // EXP blue
+                          : frac > 0.5 ? RGBA(r: 0.16, g: 0.80, b: 0.25)
                           : frac > 0.2 ? RGBA(r: 1.0, g: 0.80, b: 0.0)
                                        : RGBA(r: 1.0, g: 0.23, b: 0.19)
                 canvas.fillRoundRect(x: cx - bw / 2, y: cy - bh / 2, w: fw, h: bh,
-                                     radius: 2.5, color: color)
+                                     radius: r, color: color)
             }
         }
 

@@ -18,6 +18,8 @@ final class SpriteView: NSView {
     private let itemLayer = CALayer()
     private let pHPTrack = CALayer(); private let pHPFill = CALayer()
     private let wHPTrack = CALayer(); private let wHPFill = CALayer()
+    // Post-win EXP gauge: a thinner blue bar under the follower's HP bar.
+    private let pExpTrack = CALayer(); private let pExpFill = CALayer()
     private let levelLabel = CATextLayer()   // "Lv.n" above the wild's head
     private let floatLabel = CATextLayer()   // floating combat tag (Miss / effectiveness)
     private let damageLabel = CATextLayer()  // floating damage number (-23; settings-gated)
@@ -58,6 +60,11 @@ final class SpriteView: NSView {
             f.cornerRadius = 2.5; f.isHidden = true
             layer?.addSublayer(t); layer?.addSublayer(f)
         }
+        pExpTrack.backgroundColor = CGColor(gray: 0.1, alpha: 0.55)
+        pExpTrack.cornerRadius = 1.5; pExpTrack.isHidden = true
+        pExpFill.cornerRadius = 1.5; pExpFill.isHidden = true
+        pExpFill.backgroundColor = NSColor.systemBlue.cgColor   // mainline EXP blue
+        layer?.addSublayer(pExpTrack); layer?.addSublayer(pExpFill)
 
         itemLayer.magnificationFilter = .nearest
         itemLayer.contentsGravity = .resize
@@ -159,6 +166,12 @@ final class SpriteView: NSView {
             layoutHP(wHPTrack, wHPFill, center: CGPoint(x: wx, y: wy + top), frac: scene.wildHP)
         } else {
             [pHPTrack, pHPFill, wHPTrack, wHPFill].forEach { $0.isHidden = true }
+        }
+        if scene.showBars, let xp = scene.playerExpFrac {
+            // Under the HP bar (fixed chrome sizes, like layoutHP's 46x5).
+            layoutExp(center: CGPoint(x: px, y: py + 20 * s - 6), frac: xp)
+        } else {
+            [pExpTrack, pExpFill].forEach { $0.isHidden = true }
         }
 
         if let fx = scene.effectFrame {
@@ -280,6 +293,20 @@ final class SpriteView: NSView {
             label.frame = CGRect(x: 8, y: boxH - 5 - CGFloat(i + 1) * lineH,
                                  width: boxW - 16, height: lineH)
         }
+    }
+
+    /// The post-win EXP bar: thinner than the HP bar, always blue, same
+    /// left-anchored fill behavior.
+    private func layoutExp(center: CGPoint, frac: Double) {
+        let w: CGFloat = 46, h: CGFloat = 3
+        pExpTrack.isHidden = false
+        pExpTrack.bounds = CGRect(x: 0, y: 0, width: w, height: h)
+        pExpTrack.position = center
+        guard frac > 0 else { pExpFill.isHidden = true; return }
+        pExpFill.isHidden = false
+        let fw = max(1, w * CGFloat(min(1, frac)))
+        pExpFill.bounds = CGRect(x: 0, y: 0, width: fw, height: h)
+        pExpFill.position = CGPoint(x: center.x - (w - fw) / 2, y: center.y)
     }
 
     private func layoutHP(_ track: CALayer, _ fill: CALayer, center: CGPoint, frac: Double) {
