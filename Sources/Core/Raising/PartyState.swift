@@ -430,16 +430,24 @@ final class RaisingState {
     }
 
     /// Moves this member could relearn (move-reminder, user feature):
-    /// every level-up move of its CURRENT species learnable at or below its
-    /// level and not currently known — so a wild caught with the last-4
-    /// window regains access to its whole learnset. Sorted by learn level.
+    /// every level-up move of its species AND its pre-evolutions learnable
+    /// at or below its level and not currently known — an evolved mon keeps
+    /// access to moves only its earlier stages learn. Sorted by learn level;
+    /// a move on several stages keeps its lowest learn level.
     func relearnableMoves(at index: Int) -> [(moveId: Int, level: Int)] {
         guard save.party.indices.contains(index),
               let s = save.party[index].species else { return [] }
         let mon = save.party[index]
+        var pool: [LevelUpMove] = []
+        var visited = Set<Int>()
+        var cur: SpeciesData? = s
+        while let sp = cur, visited.insert(sp.dex).inserted {
+            pool += sp.levelUpMoves
+            cur = sp.preEvoDex.flatMap { GameData.species[$0] }
+        }
         var seen = Set<Int>()
         var out: [(Int, Int)] = []
-        for lm in s.levelUpMoves.sorted(by: { $0.level < $1.level })
+        for lm in pool.sorted(by: { $0.level < $1.level })
         where lm.level <= mon.level
             && !mon.moves.contains(lm.moveId)
             && GameData.moves[lm.moveId] != nil
