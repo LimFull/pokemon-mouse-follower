@@ -30,6 +30,7 @@ struct BattleScene {
     var playerPose: BattlePose = .stand   // battle pose for the follower (D2-1)
     var playerPoseTick: Int = 0
     var wildLevel: Int?                   // shown above the wild's head
+    var wildName: String?                 // species name next to the level tag
     var playerDodge: CGPoint = .zero      // sidestep offset while evading a miss
     var floatText: String?                // floating combat tag ("Miss", "Super Effective!", ...)
     var floatPos: CGPoint = .zero
@@ -1699,6 +1700,7 @@ final class BattleController: LiveBattleBridge {
             playerPose: phase == .battling ? playerPose.0 : .stand,
             playerPoseTick: playerPose.1,
             wildLevel: wild?.level,
+            wildName: AppSettings.shared.wildNameEnabled ? wild?.name : nil,
             playerDodge: playerDodge,
             floatText: floatText, floatPos: floatPos,
             floatAlpha: floatAlpha, floatColor: floatColor,

@@ -172,6 +172,11 @@ final class AppSettings {
         get { d.has("battleLogEnabled") ? d.bool("battleLogEnabled") : true }
         set { d.set(newValue, "battleLogEnabled") }
     }
+    // Wild species name next to the level tag in battle (default on).
+    var wildNameEnabled: Bool {
+        get { d.has("wildNameEnabled") ? d.bool("wildNameEnabled") : true }
+        set { d.set(newValue, "wildNameEnabled") }
+    }
     // Floating damage numbers over the hit side in battle (default on).
     var damageNumbersEnabled: Bool {
         get { d.has("damageNumbersEnabled") ? d.bool("damageNumbersEnabled") : true }

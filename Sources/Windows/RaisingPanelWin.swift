@@ -589,6 +589,9 @@ final class RaisingPanelWin {
         checkbox(L("label.itemspawn"), x: 0, y: y, w: RaisingPanelWin.contentWidth,
                  on: AppSettings.shared.itemSpawnsEnabled) { AppSettings.shared.itemSpawnsEnabled = $0 }
         y += 24
+        checkbox(L("label.wildname"), x: 0, y: y, w: RaisingPanelWin.contentWidth,
+                 on: AppSettings.shared.wildNameEnabled) { AppSettings.shared.wildNameEnabled = $0 }
+        y += 24
         checkbox(L("label.damagenumbers"), x: 0, y: y, w: RaisingPanelWin.contentWidth,
                  on: AppSettings.shared.damageNumbersEnabled) { AppSettings.shared.damageNumbersEnabled = $0 }
         y += 24

@@ -187,15 +187,18 @@ final class SpriteView: NSView {
         }
 
         let bs = window?.backingScaleFactor ?? 2
-        // Level tag above the wild's head (#1) — above the HP bar in battle.
+        // Name + level tag above the wild's head (#1) — above the HP bar in battle.
         if let lv = scene.wildLevel {
             let fs = min(16, max(9, 6 * s))
+            let font = NSFont.rounded(fs, .bold)
+            let tag = scene.wildName.map { "\($0) Lv.\(lv)" } ?? "Lv.\(lv)"
             levelLabel.isHidden = false
             levelLabel.contentsScale = bs
-            levelLabel.font = NSFont.rounded(fs, .bold)
+            levelLabel.font = font
             levelLabel.fontSize = fs
-            levelLabel.string = "Lv.\(lv)"
-            let w = (CGFloat("Lv.\(lv)".count) * fs * 0.62) + 10
+            levelLabel.string = tag
+            // Measured width — the count heuristic underestimates CJK names.
+            let w = (tag as NSString).size(withAttributes: [.font: font]).width + 10
             levelLabel.bounds = CGRect(x: 0, y: 0, width: w, height: fs + 6)
             levelLabel.position = CGPoint(x: wx, y: wy + (scene.showBars ? 30 : 22) * s)
             levelLabel.opacity = Float(scene.wildAlpha)

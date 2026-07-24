@@ -198,6 +198,11 @@ final class RaisingPanelView: NSView {
         itemCB.state = AppSettings.shared.itemSpawnsEnabled ? .on : .off
         itemCB.font = .rounded(12, .medium)
         root.addArrangedSubview(itemCB)
+        let nameCB = NSButton(checkboxWithTitle: L("label.wildname"), target: self,
+                              action: #selector(wildNameToggled(_:)))
+        nameCB.state = AppSettings.shared.wildNameEnabled ? .on : .off
+        nameCB.font = .rounded(12, .medium)
+        root.addArrangedSubview(nameCB)
         let dmgCB = NSButton(checkboxWithTitle: L("label.damagenumbers"), target: self,
                              action: #selector(damageNumbersToggled(_:)))
         dmgCB.state = AppSettings.shared.damageNumbersEnabled ? .on : .off
@@ -249,6 +254,10 @@ final class RaisingPanelView: NSView {
 
     @objc private func itemSpawnToggled(_ sender: NSButton) {
         AppSettings.shared.itemSpawnsEnabled = (sender.state == .on)
+    }
+
+    @objc private func wildNameToggled(_ sender: NSButton) {
+        AppSettings.shared.wildNameEnabled = (sender.state == .on)
     }
 
     @objc private func battleLogToggled(_ sender: NSButton) {

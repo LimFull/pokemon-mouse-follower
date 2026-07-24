@@ -216,7 +216,7 @@ final class BattleChrome {
         }
         if let lv = scene.wildLevel {
             let fs = Double(min(16, max(9, 6 * s)))
-            let t = "Lv.\(lv)"
+            let t = scene.wildName.map { "\($0) Lv.\(lv)" } ?? "Lv.\(lv)"
             let m = text.measure(t, size: fs, weight: 700)
             tags.append(Tag(text: t, size: fs, weight: 700,
                             boxW: Double(m.w) + 10, boxH: fs + 6,

@@ -52,6 +52,7 @@ private func dumpBattleLogIfRequested() {
             playerAlpha: 1, wildAlpha: 1, showBars: true,
             effectFrame: nil, effectPos: .zero,
             wildLevel: 7,
+            wildName: "구구",
             logLines: [("앗! 야생의 구구가 튀어나왔다!", 0.4),
                        ("피카츄의 전기쇼크!", 1.0),
                        ("효과가 굉장했다!", 1.0),

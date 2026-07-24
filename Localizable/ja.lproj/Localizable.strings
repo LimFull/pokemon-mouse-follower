@@ -362,6 +362,7 @@
 "raising.settings" = "育成設定";
 "label.wildspawn" = "野生ポケモン出現";
 "label.itemspawn" = "アイテム出現";
+"label.wildname" = "野生ポケモンの名前表示";
 "label.damagenumbers" = "ダメージ表示";
 "detail.recall" = "もどす";
 

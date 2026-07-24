@@ -110,6 +110,7 @@
 "raising.settings" = "Raising settings";
 "label.wildspawn" = "Wild encounters";
 "label.itemspawn" = "Item spawns";
+"label.wildname" = "Wild name tag";
 "label.damagenumbers" = "Damage numbers";
 "detail.recall" = "Recall";
 
